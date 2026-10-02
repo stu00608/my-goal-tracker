@@ -1,0 +1,50 @@
+name: Verify
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: verify-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  repository:
+    name: Repository checks
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      has_app: ${{ steps.project.outputs.has_app }}
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/dev.py check
+      - id: project
+        run: |
+          if [ -f ios/GoalTracker.xcodeproj/project.pbxproj ]; then
+            echo "has_app=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "has_app=false" >> "$GITHUB_OUTPUT"
+          fi
+
+  ios:
+    name: iOS Simulator tests
+    needs: repository
+    if: needs.repository.outputs.has_app == 'true'
+    runs-on: macos-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 scripts/dev.py doctor
+      - run: python3 scripts/dev.py test
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: simulator-results
+          path: .artifacts/
+          if-no-files-found: warn
+          retention-days: 7
