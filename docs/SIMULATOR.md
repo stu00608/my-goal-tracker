@@ -50,17 +50,32 @@ Swift Testing 驗證週／月界線、重複勾選、補登排序、數值精度
 
 UI 變更至少操作受影響流程並檢視結果；在地化／共用佈局變更才擴大到三語、亮暗、大字體。
 用 CLI 的 `simctl ui <udid> appearance light|dark` 設定 Simulator 外觀。
-本機人工探索可透過 Orca：
+本機互動驗證優先使用 Orca 的 worktree-scoped emulator bridge：
 
 ```sh
-orca skills get computer-use
-orca computer get-app-state --app com.apple.iphonesimulator --restore-window --json
+orca skills get orca-emulator
+orca emulator devices --worktree active --json
+orca emulator attach <simulator-udid> --worktree active --json
+orca emulator ax --worktree active --json
+orca emulator tap 0.5 0.8 --worktree active --json
+orca emulator type "18.500" --worktree active --json
+orca emulator kill --worktree active --json
 ```
 
-以最新 screenshot 與正確 scale 操作，動作後重新觀察。
-Simulator 的 macOS accessibility tree 未必暴露 iOS 控制項；必要時按實際畫面座標操作，
-可靠、可重跑的驗收仍使用 XCTest。`simctl` 的截圖／啟動結果不能代替點擊與資料斷言。
-依已安裝版本的 `xcrun simctl help` 選命令，不假設存在 tap/type 等 UI 指令。
+先用 build/run 安裝並啟動 app，再 attach 同一 UDID。iOS 的 install/launch 由 Xcode/simctl
+處理；Orca 的 install/launch verbs 是 Android-only。attach 前與每次操作後觀察最新畫面／AX。
+tap 使用左上原點的 0..1 正規化座標，依 AX frame 中心選目標，不能直接傳 screenshot 像素。
+`type` 只支援 US-ASCII；繁中／日文輸入改由 XCTest UI test 的 `typeText` 驗證，
+不能宣稱 ASCII 流程涵蓋三語。結束後 kill helper；它會保留 booted Simulator。
+不得使用 `--worktree all` 執行操作，也不關閉其他任務的 session。
+Bridge 使用 private Simulator APIs，Xcode 更新後先重驗 attach／tap／AX 是否仍可用。
+參考 [Orca 官方 iOS emulator guide](https://github.com/stablyai/orca/blob/main/skill-guides/orca-emulator.md)。
+
+需要操作 Simulator 的 macOS 視窗或 bridge 不支援的 UI 時，才載入 `orca skills get computer-use`，
+以最新 screenshot、正確 scale 與焦點操作，動作後重新觀察。
+Simulator 的 macOS accessibility tree 未必暴露 iOS 控制項；可靠、可重跑的驗收仍使用 XCTest。
+`simctl` 的截圖／啟動不能代替點擊與資料斷言；它沒有通用的 tap/type verbs。
+缺少完整 Xcode/runtime 時，Orca 列出空 devices 不能算測試通過。
 
 ## 真機與免費簽署
 
