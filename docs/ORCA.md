@@ -25,16 +25,23 @@ orca worktree create --repo path:"$PWD" --name snapshot-entry --base-branch orig
 
 ## Setup hook
 
-在 Orca 的本專案設定中，Setup script 設為：
+Repo 根目錄的 `orca.yaml` 定義 setup script：
 
-```sh
-python3 scripts/dev.py setup
+```yaml
+scripts:
+  setup: python3 scripts/dev.py setup
 ```
 
-Setup run policy 為 run-by-default，agent startup 等 setup 成功後再開始。
-Archive script 保持空白：目前沒有 setup 建立、需要自動清除的背景服務。
-以 `orca repo show` 核對實際儲存的 `hookSettings`，不能只因腳本存在就宣稱已綁定。
-若目前 CLI 沒有 setter，透過 Orca 專案設定 UI 操作；不編輯 Orca 的內部資料庫或 runtime state。
+以 `--setup run` 建立 worktree，讀取 setup terminal 的實際完成結果後才開始任務。
+不要把 worktree 建立成功當成 setup 成功；若 launcher 立即啟動 agent，brief 要求它先確認 setup。
+Repo-local Git 設定由 linked worktrees 共用，重跑 setup 安全且不安裝任何套件。
+Archive script 未設定：目前沒有 setup 建立、需要自動清除的背景服務。
+
+Orca Settings 的 command source 必須允許 repo 的 `orca.yaml`；本機選 local-only 時，
+檔案存在也不代表 hook 生效。以新 worktree 的 setup terminal 輸出核對，
+不要用 `repo show` 中空白的 local script 判斷 repo script 沒有執行。
+需要變更個人 hook policy 時用正式 UI；不編輯 Orca 內部資料庫或 runtime state。
+正式格式參考 [Orca 本身的 repo 設定](https://github.com/stablyai/orca/blob/main/orca.yaml)。
 
 `setup` 不要求 Xcode，因此文件或工具任務不會因 iOS 工具鏈缺失而無法啟動。
 App 任務另跑 `doctor`；setup 成功不是 Simulator 驗證。

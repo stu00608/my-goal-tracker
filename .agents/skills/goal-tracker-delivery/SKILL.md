@@ -40,7 +40,7 @@ Simulator tests, visual inspection, and physical-device checks; report unmet acc
 | Hard-to-localize failure | diagnosing-bugs |
 | Substantive review | code-review |
 | Agent instructions or skills | writing-for-agents, skill-creator |
-| Visible Simulator interaction | Orca computer-use, after CLI and XCTest options |
+| iOS Simulator interaction | `orca skills get orca-emulator`; computer-use for desktop UI fallback |
 | Explicit TDD or simplification request | tdd or ponytail; respect the requested intensity |
 
 Use available skills when their instructions change the task's decisions; load them when needed.
