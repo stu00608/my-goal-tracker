@@ -89,3 +89,16 @@ Signing & Capabilities 選 Personal Team，連接並信任自己的 iPhone，依
 相機、相簿權限、通知／Focus、觸覺、效能與 widget signing 需要自己的 iPhone 實測。
 Simulator 不完整模擬實體裝置能力；在交付報告中明確列出尚未驗證的真機項目。
 參考 [Apple 裝置驗證說明](https://developer.apple.com/documentation/xcode/running-your-app-on-simulated-or-physical-devices)。
+
+## 本次第一版驗證與 Widget
+
+CI 使用 `macos-26` image（Xcode 26），與本機 Swift 6 的 actor 隔離設定相容。
+資料邏輯使用 Swift Testing，UI 使用 XCTest；所有 UI 測試啟動 `--uitesting`，
+使用 `Application Support/UITests/test.store` 與獨立 preferences suite。
+`--reset-test-store` 只清空該測試 store，release build 不提供測試入口。
+
+Widget 的共用容器需要 App Groups。Apple 目前的
+[capability 表](https://developer.apple.com/help/account/reference/supported-capabilities-ios/)
+將 App groups 列為免費 Apple Developer 可用，但仍需本機實際 provisioning 驗證。
+本次自動審核要求明確授權 App／Widget 共用資料，因此第一版尚未啟用 Widget。
+核心 `GoalTracker` scheme 不包含 App Groups entitlement。

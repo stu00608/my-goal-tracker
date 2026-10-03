@@ -1,7 +1,7 @@
 # My Goal Tracker
 
 私人使用的 iPhone 目標記錄器：數值快照、每日完成紀錄、照片、回顧與完整備份。
-目前只建立開發流程；app 尚未實作。
+第一版已包含數值快照、每日完成、圖表／日曆、三語、亮暗外觀、備份還原與本機提醒。
 
 ## 開始工作
 
@@ -27,9 +27,27 @@ python3 scripts/dev.py doctor
 
 私人 GitHub repo 使用 `main` 作為整合分支，功能在 Orca worktree 中以 PR 交付。
 `.githooks/pre-commit` 執行 repo 檢查；CI 使用同一入口。
-第一個 app 專案建立後，CI 自動啟用 iOS Simulator test job。
-在 app 尚未存在時，該 job 會顯示 skipped，只有 repo 檢查能算通過。
+CI 在 macOS runner 實際執行原生邏輯與 UI 測試，拒絕空測試或 skipped 結果。
 
 約定 app 專案為 `ios/GoalTracker.xcodeproj`，shared scheme 為 `GoalTracker`，
 並包含 `GoalTrackerTests` 和 `GoalTrackerUITests`。建立專案的任務需同時驗證這些約定。
 Personal Team、手機配對與本機 signing 設定由 Xcode 管理，不放進 repo。
+
+## 執行 App
+
+```sh
+python3 scripts/dev.py doctor
+python3 scripts/dev.py build
+python3 scripts/dev.py test
+python3 scripts/dev.py run
+open ios/GoalTracker.xcodeproj
+```
+
+Shared scheme 為 `GoalTracker`，最低 iOS 17。真機使用自己的 Personal Team，
+私人的 Team ID 僅存在被忽略的 `Signing.local.xcconfig` 或本機 build setting。
+詳見 [Simulator 與真機驗證](docs/SIMULATOR.md)。
+
+完整備份為版本化 JSON，包含照片的 app 自有 JPEG 副本。CSV 只供分析，不能還原。
+為避免過量匯入，第一版單一備份上限 100 MB、數值上限 28 位數字；
+照片每筆最多 6 張，保存時縮至 1600 像素，每張上限 2 MB。
+外觀、語言、系統通知權限為本機偏好，不由備份取代。
