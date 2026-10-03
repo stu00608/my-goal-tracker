@@ -66,7 +66,10 @@ orca emulator kill --worktree active --json
 處理；Orca 的 install/launch verbs 是 Android-only。attach 前與每次操作後觀察最新畫面／AX。
 tap 使用左上原點的 0..1 正規化座標，依 AX frame 中心選目標，不能直接傳 screenshot 像素。
 `type` 只支援 US-ASCII；繁中／日文輸入改由 XCTest UI test 的 `typeText` 驗證，
-不能宣稱 ASCII 流程涵蓋三語。結束後 kill helper；它會保留 booted Simulator。
+不能宣稱 ASCII 流程涵蓋三語。輸入後必須確認實際文字；本機 iOS 26.5 的注音配置
+會讓 bridge 的 ASCII 輸入變成注音組字，且 AX 目前可能回傳空樹。遇到這種狀況
+改用 XCTest 的 `typeText` 與資料斷言，不把 `ok: true` 當成輸入成功。
+結束後 kill helper；它會保留 booted Simulator。
 不得使用 `--worktree all` 執行操作，也不關閉其他任務的 session。
 Bridge 使用 private Simulator APIs，Xcode 更新後先重驗 attach／tap／AX 是否仍可用。
 參考 [Orca 官方 iOS emulator guide](https://github.com/stablyai/orca/blob/main/skill-guides/orca-emulator.md)。
@@ -89,3 +92,16 @@ Signing & Capabilities 選 Personal Team，連接並信任自己的 iPhone，依
 相機、相簿權限、通知／Focus、觸覺、效能與 widget signing 需要自己的 iPhone 實測。
 Simulator 不完整模擬實體裝置能力；在交付報告中明確列出尚未驗證的真機項目。
 參考 [Apple 裝置驗證說明](https://developer.apple.com/documentation/xcode/running-your-app-on-simulated-or-physical-devices)。
+
+## 本次第一版驗證與 Widget
+
+CI 使用 `macos-26` image（Xcode 26），與本機 Swift 6 的 actor 隔離設定相容。
+資料邏輯使用 Swift Testing，UI 使用 XCTest；所有 UI 測試啟動 `--uitesting`，
+使用 `Application Support/UITests/test.store` 與獨立 preferences suite。
+`--reset-test-store` 只清空該測試 store，release build 不提供測試入口。
+
+Widget 的共用容器需要 App Groups。Apple 目前的
+[capability 表](https://developer.apple.com/help/account/reference/supported-capabilities-ios/)
+將 App groups 列為免費 Apple Developer 可用，但仍需本機實際 provisioning 驗證。
+本次自動審核要求明確授權 App／Widget 共用資料，因此第一版尚未啟用 Widget。
+核心 `GoalTracker` scheme 不包含 App Groups entitlement。
