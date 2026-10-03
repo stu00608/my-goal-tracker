@@ -66,7 +66,10 @@ orca emulator kill --worktree active --json
 處理；Orca 的 install/launch verbs 是 Android-only。attach 前與每次操作後觀察最新畫面／AX。
 tap 使用左上原點的 0..1 正規化座標，依 AX frame 中心選目標，不能直接傳 screenshot 像素。
 `type` 只支援 US-ASCII；繁中／日文輸入改由 XCTest UI test 的 `typeText` 驗證，
-不能宣稱 ASCII 流程涵蓋三語。結束後 kill helper；它會保留 booted Simulator。
+不能宣稱 ASCII 流程涵蓋三語。輸入後必須確認實際文字；本機 iOS 26.5 的注音配置
+會讓 bridge 的 ASCII 輸入變成注音組字，且 AX 目前可能回傳空樹。遇到這種狀況
+改用 XCTest 的 `typeText` 與資料斷言，不把 `ok: true` 當成輸入成功。
+結束後 kill helper；它會保留 booted Simulator。
 不得使用 `--worktree all` 執行操作，也不關閉其他任務的 session。
 Bridge 使用 private Simulator APIs，Xcode 更新後先重驗 attach／tap／AX 是否仍可用。
 參考 [Orca 官方 iOS emulator guide](https://github.com/stablyai/orca/blob/main/skill-guides/orca-emulator.md)。

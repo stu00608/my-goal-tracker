@@ -17,9 +17,15 @@ nonisolated final class FlowTests: XCTestCase {
     @MainActor func create(_ app: XCUIApplication, name: String, daily: Bool = false) {
         app.buttons["tracker.create"].tap()
         type(app.textFields["tracker.name"], name)
+        app.textFields["tracker.name"].typeText("\n")
         if daily {
             app.buttons["tracker.kind"].tap(); app.buttons["Daily completion"].tap()
             let toggle = app.switches["goal.enabled"]
+            for _ in 0..<6 {
+                if toggle.isHittable { break }
+                app.swipeUp()
+            }
+            XCTAssertTrue(toggle.isHittable)
             toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
             XCTAssertEqual(toggle.value as? String, "1")
             screenshot(app, "Frequency goal enabled")
@@ -37,6 +43,7 @@ nonisolated final class FlowTests: XCTestCase {
         app.buttons["entry.save"].tap()
         XCTAssertTrue(app.staticTexts["18.500"].waitForExistence(timeout: 10))
         button(app, "tracker.", "VOLFORCE").tap()
+        XCTAssertTrue(app.otherElements["snapshot.chart"].waitForExistence(timeout: 10))
         screenshot(app, "Single snapshot detail")
         app.buttons["entry.add"].tap()
         type(app.textFields["entry.value"], "19.25")
