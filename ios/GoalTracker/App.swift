@@ -32,6 +32,7 @@ nonisolated enum L {
 @main struct GoalTrackerApp: App {
     @AppStorage("appearance") private var appearance = "system"
     @AppStorage("language") private var language = "system"
+    @Environment(\.scenePhase) private var scenePhase
     @State private var store: AppStore?
     @State private var loadError: String?
     init() {
@@ -52,6 +53,7 @@ nonisolated enum L {
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("--reset-test-store") && url != nil { try loaded.replace([]) }
             #endif
+            loaded.refreshWidget()
             _store = State(initialValue: loaded)
         } catch { _loadError = State(initialValue: L.error(error)) }
     }
@@ -65,6 +67,8 @@ nonisolated enum L {
             .environment(\.locale, L.locale)
             .preferredColorScheme(appearance == "light" ? .light : appearance == "dark" ? .dark : nil)
             .tint(.teal)
+            .onChange(of: language) { store?.refreshWidget() }
+            .onChange(of: scenePhase) { if scenePhase == .active { store?.refreshWidget() } }
         }
     }
 }

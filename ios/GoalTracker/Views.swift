@@ -4,6 +4,7 @@ import Charts
 struct RootView: View {
     @Environment(AppStore.self) private var store
     @State private var selected = 0
+    @State private var todayNavigationID = UUID()
     @State private var settings = false
     @State private var creating = false
     @State private var entryTracker: Tracker?
@@ -13,13 +14,17 @@ struct RootView: View {
     private func screen(at date: Date) -> some View {
         @Bindable var store = store
         return TabView(selection: $selected) {
-            NavigationStack { trackerList(today: true, at: date) }.tabItem { Label(L.text("Today"), systemImage: "checkmark.circle") }.tag(0)
+            NavigationStack { trackerList(today: true, at: date) }.id(todayNavigationID).tabItem { Label(L.text("Today"), systemImage: "checkmark.circle") }.tag(0)
             NavigationStack { trackerList(today: false, at: date) }.tabItem { Label(L.text("Goals"), systemImage: "chart.xyaxis.line") }.tag(1)
         }
         .task(id: store.trackers) {
             do { try await Reminders.sync(store.trackers) }
             catch is CancellationError { }
             catch { store.error = L.error(error) }
+        }
+        .onOpenURL { url in
+            guard url.scheme == "goaltracker", url.host == "today" else { return }
+            settings = false; creating = false; entryTracker = nil; selected = 0; todayNavigationID = UUID()
         }
         .sheet(isPresented: $settings) { SettingsView() }
         .sheet(isPresented: $creating) { TrackerEditor() }

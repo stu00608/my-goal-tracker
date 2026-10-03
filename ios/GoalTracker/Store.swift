@@ -19,7 +19,7 @@ import UIKit
         if let url { config = ModelConfiguration(url: url, cloudKitDatabase: .none) }
         else {
             try FileManager.default.createDirectory(at: URL.applicationSupportDirectory, withIntermediateDirectories: true)
-            config = ModelConfiguration(cloudKitDatabase: .none)
+            config = ModelConfiguration(groupContainer: .none, cloudKitDatabase: .none)
         }
         container = try ModelContainer(for: Ledger.self, configurations: config)
         context = ModelContext(container); context.autosaveEnabled = false
@@ -36,6 +36,22 @@ import UIKit
         row.payload = data
         do { try context.save() } catch { context.rollback(); throw error }
         trackers = candidate
+        refreshWidget()
+    }
+    func refreshWidget() {
+        #if WIDGETS
+        // Test stores must never replace the user's home-screen summary.
+        let args = ProcessInfo.processInfo.arguments
+        if args.contains("--uitesting") {
+            #if DEBUG && targetEnvironment(simulator)
+            guard args.contains("--widgettesting") else { return }
+            #else
+            return
+            #endif
+        }
+        do { try WidgetSnapshot.publish(trackers) }
+        catch { self.error = L.text("Your records are saved, but the widget could not be updated. Open the app to try again.") }
+        #endif
     }
     func save(_ tracker: Tracker) throws {
         var next = trackers
