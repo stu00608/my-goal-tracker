@@ -103,5 +103,26 @@ CI 使用 `macos-26` image（Xcode 26），與本機 Swift 6 的 actor 隔離設
 Widget 的共用容器需要 App Groups。Apple 目前的
 [capability 表](https://developer.apple.com/help/account/reference/supported-capabilities-ios/)
 將 App groups 列為免費 Apple Developer 可用，但仍需本機實際 provisioning 驗證。
-本次自動審核要求明確授權 App／Widget 共用資料，因此第一版尚未啟用 Widget。
+使用者已明確授權 App／Widget 共用進度摘要。已完成 App 與 extension 的
+免費 Personal Team 簽署、真機安裝及啟動；首次安裝需在手機上信任開發者描述檔。
 核心 `GoalTracker` scheme 不包含 App Groups entitlement。
+
+```sh
+python3 scripts/dev.py build --scheme GoalTrackerWithWidget
+python3 scripts/dev.py test --scheme GoalTrackerWithWidget --device <simulator-udid>
+python3 scripts/dev.py run --scheme GoalTrackerWithWidget --device <simulator-udid>
+```
+
+Widget XCTest 使用獨立 UI test store。只有 DEBUG Simulator 的 `--widgettesting`
+會把測試摘要發到該 Simulator 的 Widget 共用容器；真機與 release 不開放此入口。
+XCTest 驗證共用摘要成功保存、完成計數，以及 Widget URL 從詳情／目標分頁回到今天。
+原生 gallery 與主畫面 Widget 另外透過 Orca 實際操作並檢視截圖；Widget 內容
+由系統渲染，XCTest 的 gallery 搜尋結果未暴露可點擊的 accessibility 節點，
+不能把背景上同名的 App 標籤當成 gallery 控制項。
+一般 `--uitesting` 不更新 Widget 摘要，避免測試資料替換正常 Widget 的內容。
+Simulator 上完成後，正常啟動 App 會重建正常摘要。
+
+App 修改後呼叫 `WidgetCenter.reloadTimelines`，日期與規則切換透過 timeline 計算。
+WidgetKit 有自己的更新預算；測試應等待可觀察內容，不能把 reload 呼叫當成已更新。
+參考 [Apple Widget 更新文件](https://developer.apple.com/documentation/widgetkit/keeping-a-widget-up-to-date)
+與 [TimelineProvider](https://developer.apple.com/documentation/widgetkit/timelineprovider)。

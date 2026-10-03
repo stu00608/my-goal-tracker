@@ -89,16 +89,17 @@ def check():
     print("Repository checks passed. Native app acceptance is separate.")
 
 
-def xcode(action, device=None):
+def xcode(action, device=None, scheme="GoalTracker"):
     if not (PROJECT / "project.pbxproj").is_file():
         raise ValueError("App project not created: ios/GoalTracker.xcodeproj")
     ARTIFACTS.mkdir(exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     result_path = ARTIFACTS / (action + "-" + stamp + ".xcresult")
-    args = ["xcodebuild", "-project", PROJECT, "-scheme", "GoalTracker", "-configuration", "Debug",
+    args = ["xcodebuild", "-project", PROJECT, "-scheme", scheme, "-configuration", "Debug",
             "-destination", "platform=iOS Simulator,id=" + device if device else "generic/platform=iOS Simulator",
             "-derivedDataPath", DERIVED, "-resultBundlePath", result_path,
-            "CODE_SIGNING_ALLOWED=NO", action]
+            *(["CODE_SIGNING_ALLOWED=YES", "CODE_SIGN_IDENTITY=-", "DEVELOPMENT_TEAM="]
+              if scheme == "GoalTrackerWithWidget" else ["CODE_SIGNING_ALLOWED=NO"]), action]
     log = ARTIFACTS / (action + "-" + stamp + ".log")
     print("+ " + shlex.join([str(arg) for arg in args]), flush=True)
     with log.open("w", encoding="utf-8") as output:
@@ -122,6 +123,7 @@ def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("command", choices=["setup", "check", "doctor", "devices", "build", "test", "run", "screenshot"])
     parser.add_argument("--device", help="Exact Simulator UDID; does not erase or delete the device")
+    parser.add_argument("--scheme", choices=["GoalTracker", "GoalTrackerWithWidget"], default="GoalTracker")
     args = parser.parse_args()
     if args.command == "setup":
         for key, value in [("core.hooksPath", ".githooks"), ("pull.ff", "only"), ("fetch.prune", "true")]:
@@ -134,7 +136,7 @@ def main():
     elif args.command == "devices":
         print(json.dumps(devices(), indent=2))
     elif args.command == "build":
-        xcode("build")
+        xcode("build", scheme=args.scheme)
     else:
         if args.command == "screenshot" and not args.device:
             raise ValueError("screenshot requires --device to identify the session being inspected.")
@@ -142,13 +144,13 @@ def main():
         udid = phone["udid"]
         print("Using Simulator:", phone["name"], udid, flush=True)
         if args.command == "test":
-            xcode("test", udid)
+            xcode("test", udid, args.scheme)
         elif args.command == "run":
-            xcode("build", udid)
+            xcode("build", udid, args.scheme)
             if phone["state"] != "Booted":
                 run("xcrun", "simctl", "boot", udid)
             run("xcrun", "simctl", "bootstatus", udid, "-b")
-            app = DERIVED / "Build/Products/Debug-iphonesimulator/GoalTracker.app"
+            app = DERIVED / ("Build/Products/Debug-iphonesimulator/" + args.scheme + ".app")
             with (app / "Info.plist").open("rb") as source:
                 bundle_id = plistlib.load(source)["CFBundleIdentifier"]
             run("xcrun", "simctl", "install", udid, app)

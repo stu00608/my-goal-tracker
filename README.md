@@ -1,7 +1,7 @@
 # My Goal Tracker
 
 私人使用的 iPhone 目標記錄器：數值快照、每日完成紀錄、照片、回顧與完整備份。
-第一版已包含數值快照、每日完成、圖表／日曆、三語、亮暗外觀、備份還原與本機提醒。
+第一版已包含數值快照、每日完成、圖表／日曆、三語、亮暗外觀、備份還原、本機提醒與小／中型 Widget。
 
 ## 開始工作
 
@@ -40,10 +40,13 @@ python3 scripts/dev.py doctor
 python3 scripts/dev.py build
 python3 scripts/dev.py test
 python3 scripts/dev.py run
+python3 scripts/dev.py run --scheme GoalTrackerWithWidget
 open ios/GoalTracker.xcodeproj
 ```
 
-Shared scheme 為 `GoalTracker`，最低 iOS 17。真機使用自己的 Personal Team，
+核心 scheme 為 `GoalTracker`；含 Widget 使用 `GoalTrackerWithWidget`，最低 iOS 17。
+Widget 只共享進度摘要，點擊回到今天。兩個版本保留同一份 App 私有資料。
+真機使用自己的 Personal Team，
 私人的 Team ID 僅存在被忽略的 `Signing.local.xcconfig` 或本機 build setting。
 詳見 [Simulator 與真機驗證](docs/SIMULATOR.md)。
 

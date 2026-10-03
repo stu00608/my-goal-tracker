@@ -41,6 +41,7 @@ jobs:
       - uses: actions/checkout@v4
       - run: python3 scripts/dev.py doctor
       - run: python3 scripts/dev.py test
+      - run: python3 scripts/dev.py test --scheme GoalTrackerWithWidget
       - uses: actions/upload-artifact@v4
         if: always()
         with:
