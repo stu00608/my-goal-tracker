@@ -39,7 +39,7 @@ struct GoalWidgetView: View {
         .widgetURL(URL(string: "goaltracker://today"))
     }
     private func content(limit: Int, showGap: Bool = true) -> some View {
-        VStack(alignment: .leading, spacing: family == .systemSmall ? 8 : 6) {
+        VStack(alignment: .leading, spacing: family == .systemSmall ? 8 : 2) {
             Label(text("Your progress"), systemImage: "chart.xyaxis.line").font(.caption.weight(.semibold)).foregroundStyle(.teal).lineLimit(1)
             if let rows = entry.snapshot?.rows, !rows.isEmpty {
                 ForEach(Array(rows.prefix(limit))) { row in
