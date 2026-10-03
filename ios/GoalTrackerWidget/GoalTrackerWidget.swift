@@ -29,10 +29,20 @@ struct GoalWidgetView: View {
         return bundle.localizedString(forKey: key, value: key, table: "Localizable")
     }
     var body: some View {
+        ViewThatFits(in: .vertical) {
+            content(limit: family == .systemSmall ? 1 : 3).fixedSize(horizontal: false, vertical: true)
+            if family == .systemMedium { content(limit: 2).fixedSize(horizontal: false, vertical: true) }
+            content(limit: 1, showGap: false).fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+        .containerBackground(.fill.tertiary, for: .widget)
+        .widgetURL(URL(string: "goaltracker://today"))
+    }
+    private func content(limit: Int, showGap: Bool = true) -> some View {
         VStack(alignment: .leading, spacing: family == .systemSmall ? 8 : 6) {
-            Label(text("Your progress"), systemImage: "chart.xyaxis.line").font(.caption.weight(.semibold)).foregroundStyle(.teal)
+            Label(text("Your progress"), systemImage: "chart.xyaxis.line").font(.caption.weight(.semibold)).foregroundStyle(.teal).lineLimit(1)
             if let rows = entry.snapshot?.rows, !rows.isEmpty {
-                ForEach(Array(rows.prefix(family == .systemSmall ? 1 : 3))) { row in
+                ForEach(Array(rows.prefix(limit))) { row in
                     VStack(alignment: .leading, spacing: 2) {
                         HStack {
                             Text(row.name).font(family == .systemSmall ? .headline : .subheadline.weight(.semibold)).lineLimit(1)
@@ -44,15 +54,13 @@ struct GoalWidgetView: View {
                             }
                         }
                         Text(progress(row)).font((family == .systemSmall ? Font.subheadline : .caption).monospacedDigit()).foregroundStyle(.secondary).lineLimit(1)
-                        if family == .systemSmall, let gap = gap(row) {
+                        if showGap && family == .systemSmall, let gap = gap(row) {
                             Text(text("Distance to target") + ": " + gap).font(.caption2).foregroundStyle(.secondary).lineLimit(2)
                         }
                     }.privacySensitive()
                 }
             } else { Text(text("Open the app to add your first tracker.")).font(.caption).foregroundStyle(.secondary) }
-            Spacer(minLength: 0)
-        }.containerBackground(.fill.tertiary, for: .widget)
-            .widgetURL(URL(string: "goaltracker://today"))
+        }
     }
     private func gap(_ row: WidgetRow) -> String? {
         guard row.kind == .number, let target = row.tracker.rule(at: entry.date).flatMap({ Numbers.decimal($0.target) }), let value = row.value.flatMap(Numbers.decimal) else { return nil }

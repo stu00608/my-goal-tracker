@@ -84,7 +84,8 @@ Widget 不得成為核心 app 免費簽署的前置依賴；需要會員的能�
 ## Widget 第一版
 
 `GoalTrackerWithWidget` scheme 提供小型（首個項目）與中型（前三個項目）唯讀 Widget，
-依 App 中的項目順序，排除封存項目。數值顯示最新值與目標差距；每日項目顯示
+依 App 中的項目順序，排除封存項目。大字體時自動減少顯示項目，避免裁切；
+小型版空間不足時省略目標差距。數值顯示最新值與目標差距；每日項目顯示
 當期次數與今天有無完成紀錄。點擊開啟「今天」清單。
 
 App Group `group.com.stu00608.mygoaltracker` 只供 App 與 extension 分享進度摘要，
