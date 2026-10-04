@@ -6794,6 +6794,28 @@
           }
         }
       }
+    },
+    "Records changed while checking. Try recording again.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Records changed while checking. Try recording again."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "檢查期間紀錄已變更，請再試一次。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "確認中に記録が変更されました。もう一度お試しください。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"

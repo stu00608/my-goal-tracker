@@ -176,7 +176,7 @@ private struct DailyCompletionButton: View {
                 try await RecordConditions.verify(tracker: snapshot)
                 try Task.checkCancellation()
                 guard store.trackers.first(where: { $0.id == snapshot.id }) == snapshot else {
-                    onFailure(L.text("Records changed while saving. Review your draft and save again.")); return
+                    onFailure(L.text("Records changed while checking. Try recording again.")); return
                 }
                 var candidate = snapshot
                 let instant = Date()
@@ -421,7 +421,7 @@ struct TrackerSummary: View {
         let target = tracker.rule(at: Date()).map { CardPlotPoint(date: snapshot.interval.start, value: $0.target) }
         let domain = CardPlotScale.domain(points: points + carried + [target].compactMap { $0 }, precision: tracker.precision,
                                           lower: tracker.axisLower, upper: tracker.axisUpper)
-        let clipped = points.compactMap(\.plottedValue).filter { !domain.contains($0) }.count
+        let clipped = points.filter { CardPlotScale.excludes($0.value, lower: tracker.axisLower, upper: tracker.axisUpper) }.count
         return VStack(alignment: .leading, spacing: 8) {
         Chart {
         ForEach(entries) { entry in
@@ -429,7 +429,9 @@ struct TrackerSummary: View {
                 if entries.count > 1 {
                     LineMark(x: .value(L.text("Date"), entry.occurredAt), y: .value(L.text("Value"), value), series: .value("Series", "actual"))
                 }
-                PointMark(x: .value(L.text("Date"), entry.occurredAt), y: .value(L.text("Value"), value)).symbolSize(45)
+                if let raw = entry.value, !CardPlotScale.excludes(raw, lower: tracker.axisLower, upper: tracker.axisUpper) {
+                    PointMark(x: .value(L.text("Date"), entry.occurredAt), y: .value(L.text("Value"), value)).symbolSize(45)
+                }
             }
         }
         ForEach(snapshot.carries) { segment in
@@ -457,7 +459,8 @@ struct TrackerSummary: View {
                     guard let frame = proxy.plotFrame, geometry[frame].contains(location) else { return }
                     let point = CGPoint(x: location.x - geometry[frame].origin.x, y: location.y - geometry[frame].origin.y)
                     let hits = entries.compactMap { entry -> (Entry, Double)? in
-                        guard let value = entry.value.flatMap(Numbers.plottedValue), domain.contains(value),
+                        guard let raw = entry.value, !CardPlotScale.excludes(raw, lower: tracker.axisLower, upper: tracker.axisUpper),
+                              let value = Numbers.plottedValue(raw), domain.contains(value),
                               let x = proxy.position(forX: entry.occurredAt), let y = proxy.position(forY: value) else { return nil }
                         return (entry, hypot(point.x - x, point.y - y))
                     }
@@ -483,7 +486,7 @@ struct TrackerSummary: View {
         if clipped > 0 {
             Text(String(format: L.text("%lld records outside the chart bounds. Values are preserved in the timeline."), locale: L.locale, Int64(clipped)))
                 .font(.caption).foregroundStyle(TrackerColors.secondaryText).accessibilityIdentifier("snapshot.clipped")
-        } else if carried.compactMap(\.plottedValue).contains(where: { !domain.contains($0) }) {
+        } else if carried.contains(where: { CardPlotScale.excludes($0.value, lower: tracker.axisLower, upper: tracker.axisUpper) }) {
             Text(L.text("Last recorded value is outside chart bounds."))
                 .font(.caption).foregroundStyle(TrackerColors.secondaryText).accessibilityIdentifier("snapshot.clipped")
         }

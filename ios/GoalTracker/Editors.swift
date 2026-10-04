@@ -190,7 +190,7 @@ struct EntryEditor: View {
             .confirmationDialog(L.text("Delete this record and its photos?"), isPresented: $deleting, titleVisibility: .visible) {
                 Button(L.text("Delete record"), role: .destructive) {
                     prepareDeletion()
-                }
+                }.accessibilityIdentifier("entry.delete.confirm")
             }
             .alert(L.text("Keep later change records?"), isPresented: $confirmingOrphan) {
                 Button(L.text("Convert first change to a value")) { confirmMutation() }

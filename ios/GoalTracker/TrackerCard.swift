@@ -175,7 +175,9 @@ struct TrackerCardBackdrop: View {
                         if row.kind == .number && points.count > 1 {
                             LineMark(x: .value(text("Date"), point.date), y: .value(text("Value"), value), series: .value("Series", "actual")).lineStyle(StrokeStyle(lineWidth: 2))
                         }
-                        PointMark(x: .value(text("Date"), point.date), y: .value(text("Value"), value)).symbolSize(22)
+                        if !CardPlotScale.excludes(point.value, lower: row.axisLower, upper: row.axisUpper) {
+                            PointMark(x: .value(text("Date"), point.date), y: .value(text("Value"), value)).symbolSize(22)
+                        }
                     }
                 }
                 ForEach(row.carries(at: now)) { segment in
@@ -188,7 +190,7 @@ struct TrackerCardBackdrop: View {
                 }
                 }
                 .foregroundStyle(monochrome ? Color.primary : TrackerColors.accent).chartXAxis(.hidden).chartYAxis(.hidden).chartLegend(.hidden)
-                .chartYScale(domain: row.plotDomain).chartPlotStyle { $0.clipped() }
+                .chartYScale(domain: row.plotDomain(at: now)).chartPlotStyle { $0.clipped() }
                 .padding(.horizontal, 16).padding(.top, 22).padding(.bottom, 28)
             } else {
                 Image(systemName: "chart.xyaxis.line").font(.title2).foregroundStyle(TrackerColors.secondaryText)

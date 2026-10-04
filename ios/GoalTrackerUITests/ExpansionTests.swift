@@ -14,6 +14,7 @@ nonisolated final class ExpansionTests: XCTestCase {
         app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", prefix, text)).firstMatch
     }
     @MainActor private func screenshot(_ app: XCUIApplication, _ name: String) {
+        Thread.sleep(forTimeInterval: 0.7) // Let native sheet/navigation transitions finish before visual evidence.
         let attachment = XCTAttachment(screenshot: app.screenshot())
         attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
     }
@@ -110,6 +111,7 @@ nonisolated final class ExpansionTests: XCTestCase {
         for _ in 0..<8 { if view.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(view.waitForExistence(timeout: 10)); view.buttons["Goal progress"].tap()
         XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "snapshot.progress").firstMatch.waitForExistence(timeout: 10))
+        app.swipeUp()
         screenshot(app, "Signed numeric goal progress ring")
         app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
         let lower = app.textFields["tracker.axisLower"], upper = app.textFields["tracker.axisUpper"]
@@ -174,8 +176,8 @@ nonisolated final class ExpansionTests: XCTestCase {
                 for _ in 0..<12 { if view.isHittable { break }; app.swipeUp() }
                 XCTAssertTrue(view.waitForExistence(timeout: 10)); view.buttons.element(boundBy: 1).tap()
                 let progress = app.descendants(matching: .any).matching(identifier: "snapshot.progress").firstMatch
-                for _ in 0..<6 { if progress.isHittable { break }; app.swipeUp() }
                 XCTAssertTrue(progress.waitForExistence(timeout: 10))
+                app.swipeUp()
                 screenshot(app, "Numeric ring " + suffix)
                 app.buttons["tracker.menu"].tap(); app.buttons[edit].tap()
                 XCTAssertTrue(app.textFields["tracker.name"].waitForExistence(timeout: 10))
@@ -224,7 +226,7 @@ nonisolated final class ExpansionTests: XCTestCase {
         XCTAssertTrue(anchor.waitForExistence(timeout: 10)); anchor.tap()
         let delete = app.buttons["entry.delete"]
         for _ in 0..<8 { if delete.isHittable { break }; app.swipeUp() }
-        delete.tap(); app.buttons["Delete record"].tap()
+        delete.tap(); app.buttons["entry.delete.confirm"].tap()
         XCTAssertTrue(app.alerts["Keep later change records?"].waitForExistence(timeout: 10))
         screenshot(app, "Anchor removal has explicit conversion proposal")
         app.alerts.buttons["Cancel"].tap()
@@ -232,7 +234,7 @@ nonisolated final class ExpansionTests: XCTestCase {
         XCTAssertTrue(anchor.waitForExistence(timeout: 10), "Canceling conversion cannot delete the baseline")
         anchor.tap()
         for _ in 0..<8 { if delete.isHittable { break }; app.swipeUp() }
-        delete.tap(); app.buttons["Delete record"].tap()
+        delete.tap(); app.buttons["entry.delete.confirm"].tap()
         app.alerts.buttons["Convert first change to a value"].tap()
         XCTAssertTrue(anchor.waitForNonExistence(timeout: 10))
         let retained = button(app, prefix: "entry.", text: "Derived change")

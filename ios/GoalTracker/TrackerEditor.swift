@@ -65,9 +65,17 @@ struct TrackerEditor: View {
                 }
                 conditionsSection
                 notificationsSection
+            }
+            .safeAreaInset(edge: .top, spacing: 0) {
                 if let error {
-                    Section { Text(error).foregroundStyle(.red).accessibilityIdentifier("editor.error") }
+                    Text(error).font(.callout).foregroundStyle(.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal).padding(.vertical, 8).background(.background)
+                        .accessibilityIdentifier("editor.error")
                 }
+            }
+            .onChange(of: error) { _, message in
+                if let message { UIAccessibility.post(notification: .announcement, argument: message) }
             }
             .disabled(busy)
             .scrollDismissesKeyboard(.interactively)
@@ -135,11 +143,13 @@ struct TrackerEditor: View {
     }
     private var typeSection: some View {
         Section(L.text("Record type")) {
-            Picker(L.text("Record type"), selection: $kind) {
-                Text(L.text("Number snapshot")).tag(TrackerKind.number)
-                Text(L.text("Completion record")).tag(TrackerKind.daily)
-            }.accessibilityIdentifier("tracker.kind").disabled(typeLocked)
-            if typeLocked { Text(L.text("Create a new tracker to change its type or unit.")).font(.caption).foregroundStyle(.secondary) }
+            VStack(alignment: .leading, spacing: 8) {
+                Picker(L.text("Record type"), selection: $kind) {
+                    Text(L.text("Number snapshot")).tag(TrackerKind.number)
+                    Text(L.text("Completion record")).tag(TrackerKind.daily)
+                }.accessibilityIdentifier("tracker.kind").disabled(typeLocked)
+                if typeLocked { Text(L.text("Create a new tracker to change its type or unit.")).font(.caption).foregroundStyle(.secondary) }
+            }
             if kind == .number {
                 TextField(L.text("Unit (optional)"), text: $unit).focused($focusedField, equals: .unit).disabled(typeLocked).accessibilityIdentifier("tracker.unit")
                 Stepper(L.text("Decimal places") + ": \(precision)", value: $precision, in: 0...8)
@@ -162,10 +172,12 @@ struct TrackerEditor: View {
                     Picker(L.text("Frequency"), selection: $period) {
                         Text(L.text("Weekly")).tag(Period.weekly); Text(L.text("Monthly")).tag(Period.monthly)
                     }
-                    Stepper(L.text("Completions") + ": \(frequency)", value: $frequency, in: 1...(period == .weekly ? 7 : 31))
-                        .accessibilityIdentifier("goal.frequency")
-                    if !(existing?.rules.isEmpty ?? true) {
-                        Text(L.text("Changes start with the next full period. Past goals stay unchanged.")).font(.caption).foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Stepper(L.text("Completions") + ": \(frequency)", value: $frequency, in: 1...(period == .weekly ? 7 : 31))
+                            .accessibilityIdentifier("goal.frequency")
+                        if !(existing?.rules.isEmpty ?? true) {
+                            Text(L.text("Changes start with the next full period. Past goals stay unchanged.")).font(.caption).foregroundStyle(.secondary)
+                        }
                     }
                 }
             }
@@ -225,15 +237,17 @@ struct TrackerEditor: View {
             } label: {
                 LabeledContent(L.text("Time and weekdays"), value: L.text(reminder == nil ? "Off" : "On"))
             }.accessibilityIdentifier("tracker.reminders.schedule")
-            Toggle(L.text("Remind me when conditions are met"), isOn: $remindWhenMet)
-                .disabled(conditions.isEmpty).accessibilityIdentifier("tracker.conditions.remind")
-            if !Reminders.enabled {
-                Text(L.text("All reminders are off in Settings. Your tracker choices are kept.")).font(.caption).foregroundStyle(.secondary)
-            } else if !notificationAuthorized {
-                Text(L.text("Notifications are disabled. You can enable them in iPhone Settings.")).font(.caption).foregroundStyle(.secondary)
-            }
-            if remindWhenMet, let key = runtime.availabilityKey {
-                Text(L.text(key)).font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("tracker.conditions.availability")
+            VStack(alignment: .leading, spacing: 8) {
+                Toggle(L.text("Remind me when conditions are met"), isOn: $remindWhenMet)
+                    .disabled(conditions.isEmpty).accessibilityIdentifier("tracker.conditions.remind")
+                if !Reminders.enabled {
+                    Text(L.text("All reminders are off in Settings. Your tracker choices are kept.")).font(.caption).foregroundStyle(.secondary)
+                } else if !notificationAuthorized {
+                    Text(L.text("Notifications are disabled. You can enable them in iPhone Settings.")).font(.caption).foregroundStyle(.secondary)
+                }
+                if remindWhenMet, let key = runtime.availabilityKey {
+                    Text(L.text(key)).font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("tracker.conditions.availability")
+                }
             }
             if Reminders.enabled && ((remindWhenMet && runtime.authorization != .authorizedAlways) || !notificationAuthorized) {
                 Link(L.text("Open iPhone Settings"), destination: URL(string: UIApplication.openSettingsURLString)!)

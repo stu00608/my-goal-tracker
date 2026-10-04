@@ -12,7 +12,9 @@ struct ConditionEditor: View {
     @State private var selected: RecordedLocation?
     @State private var camera = MapCameraPosition.automatic
     @State private var initialized = false
-    @FocusState private var searching: Bool
+    private enum Field: Hashable { case search, name }
+    @FocusState private var focusedField: Field?
+    @State private var keyboard = EditorKeyboardControl()
 
     var body: some View {
         NavigationStack {
@@ -21,6 +23,7 @@ struct ConditionEditor: View {
                 else { searchSection; mapSection }
             }
             .scrollDismissesKeyboard(.interactively)
+            .background(EditorKeyboardDismissal(keyboard: keyboard, dismiss: endEditing))
             .navigationTitle(L.text(existing == nil ? "Add location condition" : "Edit location condition"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
@@ -35,7 +38,7 @@ struct ConditionEditor: View {
                     }.disabled(selected == nil || name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || name.count > 120)
                         .accessibilityIdentifier("condition.confirm")
                 }
-                ToolbarItemGroup(placement: .keyboard) { Spacer(); Button(L.text("Done")) { searching = false } }
+                ToolbarItemGroup(placement: .keyboard) { Spacer(); Button(L.text("Done")) { endEditing() } }
             }
             .onAppear {
                 guard !initialized else { return }; initialized = true
@@ -52,13 +55,13 @@ struct ConditionEditor: View {
         Section {
             TextField(L.text("Search for a place or address"), text: $search.query)
                 .textInputAutocapitalization(.words).autocorrectionDisabled()
-                .focused($searching).submitLabel(.search)
+                .focused($focusedField, equals: .search).submitLabel(.search)
                 .accessibilityIdentifier("condition.search")
                 .onSubmit { search.findQuery { choose($0) } }
             if search.loading { ProgressView(L.text("Finding place…")) }
             ForEach(Array(search.suggestions.enumerated()), id: \.offset) { _, suggestion in
                 Button {
-                    searching = false; search.find(suggestion) { choose($0) }
+                    endEditing(); search.find(suggestion) { choose($0) }
                 } label: {
                     VStack(alignment: .leading, spacing: 4) {
                         Text(suggestion.title).foregroundStyle(.primary)
@@ -83,7 +86,7 @@ struct ConditionEditor: View {
                 }
                 .onTapGesture { point in
                     guard let coordinate = proxy.convert(point, from: .local) else { return }
-                    searching = false; search.cancel()
+                    endEditing(); search.cancel()
                     self.selected = RecordedLocation(latitude: coordinate.latitude, longitude: coordinate.longitude)
                     if name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { name = L.text("Selected place") }
                     camera = position(self.selected!)
@@ -91,10 +94,8 @@ struct ConditionEditor: View {
                 .accessibilityLabel(L.text("Selected place and 200 m boundary"))
                 .accessibilityIdentifier("condition.map")
             }.frame(height: 260).listRowInsets(EdgeInsets())
-            Text(L.text("Tap the map to move the pin. Use search to select a place with VoiceOver."))
-                .font(.caption).foregroundStyle(.secondary)
             if selected != nil {
-                TextField(L.text("Place name"), text: $name).accessibilityIdentifier("condition.name")
+                TextField(L.text("Place name"), text: $name).focused($focusedField, equals: .name).accessibilityIdentifier("condition.name")
                 Picker(L.text("Condition"), selection: $relation) {
                     Text(L.text("Inside")).tag(PlaceRelation.inside)
                     Text(L.text("Outside")).tag(PlaceRelation.outside)
@@ -103,8 +104,14 @@ struct ConditionEditor: View {
                 Text(L.text("Search and choose a result to place the pin.")).foregroundStyle(.secondary)
                     .accessibilityIdentifier("condition.empty")
             }
-        } footer: { Text(L.text("The fixed boundary is 200 m. Location accuracy can affect verification.")) }
+        } footer: {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(L.text("Tap the map to move the pin. Use search to select a place with VoiceOver."))
+                Text(L.text("The fixed boundary is 200 m. Location accuracy can affect verification."))
+            }
+        }
     }
+    private func endEditing() { keyboard.dismiss(); focusedField = nil }
     private var mapFirst: Bool {
         #if DEBUG && targetEnvironment(simulator)
         ProcessInfo.processInfo.arguments.contains("--uitesting") && ProcessInfo.processInfo.arguments.contains("--condition-map-first")
@@ -116,7 +123,7 @@ struct ConditionEditor: View {
         let point = item.placemark.coordinate
         let location = RecordedLocation(latitude: point.latitude, longitude: point.longitude)
         selected = location; name = item.name ?? search.query
-        searching = false; search.suggestions = []
+        endEditing(); search.suggestions = []
         camera = position(location)
     }
     private func coordinate(_ location: RecordedLocation) -> CLLocationCoordinate2D {
