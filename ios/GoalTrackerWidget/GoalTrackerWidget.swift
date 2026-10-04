@@ -13,7 +13,11 @@ nonisolated struct TrackerChoice: AppEntity {
     var detail: String?
     static let typeDisplayRepresentation: TypeDisplayRepresentation = "Tracker"
     static let defaultQuery = TrackerChoiceQuery()
-    var displayRepresentation: DisplayRepresentation { DisplayRepresentation(title: "\(name)", subtitle: detail.map { LocalizedStringResource(stringLiteral: $0) }) }
+    var displayRepresentation: DisplayRepresentation {
+        // The Home Screen's compact picker omits subtitles, so duplicate names need a distinct title.
+        if let detail { DisplayRepresentation(title: "\(name) · \(detail)") }
+        else { DisplayRepresentation(title: "\(name)") }
+    }
 }
 
 nonisolated struct TrackerChoiceQuery: EntityQuery {
