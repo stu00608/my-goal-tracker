@@ -6,6 +6,7 @@ nonisolated enum Direction: String, Codable, CaseIterable { case up, down }
 nonisolated enum Period: String, Codable, CaseIterable { case weekly, monthly, deadline }
 
 nonisolated struct Entry: Codable, Identifiable, Equatable {
+    static let photoLimit = 10
     var id = UUID()
     var occurredAt: Date
     var localDay: String
@@ -128,7 +129,7 @@ nonisolated enum Numbers {
     }
 }
 
-nonisolated enum DataError: Error { case invalidNumber, invalidBackup, unsupportedVersion, saveFailed, photoFailed, tooLarge, tooManyReminders, duplicateDay }
+nonisolated enum DataError: Error { case invalidNumber, invalidBackup, unsupportedVersion, saveFailed, photoFailed, tooManyPhotos, tooLarge, tooManyReminders, duplicateDay }
 
 nonisolated struct Backup: Codable, Equatable {
     var format = "my-goal-tracker"
@@ -151,7 +152,7 @@ nonisolated struct Backup: Codable, Equatable {
             for e in t.entries {
                 guard entryIDs.insert(e.id).inserted, t.date(for: e.localDay) != nil, e.note.count <= 10000,
                       Self.validDate(e.occurredAt), Self.validDate(e.createdAt), Self.validDate(e.updatedAt),
-                      e.photos.count <= 6, e.photos.allSatisfy(Self.validPhoto) else { throw DataError.invalidBackup }
+                      e.photos.count <= Entry.photoLimit, e.photos.allSatisfy(Self.validPhoto) else { throw DataError.invalidBackup }
                 if t.kind == .daily {
                     guard e.value == nil, days.insert(e.localDay).inserted else { throw DataError.invalidBackup }
                 } else {

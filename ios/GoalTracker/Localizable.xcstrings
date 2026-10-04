@@ -1864,29 +1864,6 @@
         }
       }
     },
-    "Photos are copied into the app. Up to 6 per record, resized to 1600 pixels.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Photos are copied into the app. Up to 6 per record, resized to 1600 pixels."
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "照片會保存副本，每筆最多 6 張，縮放至 1600 像素。"
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "写真はアプリ内にコピーされます。1記録につき6枚まで、1600ピクセルに縮小します。"
-          }
-        }
-      }
-    },
     "Delete record": {
       "extractionState": "manual",
       "localizations": {
@@ -2918,6 +2895,73 @@
           "stringUnit": {
             "state": "translated",
             "value": "記録は保存されましたが、ウィジェットを更新できませんでした。Appを開き直して再試行してください。"
+          }
+        }
+      }
+    },
+    "Photos are copied into the app. Up to 10 per record, resized to 1600 pixels.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Photos are copied into the app. Up to 10 per record, resized to 1600 pixels."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "照片會保存副本，每筆最多 10 張，縮放至 1600 像素。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "写真はアプリ内にコピーされます。1記録につき10枚まで、1600ピクセルに縮小します。"
+          }
+        }
+      }
+    },
+    "New records use the first photo’s date when available. You can still change the date.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "New records use the first photo’s date when available. You can still change the date."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "照片有日期資訊時，新增紀錄會使用第一張照片的日期；仍可手動調整。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "写真に日付情報がある場合、新しい記録には最初の写真の日付を使用します。日付は手動で変更できます。"
+          }
+        }
+      }
+    },
+    "Each record can have up to 10 photos. Remove photos before saving.": {
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Each record can have up to 10 photos. Remove photos before saving."
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每筆紀錄最多 10 張照片，請先移除照片再儲存。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "写真は1件の記録につき10枚までです。保存前に写真を削除してください。"
           }
         }
       }

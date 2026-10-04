@@ -1,6 +1,7 @@
 import Testing
 import Foundation
 import UIKit
+import ImageIO
 @testable import GoalTracker
 
 @MainActor struct DomainTests {
@@ -103,6 +104,63 @@ import UIKit
         #expect(Backup.validPhoto(copy))
         #expect(throws: (any Error).self) { try photoCopy(Data([1, 2, 3])) }
     }
+
+    func datedPhoto(_ timestamp: String?, offset: String? = nil) throws -> Data {
+        var exif: [CFString: String] = [:]
+        if let timestamp { exif[kCGImagePropertyExifDateTimeOriginal] = timestamp }
+        if let offset { exif[kCGImagePropertyExifOffsetTimeOriginal] = offset }
+        return try metadataPhoto([kCGImagePropertyExifDictionary: exif] as CFDictionary)
+    }
+    func metadataPhoto(_ properties: CFDictionary, type: CFString = "public.jpeg" as CFString) throws -> Data {
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 4, height: 4)).image { context in
+            UIColor.systemTeal.setFill(); context.fill(CGRect(x: 0, y: 0, width: 4, height: 4))
+        }
+        let data = NSMutableData()
+        let destination = try #require(CGImageDestinationCreateWithData(data, type, 1, nil))
+        CGImageDestinationAddImage(destination, try #require(image.cgImage), properties)
+        #expect(CGImageDestinationFinalize(destination))
+        return data as Data
+    }
+    @Test func photoDateUsesOriginalOffsetAndRejectsMissingInvalidOrFutureDates() throws {
+        let zone = try #require(TimeZone(identifier: "Asia/Tokyo"))
+        let now = date("2024-03-01T00:00:00Z")
+        let photo = try datedPhoto("2024:02:29 23:30:05", offset: "+08:00")
+        #expect(photoDate(photo, timeZone: zone, now: now) == date("2024-02-29T15:30:05Z"))
+        #expect(photoDate(try datedPhoto("2024:02:29 23:30:05"), timeZone: zone, now: now) == date("2024-02-29T14:30:05Z"))
+        #expect(photoDate(try datedPhoto("2024:02:29 23:30:05", offset: "+00:00"), timeZone: zone, now: now) == date("2024-02-29T23:30:05Z"))
+        #expect(photoDate(try datedPhoto("2023:02:29 12:00:00"), timeZone: zone, now: now) == nil)
+        #expect(photoDate(try datedPhoto("2024:02:29 23:30:05extra"), timeZone: zone, now: now) == nil)
+        #expect(photoDate(try datedPhoto("2024:03:02 12:00:00"), timeZone: zone, now: now) == nil)
+        #expect(photoDate(try datedPhoto(nil), timeZone: zone, now: now) == nil)
+        #expect(photoDate(Data([1, 2, 3]), timeZone: zone, now: now) == nil)
+        #expect(photoDate(try photoCopy(photo), timeZone: zone, now: now) == nil)
+        let digitized = try metadataPhoto([kCGImagePropertyExifDictionary: [kCGImagePropertyExifDateTimeDigitized: "2024:02:29 23:30:05"]] as CFDictionary)
+        let tiff = try metadataPhoto([kCGImagePropertyTIFFDictionary: [kCGImagePropertyTIFFDateTime: "2024:02:29 23:30:05"]] as CFDictionary, type: "public.tiff" as CFString)
+        #expect(photoDate(digitized, timeZone: zone, now: now) == date("2024-02-29T14:30:05Z"))
+        #expect(photoDate(tiff, timeZone: zone, now: now) == date("2024-02-29T14:30:05Z"))
+        let png = try metadataPhoto([kCGImagePropertyExifDictionary: [kCGImagePropertyExifDateTimeOriginal: "2024:02:29 23:30:05", kCGImagePropertyExifOffsetTimeOriginal: "+08:00"]] as CFDictionary, type: "public.png" as CFString)
+        #expect(photoDate(png, timeZone: zone, now: now) == date("2024-02-29T15:30:05Z"))
+    }
+    @Test func tenPhotoBackupRoundTripsAndElevenPhotoSavePreservesData() throws {
+        var t = tracker(.number)
+        let event = date("2024-06-01T00:00:00Z")
+        let photo = try photoCopy(datedPhoto(nil))
+        t.put(Entry(occurredAt: event, localDay: t.day(event), value: "18.5", photos: Array(repeating: photo, count: 10)))
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        let store = try AppStore(url: directory.appendingPathComponent("store"))
+        try store.save(t)
+        let payload = try Backup(trackers: store.trackers).encoded()
+        #expect(try Backup.decode(payload).trackers == [t])
+        var excess = t; excess.entries[0].photos.append(photo)
+        #expect(throws: (any Error).self) { try store.save(excess) }
+        #expect(throws: (any Error).self) { try store.restore(JSONEncoder().encode(Backup(trackers: [excess]))) }
+        #expect(store.trackers == [t])
+        try store.restore(payload)
+        #expect(try AppStore(url: directory.appendingPathComponent("store")).trackers == [t])
+    }
+
     @Test func extremeBackupDatesAreRejected() throws {
         var t = tracker()
         t.createdAt = Date(timeIntervalSince1970: .greatestFiniteMagnitude)
