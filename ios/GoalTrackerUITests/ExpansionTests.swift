@@ -1,10 +1,11 @@
 import XCTest
 
 nonisolated final class ExpansionTests: XCTestCase {
-    @MainActor private func launch(extra: [String] = [], reset: Bool = true) -> XCUIApplication {
+    @MainActor private func launch(extra: [String] = [], reset: Bool = true, language: String = "en", appearance: String = "light", large: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["--uitesting", "--feature-test-fixture", "--goalooker-test-fixture", "-language", "en", "-appearance", "light", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        app.launchArguments = ["--uitesting", "--feature-test-fixture", "--goalooker-test-fixture", "-language", language, "-appearance", appearance, "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         if reset { app.launchArguments.append("--reset-test-store") }
+        if large { app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] }
         app.launchArguments += extra
         app.launch()
         return app
@@ -148,6 +149,63 @@ nonisolated final class ExpansionTests: XCTestCase {
         XCTAssertTrue(condition.label.contains("Outside"))
         XCTAssertTrue(combination.label.contains("All conditions"))
         app.buttons["Cancel"].tap()
+    }
+
+    @MainActor func testExpansionLocalizedLightDarkAndMaximumType() {
+        continueAfterFailure = false
+        for (language, edit, cancel) in [("en", "Edit tracker", "Cancel"), ("zh-Hant", "編輯追蹤項目", "取消"), ("ja", "項目を編集", "キャンセル")] {
+            for (appearance, large) in [("light", false), ("dark", true)] {
+                let app = launch(language: language, appearance: appearance, large: large)
+                let suffix = language + " " + appearance + (large ? " AX XXXL" : "")
+                XCTAssertTrue(button(app, prefix: "card.", text: "SCORE").waitForExistence(timeout: 10))
+                screenshot(app, "Goalooker overview " + suffix)
+                app.tabBars.buttons.element(boundBy: 2).tap()
+                screenshot(app, "Settings native tab " + suffix)
+                app.tabBars.buttons.element(boundBy: 1).tap()
+                button(app, prefix: "tracker.", text: "SCORE").tap()
+                screenshot(app, "Tracker metadata and photos " + suffix)
+                let view = app.segmentedControls["snapshot.view"]
+                for _ in 0..<12 { if view.isHittable { break }; app.swipeUp() }
+                XCTAssertTrue(view.waitForExistence(timeout: 10)); view.buttons.element(boundBy: 1).tap()
+                let progress = app.descendants(matching: .any).matching(identifier: "snapshot.progress").firstMatch
+                for _ in 0..<6 { if progress.isHittable { break }; app.swipeUp() }
+                XCTAssertTrue(progress.waitForExistence(timeout: 10))
+                screenshot(app, "Numeric ring " + suffix)
+                app.buttons["tracker.menu"].tap(); app.buttons[edit].tap()
+                XCTAssertTrue(app.textFields["tracker.name"].waitForExistence(timeout: 10))
+                screenshot(app, "Tracker metadata editor " + suffix)
+                let axis = app.textFields["tracker.axisLower"]
+                for _ in 0..<16 { if axis.isHittable { break }; app.swipeUp() }
+                screenshot(app, "Chart bounds editor " + suffix)
+                app.buttons[cancel].tap()
+                app.navigationBars["SCORE"].buttons["BackButton"].tap()
+                let office = button(app, prefix: "tracker.", text: "OFFICE")
+                for _ in 0..<8 { if office.isHittable { break }; app.swipeUp() }
+                office.tap(); app.buttons["tracker.menu"].tap(); app.buttons[edit].tap()
+                let place = button(app, prefix: "tracker.condition.", text: "Office A")
+                for _ in 0..<18 { if place.isHittable { break }; app.swipeUp() }
+                XCTAssertTrue(place.waitForExistence(timeout: 10))
+                screenshot(app, "Tracker location conditions " + suffix)
+                place.tap()
+                XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "condition.map").firstMatch.waitForExistence(timeout: 10))
+                screenshot(app, "Place selector and fixed region " + suffix)
+                app.terminate()
+            }
+        }
+    }
+    @MainActor func testMapFirstAlternativeHasSamePlaceControls() {
+        continueAfterFailure = false
+        let app = launch(extra: ["--condition-map-first"])
+        app.tabBars.buttons.element(boundBy: 1).tap()
+        let office = button(app, prefix: "tracker.", text: "OFFICE")
+        for _ in 0..<8 { if office.isHittable { break }; app.swipeUp() }
+        office.tap(); app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
+        let place = button(app, prefix: "tracker.condition.", text: "Office A")
+        for _ in 0..<12 { if place.isHittable { break }; app.swipeUp() }
+        place.tap()
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "condition.map").firstMatch.waitForExistence(timeout: 10))
+        screenshot(app, "Alternative map-first native location editor")
+        XCTAssertTrue(app.buttons["condition.confirm"].isEnabled)
     }
 
 }
