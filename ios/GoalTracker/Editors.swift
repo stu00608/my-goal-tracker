@@ -288,12 +288,13 @@ struct EntryEditor: View {
         }
     }
     private var addPhotos: some View {
-        PhotosPicker(selection: $selections, maxSelectionCount: max(1, Entry.photoLimit - photos.count), selectionBehavior: .ordered, matching: .images, preferredItemEncoding: .current) {
+        let accessibilitySize = dynamicTypeSize.isAccessibilitySize
+        return PhotosPicker(selection: $selections, maxSelectionCount: max(1, Entry.photoLimit - photos.count), selectionBehavior: .ordered, matching: .images, preferredItemEncoding: .current) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Image(systemName: "plus").font(.system(size: 18)).accessibilityHidden(true)
                 Text(L.text("Add photos")).font(.subheadline)
                     .fixedSize(horizontal: false, vertical: true)
-            }.frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : nil, minHeight: 44, alignment: .leading)
+            }.frame(maxWidth: accessibilitySize ? .infinity : nil, minHeight: 44, alignment: .leading)
         }.buttonStyle(.borderless).simultaneousGesture(TapGesture().onEnded { endEditing() })
             .disabled(loading || photos.count == Entry.photoLimit).accessibilityIdentifier("entry.photos")
     }

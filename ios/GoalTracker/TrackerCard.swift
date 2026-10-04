@@ -80,9 +80,18 @@ struct TrackerCardLabel: View {
         .foregroundStyle(foreground)
         .shadow(color: hasImage ? (foregroundIsLight ? Color.black.opacity(0.45) : Color.white.opacity(0.5)) : .clear, radius: 1, y: 1)
         .accessibilityElement(children: .combine)
-        .accessibilityValue(text(backgroundDescription) + (completionPeriod.map { ", " + $0 } ?? "") +
-                            (row.clippedPointCount > 0 ? ", " + String(format: text("%lld records outside the chart bounds. Values are preserved in the timeline."), locale: locale, Int64(row.clippedPointCount)) : "") +
-                            (row.resolvedBackground == .progress ? row.currentProgress(at: now).map { ", " + $0.fraction.formatted(.percent.locale(locale)) } ?? "" : ""))
+        .accessibilityValue(accessibilityDescription)
+    }
+    private var accessibilityDescription: String {
+        var parts = [text(backgroundDescription)]
+        if let completionPeriod { parts.append(completionPeriod) }
+        if row.clippedPointCount > 0 {
+            parts.append(String(format: text("%lld records outside the chart bounds. Values are preserved in the timeline."), locale: locale, Int64(row.clippedPointCount)))
+        }
+        if row.resolvedBackground == .progress, let progress = row.currentProgress(at: now) {
+            parts.append(progress.fraction.formatted(.percent.locale(locale)))
+        }
+        return parts.joined(separator: ", ")
     }
     private var foregroundIsLight: Bool {
         if row.resolvedBackground == .map { return colorScheme == .dark }
