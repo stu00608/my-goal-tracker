@@ -24,12 +24,12 @@ struct ConditionEditor: View {
             }
             .scrollDismissesKeyboard(.interactively)
             .background(EditorKeyboardDismissal(keyboard: keyboard, dismiss: endEditing))
-            .navigationTitle(L.text(existing == nil ? "Add location condition" : "Edit location condition"))
+            .navigationTitle(L.text("Place"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button(L.text("Cancel")) { search.cancel(); dismiss() } }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(L.text("Confirm place")) {
+                    Button(L.text("Done")) {
                         guard let selected else { return }
                         var condition = existing ?? PlaceCondition(name: name, location: selected)
                         condition.name = name.trimmingCharacters(in: .whitespacesAndNewlines)

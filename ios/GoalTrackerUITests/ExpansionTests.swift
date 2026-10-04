@@ -226,7 +226,7 @@ nonisolated final class ExpansionTests: XCTestCase {
         XCTAssertTrue(anchor.waitForExistence(timeout: 10)); anchor.tap()
         let delete = app.buttons["entry.delete"]
         for _ in 0..<8 { if delete.isHittable { break }; app.swipeUp() }
-        delete.tap(); app.buttons["entry.delete.confirm"].tap()
+        delete.tap(); app.buttons["entry.delete.confirm"].firstMatch.tap()
         XCTAssertTrue(app.alerts["Keep later change records?"].waitForExistence(timeout: 10))
         screenshot(app, "Anchor removal has explicit conversion proposal")
         app.alerts.buttons["Cancel"].tap()
@@ -234,7 +234,7 @@ nonisolated final class ExpansionTests: XCTestCase {
         XCTAssertTrue(anchor.waitForExistence(timeout: 10), "Canceling conversion cannot delete the baseline")
         anchor.tap()
         for _ in 0..<8 { if delete.isHittable { break }; app.swipeUp() }
-        delete.tap(); app.buttons["entry.delete.confirm"].tap()
+        delete.tap(); app.buttons["entry.delete.confirm"].firstMatch.tap()
         app.alerts.buttons["Convert first change to a value"].tap()
         XCTAssertTrue(anchor.waitForNonExistence(timeout: 10))
         let retained = button(app, prefix: "entry.", text: "Derived change")

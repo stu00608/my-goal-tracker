@@ -185,12 +185,16 @@ struct TrackerEditor: View {
     }
     private var axisSection: some View {
         Section {
-            TextField(L.text("Minimum (automatic if empty)"), text: $axisLower)
-                .keyboardType(.numbersAndPunctuation).focused($focusedField, equals: .axisLower)
-                .accessibilityIdentifier("tracker.axisLower")
-            TextField(L.text("Maximum (automatic if empty)"), text: $axisUpper)
-                .keyboardType(.numbersAndPunctuation).focused($focusedField, equals: .axisUpper)
-                .accessibilityIdentifier("tracker.axisUpper")
+            LabeledContent(L.text("Minimum")) {
+                TextField(L.text("Automatic"), text: $axisLower)
+                    .multilineTextAlignment(.trailing).keyboardType(.numbersAndPunctuation)
+                    .focused($focusedField, equals: .axisLower).accessibilityIdentifier("tracker.axisLower")
+            }
+            LabeledContent(L.text("Maximum")) {
+                TextField(L.text("Automatic"), text: $axisUpper)
+                    .multilineTextAlignment(.trailing).keyboardType(.numbersAndPunctuation)
+                    .focused($focusedField, equals: .axisUpper).accessibilityIdentifier("tracker.axisUpper")
+            }
         } header: { Text(L.text("Chart range")) } footer: {
             Text(L.text("Chart bounds change the view only. Original values and precision are kept."))
         }
