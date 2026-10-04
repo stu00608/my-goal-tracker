@@ -144,10 +144,29 @@ struct TrackerEditor: View {
     private var typeSection: some View {
         Section(L.text("Record type")) {
             VStack(alignment: .leading, spacing: 8) {
-                Picker(L.text("Record type"), selection: $kind) {
-                    Text(L.text("Number snapshot")).tag(TrackerKind.number)
-                    Text(L.text("Completion record")).tag(TrackerKind.daily)
-                }.accessibilityIdentifier("tracker.kind").disabled(typeLocked)
+                if dynamicTypeSize.isAccessibilitySize {
+                    Text(L.text("Record type"))
+                    Menu {
+                        Picker(L.text("Record type"), selection: $kind) {
+                            Text(L.text("Number snapshot")).tag(TrackerKind.number)
+                            Text(L.text("Completion record")).tag(TrackerKind.daily)
+                        }
+                    } label: {
+                        HStack(alignment: .top) {
+                            Text(L.text(kind == .number ? "Number snapshot" : "Completion record"))
+                                .fixedSize(horizontal: false, vertical: true).multilineTextAlignment(.leading)
+                            Spacer(minLength: 4)
+                            Image(systemName: "chevron.up.chevron.down").font(.caption).accessibilityHidden(true)
+                        }.frame(maxWidth: .infinity, alignment: .leading)
+                    }.accessibilityLabel(L.text("Record type"))
+                        .accessibilityValue(L.text(kind == .number ? "Number snapshot" : "Completion record"))
+                        .accessibilityIdentifier("tracker.kind").disabled(typeLocked)
+                } else {
+                    Picker(L.text("Record type"), selection: $kind) {
+                        Text(L.text("Number snapshot")).tag(TrackerKind.number)
+                        Text(L.text("Completion record")).tag(TrackerKind.daily)
+                    }.accessibilityIdentifier("tracker.kind").disabled(typeLocked)
+                }
                 if typeLocked { Text(L.text("Create a new tracker to change its type or unit.")).font(.caption).foregroundStyle(.secondary) }
             }
             if kind == .number {
@@ -264,9 +283,17 @@ struct TrackerEditor: View {
     private var photoSection: some View {
         Section {
             VStack(alignment: .leading, spacing: 8) {
-                ViewThatFits(in: .horizontal) {
-                    HStack(alignment: .firstTextBaseline) { photoHeading; Spacer(); addPhotos }
-                    VStack(alignment: .leading, spacing: 8) { photoHeading; addPhotos }
+                if dynamicTypeSize.isAccessibilitySize {
+                    VStack(alignment: .leading, spacing: 12) { photoHeading; addPhotos }
+                } else {
+                    ViewThatFits(in: .horizontal) {
+                        HStack(alignment: .firstTextBaseline) {
+                            photoHeading.fixedSize(horizontal: true, vertical: false)
+                            Spacer(minLength: 4)
+                            addPhotos.fixedSize(horizontal: true, vertical: false)
+                        }
+                        VStack(alignment: .leading, spacing: 8) { photoHeading; addPhotos }
+                    }
                 }
                 if !photos.isEmpty {
                     ScrollView(.horizontal) {
@@ -281,6 +308,7 @@ struct TrackerEditor: View {
         HStack(spacing: 8) {
             Text(L.text("Photos")).font(.subheadline.weight(.semibold))
             Text("\(photos.count)/\(Entry.photoLimit)").font(.caption).foregroundStyle(.secondary)
+                .fixedSize(horizontal: true, vertical: false)
                 .accessibilityLabel(L.text("Photos")).accessibilityValue("\(photos.count)/\(Entry.photoLimit)")
                 .accessibilityIdentifier("tracker.photos.count")
         }

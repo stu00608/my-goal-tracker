@@ -232,7 +232,7 @@ struct EntryEditor: View {
                 if case .failure(let failure) = numericPreview, !change.isEmpty {
                     Text(numericError(failure)).font(.caption).foregroundStyle(.red)
                 }
-            } else if numericBaseline == nil {
+            } else if inputMode == .change, numericBaseline == nil {
                 Text(L.text(isPersistedEntry && inputMode == .change
                             ? "No earlier value at this position. Saving requires confirming conversion to the previous value."
                             : "No earlier value for this date. Enter a new value first."))
@@ -283,6 +283,7 @@ struct EntryEditor: View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(L.text("Photos")).font(.subheadline.weight(.semibold))
             Text("\(photos.count)/\(Entry.photoLimit)").font(.caption).foregroundStyle(TrackerColors.secondaryText)
+                .fixedSize(horizontal: true, vertical: false)
                 .accessibilityLabel(L.text("Photos")).accessibilityValue("\(photos.count)/\(Entry.photoLimit)")
                 .accessibilityIdentifier("entry.photos.count")
         }

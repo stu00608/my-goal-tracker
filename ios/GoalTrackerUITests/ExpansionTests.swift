@@ -237,7 +237,10 @@ nonisolated final class ExpansionTests: XCTestCase {
         anchor.tap()
         for _ in 0..<8 { if delete.isHittable { break }; app.swipeUp() }
         delete.tap(); app.buttons["entry.delete.confirm"].firstMatch.tap()
-        conversion.buttons["Convert first change to a value"].firstMatch.tap()
+        XCTAssertTrue(conversion.waitForExistence(timeout: 10))
+        screenshot(app, "Conversion immediately before confirm")
+        conversion.buttons["entry.orphan.confirm"].firstMatch.tap()
+        XCTAssertTrue(conversion.waitForNonExistence(timeout: 10), "Confirmation must dismiss the conversion alert")
         XCTAssertTrue(anchor.waitForNonExistence(timeout: 10))
         let retained = button(app, prefix: "entry.", text: "Derived change")
         XCTAssertTrue(retained.waitForExistence(timeout: 10)); retained.tap()
@@ -262,8 +265,9 @@ nonisolated final class ExpansionTests: XCTestCase {
         XCTAssertTrue(period.waitForExistence(timeout: 10)); period.tap()
         app.buttons["30 days"].tap()
         let notice = app.staticTexts["snapshot.clipped"]
-        for _ in 0..<8 { if notice.exists { break }; app.swipeUp() }
+        for _ in 0..<8 { if notice.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(notice.waitForExistence(timeout: 10))
+        XCTAssertTrue(notice.isHittable)
         XCTAssertTrue(notice.label.contains("Last recorded value is outside"))
         screenshot(app, "Carried-only chart has exact exclusion notice and no false line")
         let record = button(app, prefix: "entry.", text: "Excluded precision sample")
