@@ -120,6 +120,7 @@ struct EntryEditor: View {
     @Environment(\.isPresented) private var isPresented
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @AppStorage("recordLocationByDefault", store: L.defaults) private var recordLocationByDefault = false
+    @AppStorage("numericInputMode", store: L.defaults) private var preferredInputMode = NumericEntryMode.direct.rawValue
     let tracker: Tracker
     var existing: Entry?
     @State private var date = Date()
@@ -151,33 +152,31 @@ struct EntryEditor: View {
                 Section {
                     VStack(alignment: .leading, spacing: 16) {
                         if tracker.kind == .number {
-                            if !isPersistedEntry {
-                                VStack(alignment: .leading, spacing: 8) {
-                                    Picker(L.text("Value input"), selection: $inputMode) {
-                                        Text(L.text("New value")).tag(NumericEntryMode.direct)
-                                        Text(L.text("Change amount")).tag(NumericEntryMode.change).disabled(numericBaseline == nil)
-                                    }.pickerStyle(.menu).buttonStyle(.borderless).accessibilityIdentifier("entry.inputMode")
-                                    if numericBaseline == nil {
-                                        Text(L.text("No earlier value for this date. Enter a new value first."))
-                                            .font(.caption).foregroundStyle(TrackerColors.secondaryText)
+                            VStack(spacing: 0) {
+                                if !isPersistedEntry {
+                                    HStack {
+                                        Spacer(minLength: 0)
+                                        Picker(L.text("Value input"), selection: $inputMode) {
+                                            Text(L.text("New value")).tag(NumericEntryMode.direct)
+                                            Text(L.text("Change amount")).tag(NumericEntryMode.change).disabled(numericBaseline == nil)
+                                        }.labelsHidden().pickerStyle(.menu).buttonStyle(.borderless)
+                                            .font(.subheadline).accessibilityIdentifier("entry.inputMode")
+                                        Spacer(minLength: 0)
                                     }
+                                } else {
+                                    Text(L.text("New value")).font(.subheadline).foregroundStyle(TrackerColors.secondaryText)
                                 }
-                            }
-                            if comparisonLayout && !dynamicTypeSize.isAccessibilitySize {
-                                HStack(alignment: .top, spacing: 12) {
-                                    numericArea.frame(maxWidth: .infinity)
-                                    photoArea.frame(maxWidth: .infinity)
-                                }
-                            } else {
                                 numericArea
-                                photoArea
                             }
+                            photoArea
                         } else {
                             photoArea
                         }
                         if let error { Text(error).foregroundStyle(.red).accessibilityIdentifier("editor.error") }
                     }.padding(.vertical, 4)
-                }.disabled(saving)
+                }.listRowBackground(Color.clear)
+                    .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
+                    .disabled(saving)
                 Section {
                     DatePicker(L.text("Date"), selection: Binding(get: { date }, set: { endEditing(); date = $0; dateEdited = true }), in: ...Date(), displayedComponents: tracker.kind == .number ? [.date, .hourAndMinute] : [.date])
                         .simultaneousGesture(TapGesture().onEnded { endEditing() })
@@ -238,6 +237,7 @@ struct EntryEditor: View {
                     value = (e.value ?? "").replacingOccurrences(of: ".", with: L.locale.decimalSeparator ?? ".")
                     note = e.note; photos = e.photos.map { DraftPhoto(data: $0) }
                 }
+                inputMode = NumericEntryMode.initial(preference: preferredInputMode, hasBaseline: numericBaseline != nil, editing: isPersistedEntry)
                 location.draft = RecordLocationDraft(existing: existing?.location, defaultEnabled: !isPersistedEntry && recordLocationByDefault)
             }
             .onChange(of: isPresented) { _, presented in if !presented { stopRequests() } }
@@ -290,29 +290,37 @@ struct EntryEditor: View {
     }
 
     private var numericArea: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(spacing: 4) {
             NumericValueEditor(text: numericBinding, precision: tracker.precision, unit: tracker.unit,
                                isChange: inputMode == .change, focus: $valueFocused)
             if inputMode == .change, let baseline = numericBaseline {
-                VStack(alignment: .leading, spacing: 6) {
-                    LabeledContent(L.text("Baseline value")) {
-                        Text(localizedValue(baseline.value ?? "")).foregroundStyle(TrackerColors.secondaryText)
-                    }.accessibilityIdentifier("entry.baseline")
-                    Text(baseline.occurredAt.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened, locale: L.locale, timeZone: tracker.calendar.timeZone)))
-                        .font(.caption).foregroundStyle(TrackerColors.secondaryText).accessibilityLabel(L.text("Baseline date"))
-                        .accessibilityValue(baseline.occurredAt.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened, locale: L.locale, timeZone: tracker.calendar.timeZone)))
-                        .accessibilityIdentifier("entry.baselineDate")
+                HStack(spacing: 6) {
+                    Text(localizedValue(baseline.value ?? ""))
+                        .accessibilityLabel(L.text("Baseline value")).accessibilityValue(localizedValue(baseline.value ?? ""))
+                        .accessibilityIdentifier("entry.baseline")
+                    Image(systemName: "arrow.right").accessibilityHidden(true)
                     switch numericPreview {
                     case .success(let result):
-                        LabeledContent(L.text("Resulting value")) {
-                            Text(localizedValue(result.value)).foregroundStyle(.primary)
-                        }.font(.headline).accessibilityIdentifier("entry.result")
-                    case .failure(let failure):
-                        if !change.isEmpty { Text(numericError(failure)).font(.caption).foregroundStyle(.red) }
+                        Text(localizedValue(result.value)).accessibilityLabel(L.text("Resulting value")).accessibilityValue(localizedValue(result.value))
+                            .accessibilityIdentifier("entry.result")
+                    case .failure:
+                        Text("—").accessibilityLabel(L.text("Resulting value"))
                     }
-                }.fixedSize(horizontal: false, vertical: true)
+                }.font(.caption.monospacedDigit()).foregroundStyle(TrackerColors.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(baseline.occurredAt.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened, locale: L.locale, timeZone: tracker.calendar.timeZone)))
+                    .font(.caption2).foregroundStyle(TrackerColors.secondaryText)
+                    .accessibilityLabel(L.text("Baseline date"))
+                    .accessibilityValue(baseline.occurredAt.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened, locale: L.locale, timeZone: tracker.calendar.timeZone)))
+                    .accessibilityIdentifier("entry.baselineDate")
+                if case .failure(let failure) = numericPreview, !change.isEmpty {
+                    Text(numericError(failure)).font(.caption).foregroundStyle(.red)
+                }
+            } else if !isPersistedEntry, numericBaseline == nil {
+                Text(L.text("No earlier value for this date. Enter a new value first."))
+                    .font(.caption).foregroundStyle(TrackerColors.secondaryText)
             }
-        }
+        }.multilineTextAlignment(.center).padding(.bottom, 12)
     }
 
     private var photoArea: some View {
@@ -345,12 +353,6 @@ struct EntryEditor: View {
                 }
             }
             if loading { ProgressView(L.text("Saving photo copies")) }
-            Text(L.text("Photos are kept in the app. Up to 10 per record."))
-                .font(.caption).foregroundStyle(TrackerColors.secondaryText)
-            if existing == nil {
-                Text(L.text("New records use the first photo’s date when available. You can still change the date."))
-                    .font(.caption).foregroundStyle(TrackerColors.secondaryText)
-            }
         }
     }
 
@@ -374,7 +376,7 @@ struct EntryEditor: View {
     }
 
     private func photoTile(_ photo: DraftPhoto) -> some View {
-        VStack(spacing: 0) {
+        ZStack(alignment: .topTrailing) {
             Button {
                 guard let index = photos.firstIndex(where: { $0.id == photo.id }) else { return }
                 endEditing()
@@ -382,18 +384,26 @@ struct EntryEditor: View {
             } label: {
                 if let image = UIImage(data: photo.data) {
                     Image(uiImage: image).renderingMode(.original).resizable().scaledToFill()
-                        .frame(width: 80, height: 76).clipped()
+                        .frame(width: 104, height: 104).clipped()
+                        .clipShape(RoundedRectangle(cornerRadius: 12))
                 }
-            }.buttonStyle(.plain).accessibilityLabel(photoLabel("Record photo %lld", photo: photo))
+            }.frame(width: 104, height: 104).contentShape(Rectangle())
+                .buttonStyle(.plain).accessibilityLabel(photoLabel("Record photo %lld", photo: photo))
                 .accessibilityIdentifier("entry.photo.\(photo.id.uuidString)")
             Button {
                 endEditing(); photoRemoval = photo
             } label: {
-                Image(systemName: "trash").font(.system(size: 18)).frame(width: 80, height: 44)
-            }.buttonStyle(.plain).foregroundStyle(TrackerColors.secondaryText).disabled(loading)
+                Image(systemName: "xmark").font(.system(size: 11, weight: .bold)).foregroundStyle(.white)
+                    .frame(width: 24, height: 24).background(.red, in: Circle())
+                    .overlay { Circle().strokeBorder(.white.opacity(0.9), lineWidth: 1.5) }
+                    .frame(width: 44, height: 44).contentShape(Rectangle())
+            }.buttonStyle(.plain).disabled(loading)
                 .accessibilityLabel(photoLabel("Remove photo %lld", photo: photo))
                 .accessibilityIdentifier("entry.photo.remove.\(photo.id.uuidString)")
-        }.background(.quaternary, in: RoundedRectangle(cornerRadius: 12)).clipShape(RoundedRectangle(cornerRadius: 12))
+                .offset(x: 18, y: -18)
+        }.frame(width: 104, height: 104)
+            // Reserve the complete hit target around the protruding corner badge.
+            .padding(.top, 18).padding(.trailing, 18)
     }
 
     private var comparisonLayout: Bool {

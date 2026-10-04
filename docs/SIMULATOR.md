@@ -29,7 +29,9 @@ python3 scripts/dev.py run --device <simulator-udid>
 python3 scripts/dev.py screenshot --device <simulator-udid>
 ```
 
-`build` 是無簽名的 Simulator build。`test` 執行 shared scheme 的 tests，
+核心 `GoalTracker` 的 Simulator build 無簽名；`GoalTrackerWithWidget` 由腳本使用 ad-hoc 簽名，
+讓系統能載入 Widget 的 AppIntent 設定與共用容器。不要另外覆蓋 `CODE_SIGNING_ALLOWED=NO`。
+`test` 執行 shared scheme 的 tests，
 保存 `.xcresult` 與 summary，拒絕空測試、失敗、跳過或不完整的結果。
 `run` build 後 boot、install、launch，讀取 app 的實際 bundle ID；這只證明啟動。
 `screenshot` 保存 PNG；agent 必須用影像工具打開檢視，不能只列出檔案路徑。

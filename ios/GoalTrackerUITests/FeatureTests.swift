@@ -221,27 +221,54 @@ nonisolated final class FeatureTests: XCTestCase {
         let display = app.descendants(matching: .any).matching(identifier: "entry.value.scrubber").firstMatch
         XCTAssertTrue(display.waitForExistence(timeout: 10))
         XCTAssertFalse(app.keyboards.firstMatch.exists)
-        let beforeDate = app.datePickers["entry.date"].frame.minY
         let start = display.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
         start.press(forDuration: 0.05, thenDragTo: start.withOffset(CGVector(dx: 0, dy: -38)))
-        XCTAssertEqual(app.datePickers["entry.date"].frame.minY, beforeDate, accuracy: 2)
         XCTAssertFalse(app.keyboards.firstMatch.exists)
-        XCTAssertEqual(numericField(app).value as? String, "18.503")
-        app.buttons["entry.keyboard.done"].tap()
-        let next = display.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-        next.press(forDuration: 0.05, thenDragTo: next.withOffset(CGVector(dx: 0, dy: 38)))
-        XCTAssertEqual(app.datePickers["entry.date"].frame.minY, beforeDate, accuracy: 2)
-        XCTAssertEqual(numericField(app).value as? String, "18.5")
+        for _ in 0..<4 { if display.isHittable { break }; app.swipeDown() }
+        XCTAssertEqual(numericField(app).value as? String, "18.500", "Absolute input must not scrub")
         app.buttons["entry.keyboard.done"].tap()
         app.buttons["entry.inputMode"].tap(); app.buttons["Change amount"].tap()
         let change = app.descendants(matching: .any).matching(identifier: "entry.change.scrubber").firstMatch
         XCTAssertTrue(change.waitForExistence(timeout: 10))
+        let beforeDate = app.datePickers["entry.date"].frame.minY
         let zero = change.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
-        zero.press(forDuration: 0.05, thenDragTo: zero.withOffset(CGVector(dx: 0, dy: 14)))
+        zero.press(forDuration: 0.05, thenDragTo: zero.withOffset(CGVector(dx: 0, dy: -38)))
+        XCTAssertEqual(app.datePickers["entry.date"].frame.minY, beforeDate, accuracy: 2)
+        XCTAssertEqual(numericField(app, id: "entry.change").value as? String, "0.003")
+        app.buttons["entry.keyboard.done"].tap()
+        let reverse = change.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.5))
+        reverse.press(forDuration: 0.05, thenDragTo: reverse.withOffset(CGVector(dx: 0, dy: 50)))
+        XCTAssertEqual(app.datePickers["entry.date"].frame.minY, beforeDate, accuracy: 2)
         XCTAssertEqual(numericField(app, id: "entry.change").value as? String, "-0.001")
         app.buttons["entry.keyboard.done"].tap()
         attach(app, "Vertical signed value scrub without page scrolling or keyboard")
         app.buttons["entry.cancel"].tap()
+    }
+
+    @MainActor func testDefaultNumericInputModePersistsAndFallsBackForFirstRecord() {
+        continueAfterFailure = false
+        let app = app()
+        app.buttons["settings.open"].tap()
+        app.buttons["settings.numericInputMode"].tap(); app.buttons["Change amount"].tap()
+        attach(app, "Default numeric input preference")
+        app.buttons["settings.done"].tap()
+        element(app, prefix: "card.", name: "SCORE").tap()
+        let change = app.descendants(matching: .any).matching(identifier: "entry.change.scrubber").firstMatch
+        XCTAssertTrue(change.waitForExistence(timeout: 10))
+        numericField(app, id: "entry.change").typeText("0.001")
+        app.buttons["entry.keyboard.done"].tap()
+        attach(app, "Reference centered bare change amount and inline preview")
+        app.buttons["entry.cancel"].tap()
+        app.terminate()
+        let reopened = self.app(reset: false)
+        element(reopened, prefix: "card.", name: "SCORE").tap()
+        XCTAssertTrue(reopened.descendants(matching: .any).matching(identifier: "entry.change.scrubber").firstMatch.waitForExistence(timeout: 10))
+        reopened.buttons["entry.cancel"].tap()
+        element(reopened, prefix: "card.", name: "EMPTY").tap()
+        XCTAssertTrue(reopened.descendants(matching: .any).matching(identifier: "entry.value.scrubber").firstMatch.waitForExistence(timeout: 10))
+        XCTAssertFalse(reopened.buttons["entry.save"].isEnabled)
+        attach(reopened, "First record uses direct input despite preference")
+        reopened.buttons["entry.cancel"].tap()
     }
 
     @MainActor func testLocationDefaultOnlyInitializesNewRecords() {
@@ -312,7 +339,17 @@ nonisolated final class FeatureTests: XCTestCase {
         XCTAssertTrue(images.firstMatch.waitForExistence(timeout: 10)); XCTAssertEqual(images.count, 2)
         let first = images.element(boundBy: 0).identifier, second = images.element(boundBy: 1).identifier
         let secondID = String(second.dropFirst("entry.photo.".count))
-        app.buttons["entry.photo.remove." + secondID].tap()
+        let thumbnail = images.element(boundBy: 1)
+        let removal = app.buttons["entry.photo.remove." + secondID]
+        XCTAssertGreaterThanOrEqual(removal.frame.width, 44)
+        XCTAssertGreaterThanOrEqual(removal.frame.height, 44)
+        let circleRight = removal.frame.midX + 12
+        let circleTop = removal.frame.midY - 12
+        XCTAssertGreaterThan(circleRight, thumbnail.frame.maxX)
+        XCTAssertLessThan(circleTop, thumbnail.frame.minY)
+        XCTAssertTrue(app.windows.firstMatch.frame.contains(removal.frame))
+        attach(app, "Photo removal badges protrude from the upper right corners")
+        removal.tap()
         XCTAssertTrue(app.buttons["entry.photoRemoval.cancel"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "entry.photoRemoval.preview").firstMatch.exists)
         attach(app, "Specific second photo preview before removing")
@@ -355,7 +392,7 @@ nonisolated final class FeatureTests: XCTestCase {
         element(app, prefix: "card.", name: "SCORE").tap()
         app.buttons["entry.inputMode"].tap(); app.buttons["Change amount"].tap()
         numericField(app, id: "entry.change").typeText("0.125")
-        let kindLabel = app.staticTexts["entry.value.kind"]
+        let kindLabel = app.staticTexts["entry.baseline"]
         XCTAssertTrue(kindLabel.waitForExistence(timeout: 10)); kindLabel.tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 10))
         XCTAssertEqual(numericField(app, id: "entry.change").value as? String, "0.125")

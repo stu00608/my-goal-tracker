@@ -1,6 +1,11 @@
 import Foundation
 
-nonisolated enum NumericEntryMode { case direct, change }
+nonisolated enum NumericEntryMode: String {
+    case direct, change
+    static func initial(preference: String, hasBaseline: Bool, editing: Bool) -> Self {
+        !editing && hasBaseline && preference == Self.change.rawValue ? .change : .direct
+    }
+}
 nonisolated enum NumericEntryError: Error { case missingBaseline }
 nonisolated struct NumericEntryResult: Equatable {
     let value: String

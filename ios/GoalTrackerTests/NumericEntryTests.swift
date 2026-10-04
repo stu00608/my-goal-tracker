@@ -3,6 +3,14 @@ import Testing
 @testable import GoalTracker
 
 struct NumericEntryTests {
+    @Test func defaultModeAppliesOnlyToNewEntriesWithBaseline() {
+        #expect(NumericEntryMode.initial(preference: "change", hasBaseline: true, editing: false) == .change)
+        #expect(NumericEntryMode.initial(preference: "change", hasBaseline: false, editing: false) == .direct)
+        #expect(NumericEntryMode.initial(preference: "change", hasBaseline: true, editing: true) == .direct)
+        #expect(NumericEntryMode.initial(preference: "direct", hasBaseline: true, editing: false) == .direct)
+        #expect(NumericEntryMode.initial(preference: "unknown", hasBaseline: true, editing: false) == .direct)
+    }
+
     @Test func scrubQuantumCoversEveryDisplayPrecisionWithoutRoundingStoredDigits() throws {
         for precision in 0...8 {
             let expected = precision == 0 ? "1" : "0." + String(repeating: "0", count: precision - 1) + "1"

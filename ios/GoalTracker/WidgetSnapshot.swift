@@ -15,6 +15,20 @@ nonisolated struct CardPlotPoint: Codable, Equatable {
     }
 }
 
+/// Overview charts keep context: at least 10% of the value magnitude and ten precision ticks.
+/// Extrema still fit with 25% range padding; near-flat growth is never enlarged corner-to-corner.
+nonisolated enum CardPlotScale {
+    static func domain(points: [CardPlotPoint], precision: Int, completion: Bool = false) -> ClosedRange<Double> {
+        if completion { return 0...2 }
+        let values = points.compactMap(\.plottedValue)
+        guard let low = values.min(), let high = values.max() else { return 0...1 }
+        let quantum = pow(10.0, -Double(max(0, min(8, precision))))
+        let span = max(high - low, max(abs(low), abs(high)) * 0.1, quantum * 10)
+        let midpoint = low / 2 + high / 2
+        return (midpoint - span * 0.75)...(midpoint + span * 0.75)
+    }
+}
+
 // Bounded presentation data only; original photos, notes and the database stay in the app.
 nonisolated struct WidgetRow: Codable, Identifiable {
     var id: UUID
@@ -99,7 +113,15 @@ nonisolated struct WidgetSnapshot: Codable {
 
     init(_ trackers: [Tracker], language: String, now: Date = Date()) {
         self.language = language
-        rows = trackers.filter { !$0.archived }.prefix(3).map { WidgetRow($0, now: now) }
+        rows = trackers.filter { !$0.archived }.map { WidgetRow($0, now: now) }
+    }
+    // A configured deleted/archived tracker stays unavailable instead of silently switching goals.
+    func row(selectedID: UUID?) -> WidgetRow? {
+        guard let selectedID else { return rows.first }
+        return rows.first { $0.id == selectedID }
+    }
+    static func read() -> WidgetSnapshot? {
+        url.flatMap { try? Data(contentsOf: $0) }.flatMap { try? JSONDecoder().decode(Self.self, from: $0) }
     }
     static var url: URL? { FileManager.default.containerURL(forSecurityApplicationGroupIdentifier: group)?.appendingPathComponent("widget-snapshot.json") }
     func nextRefresh(after date: Date) -> Date {

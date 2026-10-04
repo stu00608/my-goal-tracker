@@ -18,8 +18,9 @@ nonisolated final class FlowTests: XCTestCase {
         app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", prefix, name)).firstMatch
     }
     @MainActor func type(_ app: XCUIApplication, _ field: XCUIElement, _ text: String) {
-        if !field.exists || !field.isHittable {
-            let done = app.buttons.matching(NSPredicate(format: "identifier IN %@", ["entry.keyboard.done", "tracker.keyboard.done"])).firstMatch
+        let done = app.buttons.matching(NSPredicate(format: "identifier IN %@", ["entry.keyboard.done", "tracker.keyboard.done"])).firstMatch
+        // A partly visible field can be hittable while its center is covered by iOS's floating keyboard toolbar.
+        if !field.exists || !field.isHittable || (done.exists && field.frame.intersects(done.frame)) {
             if done.exists && done.isHittable { done.tap() }
         }
         for _ in 0..<8 { if field.exists && field.isHittable { break }; app.swipeUp() }
