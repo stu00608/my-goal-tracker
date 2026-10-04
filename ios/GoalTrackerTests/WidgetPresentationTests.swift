@@ -70,12 +70,13 @@ import ImageIO
         let data = try JSONEncoder().encode(WidgetSnapshot([tracker], language: "en", now: now))
         var object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
         var rows = try #require(object["rows"] as? [[String: Any]])
-        for key in ["background", "plot", "thumbnail", "locations"] { rows[0].removeValue(forKey: key) }
+        for key in ["background", "plot", "thumbnail", "locations", "progress", "axisLower", "axisUpper", "lastRecordedAt"] { rows[0].removeValue(forKey: key) }
         object["rows"] = rows
         let decoded = try JSONDecoder().decode(WidgetSnapshot.self, from: JSONSerialization.data(withJSONObject: object))
         #expect(decoded.rows[0].id == tracker.id)
         #expect(decoded.rows[0].resolvedBackground == .plot)
         #expect(decoded.rows[0].plot == nil && decoded.rows[0].thumbnail == nil && decoded.rows[0].locations == nil)
+        #expect(decoded.rows[0].progress == nil && decoded.rows[0].axisLower == nil && decoded.rows[0].axisUpper == nil && decoded.rows[0].lastRecordedAt == nil)
     }
 
     @Test func dailyProjectionKeepsRecordedDaysAndCalendarProgressBounded() {
@@ -133,5 +134,100 @@ import ImageIO
         #expect(WidgetRow(tracker, now: now).thumbnail == nil)
         tracker.cardBackground = nil
         #expect(WidgetRow(tracker, now: now).plot?.isEmpty == true)
+    }
+
+    @Test(arguments: [("-10", "0", "-5", Direction.up), ("10", "0", "5", .down), ("-10", "-20", "-15", .down)])
+    func signedGoalProgressUsesEffectiveDateBaseline(_ input: (String, String, String, Direction)) throws {
+        let (baseline, target, current, direction) = input
+        var t = Tracker(name: "Ring", kind: .number)
+        let effective = now.addingTimeInterval(-86400)
+        t.rules = [GoalRule(period: .deadline, target: target, effectiveAt: effective, deadline: now.addingTimeInterval(86400), direction: direction)]
+        t.entries = [Entry(occurredAt: effective.addingTimeInterval(-100), localDay: t.day(effective), value: direction == .up ? "-30" : "30"),
+                     Entry(occurredAt: effective.addingTimeInterval(-10), localDay: t.day(effective), value: baseline),
+                     Entry(occurredAt: now, localDay: t.day(now), value: current),
+                     Entry(occurredAt: now.addingTimeInterval(10), localDay: t.day(now), value: target)]
+        let progress = try #require(GoalProgress.current(for: t, now: now))
+        #expect(progress.baseline == baseline && progress.current == current && progress.fraction == 0.5 && !progress.achieved)
+        #expect(WidgetRow(t, now: now).value == current)
+        t.entries.append(Entry(occurredAt: now.addingTimeInterval(-100), localDay: t.day(now), value: target))
+        #expect(GoalProgress.current(for: t, now: now)?.fraction == 1)
+        #expect(GoalProgress.current(for: t, now: now)?.current == current)
+    }
+
+    @Test func progressHandlesEmptyFirstBaselineDeadlineAndAchievedFallback() throws {
+        var t = Tracker(name: "Ring", kind: .number, cardBackground: .progress)
+        #expect(!GoalProgress.available(for: t, now: now) && GoalProgress.current(for: t, now: now) == nil)
+        let effective = now.addingTimeInterval(-86400), deadline = now.addingTimeInterval(-10)
+        t.rules = [GoalRule(period: .deadline, target: "20", effectiveAt: effective, deadline: deadline)]
+        #expect(GoalProgress.available(for: t, now: now) && WidgetRow(t, now: now).progress == nil)
+        t.entries = [Entry(occurredAt: effective.addingTimeInterval(10), localDay: t.day(effective), value: "10"),
+                     Entry(occurredAt: deadline, localDay: t.day(deadline), value: "15"),
+                     Entry(occurredAt: now, localDay: t.day(now), value: "21")]
+        #expect(GoalProgress.current(for: t, now: now)?.fraction == 0.5)
+        #expect(GoalProgress.current(for: t, now: now)?.current == "15")
+        t.rules[0].target = "10"
+        #expect(GoalProgress.current(for: t, now: now)?.fraction == 1)
+        t.kind = .daily; t.rules = []
+        t.setFrequency(.weekly, target: 2, now: effective)
+        t.entries = [0, 1, 2].map { offset in
+            let date = now.addingTimeInterval(-Double(offset) * 86400)
+            return Entry(occurredAt: date, localDay: t.day(date))
+        }
+        let row = WidgetRow(t, now: now)
+        let daily = try #require(row.progress)
+        #expect(daily.current == "3" && daily.target == "2" && daily.fraction == 1)
+        #expect(row.currentProgress(at: t.interval(now, period: .weekly).end)?.fraction == 0)
+    }
+
+    @Test func explicitBoundsClipWithoutRewritingAndPartialBoundsStayPositive() {
+        let points = [CardPlotPoint(date: now, value: "5"), CardPlotPoint(date: now, value: "15")]
+        #expect(CardPlotScale.domain(points: points, precision: 3, lower: "0", upper: "10") == 0...10)
+        for bounds in [("20", "10"), ("10", "10")] {
+            #expect(CardPlotScale.domain(points: points, precision: 3, lower: bounds.0, upper: bounds.1) == CardPlotScale.domain(points: points, precision: 3))
+        }
+        let lower = CardPlotScale.domain(points: points, precision: 3, lower: "100")
+        let upper = CardPlotScale.domain(points: [], precision: 3, upper: "-100")
+        #expect(lower.lowerBound == 100 && lower.upperBound > 100)
+        #expect(upper.upperBound == -100 && upper.lowerBound < -100)
+        let precise = CardPlotScale.domain(points: [], precision: 8, lower: "12345678901234567890.1", upper: "12345678901234567890.2")
+        #expect(precise.lowerBound == 12345678901234567890 && precise.upperBound > precise.lowerBound)
+        var t = Tracker(name: "Bounds", kind: .number, axisLower: "0", axisUpper: "10")
+        t.entries = points.map { Entry(occurredAt: $0.date, localDay: t.day($0.date), value: $0.value) }
+        let original = t.entries, row = WidgetRow(t, now: now)
+        #expect(row.clippedPointCount == 1 && t.entries == original)
+    }
+
+    @Test func widgetCarriesArePresentationOnlyAndUseTimelineTime() throws {
+        var t = Tracker(name: "Carry", kind: .number)
+        for index in 0..<30 {
+            let date = now.addingTimeInterval(-Double(30 - index) * 86400)
+            t.entries.append(Entry(occurredAt: date, localDay: t.day(date), value: String(index)))
+        }
+        t.entries.append(Entry(occurredAt: now.addingTimeInterval(86400), localDay: t.day(now), value: "999"))
+        let row = WidgetRow(t, now: now)
+        #expect(row.plot?.count == 24 && row.value == "29" && row.lastRecordedAt == now.addingTimeInterval(-86400))
+        let timelineDate = now.addingTimeInterval(3600)
+        let carry = try #require(row.carries(at: timelineDate).first)
+        #expect(carry.end.date == timelineDate && carry.end.value == "29")
+        #expect(row.plot?.count == 24 && row.carries(at: timelineDate).count == 1)
+        let decoded = try JSONDecoder().decode(WidgetRow.self, from: JSONEncoder().encode(row))
+        #expect(decoded.plot?.allSatisfy { $0.date <= now && $0.value != "999" } == true)
+    }
+
+    @Test func trackerPhotoNeverFallsBackToRecordPhotoAndProgressRoundTrips() throws {
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 32, height: 32)).image { context in
+            UIColor.white.setFill(); context.fill(CGRect(x: 0, y: 0, width: 32, height: 32))
+        }
+        let photo = try #require(image.jpegData(compressionQuality: 0.8))
+        var t = Tracker(name: "Tracker photo", kind: .number, cardBackground: .trackerPhoto)
+        t.entries = [Entry(occurredAt: now, localDay: t.day(now), value: "10", photos: [photo])]
+        #expect(WidgetRow(t, now: now).thumbnail == nil)
+        t.photos = [photo]
+        #expect(WidgetRow(t, now: now).hasPhoto)
+        t.cardBackground = .progress
+        t.rules = [GoalRule(period: .deadline, target: "20", effectiveAt: now, deadline: now.addingTimeInterval(100))]
+        let row = WidgetRow(t, now: now)
+        let decoded = try JSONDecoder().decode(WidgetRow.self, from: JSONEncoder().encode(row))
+        #expect(decoded.progress == row.progress && decoded.progress?.baseline == "10" && decoded.thumbnail == nil)
     }
 }

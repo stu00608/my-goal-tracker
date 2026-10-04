@@ -162,18 +162,23 @@ struct GoalWidgetView: View {
         .privacySensitive()
     }
     @ViewBuilder private func backdrop(_ row: WidgetRow) -> some View {
-        if row.resolvedBackground == .plot {
-            TrackerCardBackdrop(row: row, text: text, monochrome: monochrome)
+        if row.resolvedBackground == .plot || row.resolvedBackground == .progress {
+            TrackerCardBackdrop(row: row, text: text, now: entry.date, monochrome: monochrome)
                 .opacity(monochrome ? 0.45 : 1)
         } else {
             let images = entry.mapImages[row.id]
-            let data = row.resolvedBackground == .photo ? row.thumbnail : colorScheme == .dark ? images?.dark : images?.light
+            let photo = row.resolvedBackground == .photo || row.resolvedBackground == .trackerPhoto
+            let data = photo ? row.thumbnail : colorScheme == .dark ? images?.dark : images?.light
             if let data, let image = UIImage(data: data) {
                 if #available(iOS 18, *) {
                     Image(uiImage: image).resizable().widgetAccentedRenderingMode(.desaturated).scaledToFill()
                         .opacity(monochrome ? 0.22 : 1)
-                } else { Image(uiImage: image).resizable().scaledToFill() }
-            } else { TrackerCardBackdrop(row: row, text: text, monochrome: monochrome).opacity(monochrome ? 0.45 : 1) }
+                        .overlay { if photo { CardPhotoReadabilityGradient(monochrome: monochrome) } }
+                } else {
+                    Image(uiImage: image).resizable().scaledToFill()
+                        .overlay { if photo { CardPhotoReadabilityGradient(monochrome: monochrome) } }
+                }
+            } else { TrackerCardBackdrop(row: row, text: text, now: entry.date, monochrome: monochrome).opacity(monochrome ? 0.45 : 1) }
         }
     }
 }

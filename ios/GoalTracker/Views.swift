@@ -9,7 +9,7 @@ struct RootView: View {
     @State private var selected = 0
     @State private var todayNavigationID = UUID()
     @State private var editMode = EditMode.inactive
-    @State private var settings = false
+    @State private var goalsNavigationID = UUID()
     @State private var creating = false
     @State private var entryTracker: Tracker?
     var body: some View {
@@ -18,7 +18,8 @@ struct RootView: View {
     private func screen(at date: Date) -> some View {
         TabView(selection: $selected) {
             NavigationStack { trackerList(today: true, at: date) }.id(todayNavigationID).tabItem { Label(L.text("Today"), systemImage: "checkmark.circle") }.tag(0)
-            NavigationStack { trackerList(today: false, at: date) }.tabItem { Label(L.text("Goals"), systemImage: "chart.xyaxis.line") }.tag(1)
+            NavigationStack { trackerList(today: false, at: date) }.id(goalsNavigationID).tabItem { Label(L.text("Goals"), systemImage: "chart.xyaxis.line") }.tag(1)
+            SettingsView().tabItem { Label(L.text("Settings"), systemImage: "gearshape") }.tag(2)
         }
         .environment(\.editMode, $editMode)
         .task(id: store.trackers) {
@@ -28,13 +29,12 @@ struct RootView: View {
         }
         .onOpenURL { url in
             guard url.scheme == "goaltracker", url.host == "today" || url.host == "record" else { return }
-            settings = false; creating = false; entryTracker = nil; selected = 0; editMode = .inactive; todayNavigationID = UUID()
+            creating = false; entryTracker = nil; selected = 0; editMode = .inactive; todayNavigationID = UUID(); goalsNavigationID = UUID()
             if url.host == "record", url.pathComponents.count == 2,
                let id = UUID(uuidString: url.pathComponents[1]) {
                 entryTracker = store.trackers.first { $0.id == id && !$0.archived }
             }
         }
-        .sheet(isPresented: $settings) { SettingsView() }
         .sheet(isPresented: $creating) { TrackerEditor() }
         .sheet(item: $entryTracker) { t in EntryEditor(tracker: t, existing: t.entries.first { $0.localDay == t.day(Date()) && t.kind == .daily }) }
         .alert(L.text("Action failed"), isPresented: Binding(get: { store.error != nil }, set: { if !$0 { store.error = nil } })) {
@@ -76,7 +76,7 @@ struct RootView: View {
                                             if !entry.note.isEmpty || !entry.photos.isEmpty || entry.location != nil { entryTracker = copy; return }
                                             copy.entries.removeAll { $0.localDay == day }
                                         } else {
-                                            if recordLocationByDefault { entryTracker = copy; return }
+                                            if recordLocationByDefault || copy.requiresLocationGate { entryTracker = copy; return }
                                             copy.put(Entry(occurredAt: now, localDay: day))
                                         }
                                         try store.save(copy)
@@ -106,10 +106,6 @@ struct RootView: View {
         .environment(\.editMode, today ? .constant(.inactive) : $editMode)
         .navigationTitle(L.text(today ? "Today" : "Goals"))
         .toolbar {
-            ToolbarItem(placement: .topBarLeading) {
-                Button { settings = true } label: { Image(systemName: "gearshape") }
-                    .accessibilityLabel(L.text("Settings")).accessibilityIdentifier("settings.open")
-            }
             if !today && !active.isEmpty { ToolbarItem(placement: .topBarTrailing) {
                 Button(L.text(editMode.isEditing ? "Done" : "Edit")) {
                     withAnimation { editMode = editMode.isEditing ? .inactive : .active }
@@ -139,7 +135,7 @@ struct TrackerSummary: View {
         VStack(alignment: .leading, spacing: 5) {
             Text(tracker.name).font(.headline)
             if tracker.kind == .number {
-                if let v = tracker.latest?.value.flatMap(Numbers.decimal) {
+                if let v = tracker.resolvedEntries.last(where: { $0.occurredAt <= now })?.value.flatMap(Numbers.decimal) {
                     Text(Numbers.display(v, precision: tracker.precision, locale: L.locale) + (tracker.unit.isEmpty ? "" : " " + tracker.unit)).font(.title3.monospacedDigit()).foregroundStyle(.primary)
                 } else { Text(L.text("No snapshots yet")).foregroundStyle(TrackerColors.secondaryText) }
             } else if let rule = tracker.rule(at: now) {
@@ -156,6 +152,8 @@ struct TrackerSummary: View {
     @State private var editing = false
     @State private var addEntry = false
     @State private var selectedEntry: Entry?
+    @State private var numericView = "Chart"
+    @State private var photoPreview: TrackerPhotoPreview?
     @State private var range = ChartRange.ninetyDays
     @State private var customStart = Date()
     @State private var customEnd = Date()
@@ -169,7 +167,8 @@ struct TrackerSummary: View {
         Group {
             if let t = tracker {
                 List {
-                    Section { TrackerSummary(tracker: t, now: Date()) }
+                    Section { TrackerSummary(tracker: t, now: now) }
+                    content(t)
                     if t.kind == .number { numeric(t, now: now) }
                     else { CompletionProgressView(tracker: t, now: now) { daily(t) } }
                     locations(t)
@@ -185,7 +184,7 @@ struct TrackerSummary: View {
                     }
                     Section(L.text("Timeline")) {
                         if t.entries.isEmpty { Text(L.text("No records yet")).foregroundStyle(TrackerColors.secondaryText) }
-                        ForEach(t.sortedEntries.reversed()) { e in
+                        ForEach(t.resolvedEntries.reversed()) { e in
                             Button { selectedEntry = e } label: {
                                 VStack(alignment: .leading, spacing: 5) {
                                     HStack {
@@ -193,6 +192,11 @@ struct TrackerSummary: View {
                                         else { Label(L.text("Completed"), systemImage: "checkmark.circle.fill") }
                                         Spacer()
                                         Text(t.kind == .daily ? (t.date(for: e.localDay) ?? e.occurredAt) : e.occurredAt, format: .dateTime.year().month().day()).font(.caption).foregroundStyle(TrackerColors.secondaryText)
+                                    }
+                                    if let change = e.change.flatMap(Numbers.decimal) {
+                                        Text(L.text("Change amount") + " " + (change >= 0 ? "+" : "") + Numbers.display(change, precision: t.precision, locale: L.locale))
+                                            .font(.subheadline.monospacedDigit()).foregroundStyle(TrackerColors.secondaryText)
+                                        Text(L.text("Calculated value after this change")).font(.caption).foregroundStyle(TrackerColors.secondaryText)
                                     }
                                     if !e.note.isEmpty { Text(e.note).font(.subheadline).foregroundStyle(TrackerColors.secondaryText).lineLimit(2) }
                                     if !e.photos.isEmpty { Label("\(e.photos.count)", systemImage: "photo").font(.caption) }
@@ -230,7 +234,10 @@ struct TrackerSummary: View {
                 }
                 .sheet(isPresented: $editing) { TrackerEditor(existing: t) }
                 .sheet(isPresented: $addEntry) { EntryEditor(tracker: t) }
-                .sheet(item: $selectedEntry) { EntryEditor(tracker: t, existing: $0) }
+                .sheet(item: $selectedEntry) { selection in
+                    EntryEditor(tracker: t, existing: t.entries.first { $0.id == selection.id } ?? selection)
+                }
+                .fullScreenCover(item: $photoPreview) { PhotoViewer(photos: $0.photos, initialIndex: $0.index) }
                 .confirmationDialog(L.text("Delete this tracker and all its records?"), isPresented: $deleteTracker, titleVisibility: .visible) {
                     Button(L.text("Delete tracker"), role: .destructive) { store.perform { try store.remove(id) } }
                 }
@@ -238,9 +245,63 @@ struct TrackerSummary: View {
         }
         }
     }
+    @ViewBuilder private func content(_ t: Tracker) -> some View {
+        if t.description?.isEmpty == false || validatedWebsite(t.website) != nil {
+            Section {
+                if let description = t.description, !description.isEmpty {
+                    Text(description).textSelection(.enabled).accessibilityIdentifier("tracker.description")
+                }
+                if let url = validatedWebsite(t.website) {
+                    Link(destination: url) { Label(L.text("Website"), systemImage: "arrow.up.right.square") }
+                        .accessibilityIdentifier("tracker.website")
+                }
+            }
+        }
+        if let photos = t.photos, !photos.isEmpty {
+            Section(L.text("Tracker photos")) {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 12) {
+                        ForEach(photos.indices, id: \.self) { index in
+                            Button { photoPreview = TrackerPhotoPreview(photos: photos, index: index) } label: {
+                                if let image = UIImage(data: photos[index]) {
+                                    Image(uiImage: image).resizable().scaledToFill().frame(width: 104, height: 104)
+                                        .clipShape(RoundedRectangle(cornerRadius: 12))
+                                }
+                            }.buttonStyle(.plain)
+                                .accessibilityLabel(String(format: L.text("Photo %lld of %lld"), locale: L.locale, Int64(index + 1), Int64(photos.count)))
+                                .accessibilityIdentifier("tracker.photo.\(index)")
+                        }
+                    }
+                }.accessibilityIdentifier("tracker.photoGallery")
+            }
+        }
+    }
+    private func validatedWebsite(_ string: String?) -> URL? {
+        guard let string, let url = URL(string: string), let scheme = url.scheme?.lowercased(),
+              ["http", "https"].contains(scheme), url.host?.isEmpty == false else { return nil }
+        return url
+    }
     private func numeric(_ t: Tracker, now: Date) -> some View {
         let snapshot = range.snapshot(for: t, now: now, customStart: customStart, customEnd: customEnd)
+        let entries = t.resolvedEntries.filter { $0.occurredAt <= now }
+        let values = entries.compactMap { $0.value.flatMap(Numbers.decimal) }
+        let latest = entries.last?.value.flatMap(Numbers.decimal)
         return Section(L.text("Progress")) {
+            Picker(L.text("Numeric view"), selection: $numericView) {
+                Text(L.text("Chart")).tag("Chart")
+                Text(L.text("Goal progress")).tag("Goal progress")
+            }.pickerStyle(.segmented).accessibilityIdentifier("snapshot.view")
+            if numericView == "Goal progress" {
+                if let progress = GoalProgress.current(for: t, now: now) {
+                    VStack(spacing: 12) {
+                        GoalProgressRing(fraction: progress.fraction).frame(width: 144, height: 144)
+                        Text(progress.fraction.formatted(.percent.precision(.fractionLength(0)).locale(L.locale)))
+                            .font(.title2.monospacedDigit())
+                        Text(L.text("Baseline to target") + ": " + formatted(progress.baseline, tracker: t) + " → " + formatted(progress.target, tracker: t))
+                            .font(.caption).foregroundStyle(TrackerColors.secondaryText).multilineTextAlignment(.center)
+                    }.frame(maxWidth: .infinity).padding(.vertical, 12).accessibilityIdentifier("snapshot.progress")
+                } else { Text(L.text("Set a deadline goal and record a baseline to see goal progress.")).foregroundStyle(TrackerColors.secondaryText) }
+            } else {
             Picker(L.text("Period"), selection: $range) {
                 ForEach(ChartRange.allCases, id: \.self) { period in Text(L.text(period.title)).tag(period) }
             }.pickerStyle(.menu).accessibilityIdentifier("snapshot.period")
@@ -257,50 +318,74 @@ struct TrackerSummary: View {
                 .accessibilityIdentifier("snapshot.custom.end")
             }
             if let snapshot { snapshotChart(snapshot, tracker: t) }
-            if let best = t.best { metric("Best", Numbers.display(best, precision: t.precision, locale: L.locale)) }
-            if t.sortedEntries.count > 1, let latest = t.latest?.value.flatMap(Numbers.decimal), let previous = t.sortedEntries.dropLast().last?.value.flatMap(Numbers.decimal) {
+            }
+            if let best = t.direction == .up ? values.max() : values.min() { metric("Best", Numbers.display(best, precision: t.precision, locale: L.locale)) }
+            if entries.count > 1, let latest, let previous = entries.dropLast().last?.value.flatMap(Numbers.decimal) {
                 metric("Since previous", Numbers.display(latest - previous, precision: t.precision, locale: L.locale))
             }
             if let change = snapshot?.periodChange {
                 metric("Period change", Numbers.display(change, precision: t.precision, locale: L.locale))
             }
-            if let rule = t.rule(at: Date()), let target = Numbers.decimal(rule.target) {
+            if let rule = t.rule(at: now), let target = Numbers.decimal(rule.target) {
                 metric("Target", Numbers.display(target, precision: t.precision, locale: L.locale))
-                if let latest = t.latest?.value.flatMap(Numbers.decimal) { metric("Distance to target", Numbers.display(abs(target - latest), precision: t.precision, locale: L.locale)) }
+                if let latest { metric("Distance to target", Numbers.display(abs(target - latest), precision: t.precision, locale: L.locale)) }
                 if let deadline = rule.deadline { LabeledContent(L.text("Deadline")) { Text(deadline, format: .dateTime.year().month().day()) } }
-                Text(L.text(t.achieved(rule) ? "Goal achieved" : "Working toward your goal")).foregroundStyle(t.achieved(rule) ? TrackerColors.accent : TrackerColors.secondaryText)
+                let achieved = GoalProgress.current(for: t, now: now)?.achieved == true
+                Text(L.text(achieved ? "Goal achieved" : "Working toward your goal")).foregroundStyle(achieved ? TrackerColors.accent : TrackerColors.secondaryText)
             }
         }
     }
+    private func formatted(_ value: String, tracker: Tracker) -> String {
+        Numbers.decimal(value).map { Numbers.display($0, precision: tracker.precision, locale: L.locale) } ?? value
+    }
     private func snapshotChart(_ snapshot: ChartSnapshot, tracker: Tracker) -> some View {
         let entries = snapshot.numericEntries
-        let values = entries.compactMap { $0.value.flatMap(Numbers.decimal).map { NSDecimalNumber(decimal: $0).doubleValue } }
-        let low = values.min() ?? 0, high = values.max() ?? 0
-        let padding = max((high - low) * 0.1, pow(10, -Double(tracker.precision)), max(abs(low), abs(high)) * 1e-9)
-        return Chart(entries) { entry in
+        let points = entries.compactMap { entry in entry.value.map { CardPlotPoint(date: entry.occurredAt, value: $0) } }
+        let carried = snapshot.carries.flatMap { [$0.start, $0.end] }
+        let target = tracker.rule(at: Date()).map { CardPlotPoint(date: snapshot.interval.start, value: $0.target) }
+        let domain = CardPlotScale.domain(points: points + carried + [target].compactMap { $0 }, precision: tracker.precision,
+                                          lower: tracker.axisLower, upper: tracker.axisUpper)
+        let clipped = points.compactMap(\.plottedValue).filter { !domain.contains($0) }.count
+        return VStack(alignment: .leading, spacing: 8) {
+        Chart {
+        ForEach(entries) { entry in
             if let value = entry.value.flatMap(Numbers.decimal) {
                 if entries.count > 1 {
-                    LineMark(x: .value(L.text("Date"), entry.occurredAt), y: .value(L.text("Value"), NSDecimalNumber(decimal: value).doubleValue))
+                    LineMark(x: .value(L.text("Date"), entry.occurredAt), y: .value(L.text("Value"), NSDecimalNumber(decimal: value).doubleValue), series: .value("Series", "actual"))
                 }
                 PointMark(x: .value(L.text("Date"), entry.occurredAt), y: .value(L.text("Value"), NSDecimalNumber(decimal: value).doubleValue)).symbolSize(45)
             }
         }
+        ForEach(snapshot.carries) { segment in
+            ForEach([segment.start, segment.end], id: \.date) { point in
+                if let value = point.plottedValue {
+                    LineMark(x: .value(L.text("Date"), point.date), y: .value(L.text("Value"), value), series: .value("Series", segment.id))
+                        .lineStyle(StrokeStyle(lineWidth: 2, dash: [5, 4]))
+                }
+            }
+        }
+        }
         .frame(height: 220)
         .chartXScale(domain: snapshot.interval.start...snapshot.interval.end)
-        .chartYScale(domain: (low - padding)...(high + padding))
-        .chartYAxis(entries.isEmpty ? .hidden : .automatic)
+        .chartYScale(domain: domain)
+        .chartYAxis(entries.isEmpty && carried.isEmpty ? .hidden : .automatic)
+        .chartPlotStyle { $0.clipped() }.chartLegend(.hidden)
         .overlay {
-            if entries.isEmpty {
+            if entries.isEmpty && carried.isEmpty {
                 Text(L.text("No snapshots in this period")).foregroundStyle(TrackerColors.secondaryText).multilineTextAlignment(.center).padding()
             }
         }
         .chartOverlay { proxy in
             GeometryReader { geometry in
                 Rectangle().fill(.clear).contentShape(Rectangle()).onTapGesture { location in
-                    guard let frame = proxy.plotFrame,
-                          geometry[frame].contains(location),
-                          let date: Date = proxy.value(atX: location.x - geometry[frame].origin.x) else { return }
-                    selectedEntry = entries.min { abs($0.occurredAt.timeIntervalSince(date)) < abs($1.occurredAt.timeIntervalSince(date)) }
+                    guard let frame = proxy.plotFrame, geometry[frame].contains(location) else { return }
+                    let point = CGPoint(x: location.x - geometry[frame].origin.x, y: location.y - geometry[frame].origin.y)
+                    let hits = entries.compactMap { entry -> (Entry, Double)? in
+                        guard let value = entry.value.flatMap(Numbers.decimal), domain.contains(NSDecimalNumber(decimal: value).doubleValue),
+                              let x = proxy.position(forX: entry.occurredAt), let y = proxy.position(forY: NSDecimalNumber(decimal: value).doubleValue) else { return nil }
+                        return (entry, hypot(point.x - x, point.y - y))
+                    }
+                    if let hit = hits.min(by: { $0.1 < $1.1 }), hit.1 <= 26 { selectedEntry = hit.0 }
                 }
             }
         }
@@ -314,6 +399,18 @@ struct TrackerSummary: View {
                     if let value = entry.value.flatMap(Numbers.decimal) { Text(Numbers.display(value, precision: tracker.precision, locale: L.locale)) }
                 }.accessibilityIdentifier("snapshot.point." + entry.id.uuidString)
             }
+        }
+        if !carried.isEmpty, let date = snapshot.lastRecordedAt {
+            (Text(L.text("Last recorded")) + Text(" ") + Text(date, format: .dateTime.year().month().day()))
+                .font(.caption).foregroundStyle(TrackerColors.secondaryText).accessibilityIdentifier("snapshot.lastRecorded")
+        }
+        if clipped > 0 {
+            Text(String(format: L.text("%lld records outside the chart bounds. Values are preserved in the timeline."), locale: L.locale, Int64(clipped)))
+                .font(.caption).foregroundStyle(TrackerColors.secondaryText).accessibilityIdentifier("snapshot.clipped")
+        } else if carried.compactMap(\.plottedValue).contains(where: { !domain.contains($0) }) {
+            Text(L.text("Last recorded value is outside chart bounds."))
+                .font(.caption).foregroundStyle(TrackerColors.secondaryText).accessibilityIdentifier("snapshot.clipped")
+        }
         }
     }
     @ViewBuilder private func locations(_ tracker: Tracker) -> some View {
@@ -396,4 +493,10 @@ struct TrackerSummary: View {
             }
         }
     }
+}
+
+private struct TrackerPhotoPreview: Identifiable {
+    let id = UUID()
+    let photos: [Data]
+    let index: Int
 }

@@ -1,6 +1,5 @@
 import SwiftUI
 import UniformTypeIdentifiers
-import UserNotifications
 
 struct ExportDocument: FileDocument {
     static var readableContentTypes: [UTType] { [.json, .commaSeparatedText] }
@@ -10,14 +9,32 @@ struct ExportDocument: FileDocument {
     func fileWrapper(configuration: WriteConfiguration) throws -> FileWrapper { FileWrapper(regularFileWithContents: data) }
 }
 
+nonisolated struct ExportNameGenerator {
+    private var lastMillisecond: Int64?
+    mutating func next(csv: Bool, now: Date = Date()) -> String {
+        let measured = Int64(floor(now.timeIntervalSince1970 * 1000))
+        let instant = max(measured, lastMillisecond.map { $0 + 1 } ?? measured)
+        lastMillisecond = instant
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = .gmt
+        formatter.dateFormat = "yyyyMMdd-HHmmss-SSS"
+        return (csv ? "Goalooker-export-" : "Goalooker-backup-") + formatter.string(from: Date(timeIntervalSince1970: Double(instant) / 1000))
+    }
+}
+
 struct SettingsView: View {
     @Environment(AppStore.self) private var store
-    @Environment(\.dismiss) private var dismiss
     @AppStorage("appearance") private var appearance = "system"
     @AppStorage("language") private var language = "system"
     @AppStorage("homeLayout") private var homeLayout = "grid"
     @AppStorage("recordLocationByDefault", store: L.defaults) private var recordLocationByDefault = false
     @AppStorage("numericInputMode", store: L.defaults) private var numericInputMode = NumericEntryMode.direct.rawValue
+    @AppStorage("remindersEnabled", store: L.defaults) private var remindersEnabled = true
+    @State private var syncingReminders = false
+    @State private var exportNames = ExportNameGenerator()
+    @State private var exportFilename = ""
     @State private var export: ExportDocument?
     @State private var exporting = false
     @State private var csv = false
@@ -51,14 +68,16 @@ struct SettingsView: View {
                     }
                 }
                 Section {
-                    ForEach(store.trackers.filter { !$0.archived }) { t in NavigationLink(t.name) { ReminderEditor(tracker: t) } }
+                    Toggle(L.text("Enable reminders"), isOn: $remindersEnabled)
+                        .disabled(syncingReminders).accessibilityIdentifier("settings.remindersEnabled")
                 } header: { Text(L.text("Reminders")) } footer: {
-                    Text(L.text("Enable a reminder to request notification permission. Delivery follows your iPhone settings.")).font(.caption).foregroundStyle(TrackerColors.secondaryText)
+                    Text(L.text("Controls time and location reminders for all goals. Configure each reminder in its goal. Delivery follows your iPhone settings."))
+                        .font(.caption).foregroundStyle(TrackerColors.secondaryText)
                 }
                 Section {
                     LabeledContent(L.text("Trackers"), value: "\(store.trackers.count)")
                     LabeledContent(L.text("Records"), value: "\(store.trackers.flatMap(\.entries).count)")
-                    LabeledContent(L.text("Photo storage"), value: ByteCountFormatter.string(fromByteCount: Int64(store.trackers.flatMap(\.entries).flatMap(\.photos).reduce(0) { $0 + $1.count }), countStyle: .file))
+                    LabeledContent(L.text("Photo storage"), value: ByteCountFormatter.string(fromByteCount: Int64(allPhotos(store.trackers).reduce(0) { $0 + $1.count }), countStyle: .file))
                     Button(L.text("Export full backup")) { prepare(csv: false) }.accessibilityIdentifier("backup.export")
                     Button(L.text("Export CSV")) { prepare(csv: true) }.accessibilityIdentifier("csv.export")
                     Button(L.text("Restore backup")) { importing = true }.accessibilityIdentifier("backup.import")
@@ -69,7 +88,7 @@ struct SettingsView: View {
                     Section(L.text("Backup preview")) {
                         LabeledContent(L.text("Trackers"), value: "\(b.trackers.count)")
                         LabeledContent(L.text("Records"), value: "\(b.trackers.flatMap(\.entries).count)")
-                        LabeledContent(L.text("Photos"), value: "\(b.trackers.flatMap(\.entries).flatMap(\.photos).count)")
+                        LabeledContent(L.text("Photos"), value: "\(allPhotos(b.trackers).count)")
                         Button(L.text("Replace data with this backup"), role: .destructive) { restoreConfirm = true }.accessibilityIdentifier("backup.restore")
                         Button(L.text("Cancel")) { pending = nil }
                     }
@@ -80,11 +99,21 @@ struct SettingsView: View {
                     }
                 }
                 if let error { Section { Text(error).foregroundStyle(.red) } }
-                Section { Text(L.text("Private by default. Stored on this iPhone. No account or server.")).font(.footnote).foregroundStyle(TrackerColors.secondaryText) }
+                Section(L.text("About")) {
+                    Text(L.text("Goalooker - 過路客")).font(.headline)
+                    Text(L.text("Small daily steps leave a visible trace. Explore your own orbit, one record at a time."))
+                        .font(.footnote).foregroundStyle(TrackerColors.secondaryText)
+                }
             }
             .navigationTitle(L.text("Settings"))
-            .toolbar { ToolbarItem(placement: .confirmationAction) { Button(L.text("Done")) { dismiss() }.accessibilityIdentifier("settings.done") } }
-            .fileExporter(isPresented: $exporting, document: export, contentType: csv ? .commaSeparatedText : .json, defaultFilename: csv ? "goal-tracker-records" : "goal-tracker-backup") { result in
+            .onChange(of: remindersEnabled) { _, enabled in
+                Task {
+                    syncingReminders = true; defer { syncingReminders = false }
+                    do { try await Reminders.sync(store.trackers, requestPermission: enabled); error = nil }
+                    catch { self.error = L.error(error) }
+                }
+            }
+            .fileExporter(isPresented: $exporting, document: export, contentType: csv ? .commaSeparatedText : .json, defaultFilename: exportFilename) { result in
                 if case .failure(let failure) = result { error = L.error(failure) }
                 export = nil
             }
@@ -109,11 +138,15 @@ struct SettingsView: View {
             }
         }
     }
+    private func allPhotos(_ trackers: [Tracker]) -> [Data] {
+        trackers.flatMap { ($0.photos ?? []) + $0.entries.flatMap(\.photos) }
+    }
     private func prepare(csv: Bool) {
         do {
             let backup = Backup(trackers: store.trackers)
             self.csv = csv
             export = ExportDocument(data: csv ? Data(backup.csv().utf8) : try backup.encoded())
+            exportFilename = exportNames.next(csv: csv)
             exporting = true; error = nil
         } catch { self.error = L.error(error) }
     }

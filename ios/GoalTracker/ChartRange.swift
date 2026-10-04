@@ -24,7 +24,7 @@ nonisolated enum ChartRange: String, CaseIterable {
             start = first
             end = nextDay
         case .all:
-            let first = tracker.sortedEntries.first { $0.occurredAt <= now }?.occurredAt ?? today
+            let first = tracker.resolvedEntries.first { $0.occurredAt <= now }?.occurredAt ?? today
             start = calendar.startOfDay(for: first)
             guard let nextDay = calendar.date(byAdding: .day, value: 1, to: today) else { return nil }
             end = nextDay
@@ -34,16 +34,26 @@ nonisolated enum ChartRange: String, CaseIterable {
             guard start <= lastDay, let nextDay = calendar.date(byAdding: .day, value: 1, to: lastDay) else { return nil }
             end = nextDay
         }
-        let entries = tracker.sortedEntries.filter {
+        let resolved = tracker.resolvedEntries
+        let entries = resolved.filter {
             $0.occurredAt >= start && $0.occurredAt < end && (self == .custom || $0.occurredAt <= now)
         }
-        return ChartSnapshot(interval: DateInterval(start: start, end: end), entries: entries)
+        let interval = DateInterval(start: start, end: end)
+        let points = resolved.compactMap { entry -> CardPlotPoint? in
+            guard let value = entry.value, let decimal = Numbers.decimal(value), !decimal.isNaN else { return nil }
+            return CardPlotPoint(date: entry.occurredAt, value: value)
+        }
+        return ChartSnapshot(interval: interval, entries: entries,
+                             carries: CardCarrySegment.segments(points: points, interval: interval, now: now),
+                             lastRecordedAt: points.last { $0.date <= min(now, end) && $0.date < end }?.date)
     }
 }
 
 nonisolated struct ChartSnapshot {
     let interval: DateInterval
     let entries: [Entry]
+    var carries: [CardCarrySegment] = []
+    var lastRecordedAt: Date?
 
     var numericEntries: [Entry] {
         entries.filter { entry in

@@ -1,0 +1,19 @@
+{
+  "Calculated value after this change": {"zh-Hant": "此變化後的計算值", "ja": "この変化後の計算値", "en": "Calculated value after this change"},
+  "Website": {"zh-Hant": "網站", "ja": "ウェブサイト", "en": "Website"},
+  "Tracker photos": {"zh-Hant": "項目照片", "ja": "項目の写真", "en": "Tracker photos"},
+  "Numeric view": {"zh-Hant": "數值檢視", "ja": "数値の表示", "en": "Numeric view"},
+  "Chart": {"zh-Hant": "圖表", "ja": "グラフ", "en": "Chart"},
+  "Goal progress": {"zh-Hant": "目標進度", "ja": "目標の進捗", "en": "Goal progress"},
+  "Goal progress unavailable": {"zh-Hant": "尚無目標進度", "ja": "目標の進捗を表示できません", "en": "Goal progress unavailable"},
+  "Baseline to target": {"zh-Hant": "基準值至目標值", "ja": "基準値から目標値", "en": "Baseline to target"},
+  "Set a deadline goal and record a baseline to see goal progress.": {"zh-Hant": "設定期限目標並記錄基準值，即可查看目標進度。", "ja": "期限付きの目標を設定し、基準値を記録すると進捗を確認できます。", "en": "Set a deadline goal and record a baseline to see goal progress."},
+  "Last recorded": {"zh-Hant": "最後記錄", "ja": "最終記録", "en": "Last recorded"},
+  "Last recorded value is outside chart bounds.": {"zh-Hant": "最後記錄的數值超出圖表範圍。", "ja": "最終記録の値がグラフの範囲外です。", "en": "Last recorded value is outside chart bounds."},
+  "Some records are outside chart bounds": {"zh-Hant": "部分紀錄超出圖表範圍", "ja": "グラフの範囲外に記録があります", "en": "Some records are outside chart bounds"},
+  "%lld records outside the chart bounds. Values are preserved in the timeline.": {"zh-Hant": "%lld 筆紀錄超出圖表範圍，數值完整保留在時間軸。", "ja": "%lld 件の記録がグラフの範囲外です。数値はタイムラインに保存されています。", "en": "%lld records outside the chart bounds. Values are preserved in the timeline."},
+  "Controls time and location reminders for all goals. Configure each reminder in its goal. Delivery follows your iPhone settings.": {"zh-Hant": "控制所有目標的時間與位置提醒，個別提醒可在目標中設定。通知依 iPhone 設定傳送。", "ja": "すべての目標の時刻と場所のリマインダーを切り替えます。個別の設定は各目標で行えます。通知は iPhone の設定に従います。", "en": "Controls time and location reminders for all goals. Configure each reminder in its goal. Delivery follows your iPhone settings."},
+  "About": {"zh-Hant": "關於", "ja": "このアプリについて", "en": "About"},
+  "Goalooker - 過路客": {"zh-Hant": "Goalooker - 過路客", "ja": "Goalooker", "en": "Goalooker"},
+  "Small daily steps leave a visible trace. Explore your own orbit, one record at a time.": {"zh-Hant": "每天的一小步，留下看得見的軌跡。用每一次記錄，探索自己的軌道。", "ja": "日々の小さな一歩が、見える軌跡になります。一つずつ記録して、自分の軌道を探索しましょう。", "en": "Small daily steps leave a visible trace. Explore your own orbit, one record at a time."}
+}
