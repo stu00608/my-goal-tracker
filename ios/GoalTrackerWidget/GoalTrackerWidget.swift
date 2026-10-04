@@ -132,6 +132,7 @@ struct Provider: AppIntentTimelineProvider {
 
 struct GoalWidgetView: View {
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.widgetRenderingMode) private var renderingMode
     let entry: ProgressEntry
     private var locale: Locale { Locale(identifier: entry.snapshot?.language ?? Locale.current.identifier) }
@@ -171,14 +172,53 @@ struct GoalWidgetView: View {
             let data = photo ? row.thumbnail : colorScheme == .dark ? images?.dark : images?.light
             if let data, let image = UIImage(data: data) {
                 if #available(iOS 18, *) {
-                    Image(uiImage: image).resizable().widgetAccentedRenderingMode(.desaturated).scaledToFill()
-                        .opacity(monochrome ? 0.22 : 1)
-                        .overlay { if photo { CardPhotoReadabilityGradient(monochrome: monochrome) } }
+                    if photo && renderingMode == .accented {
+                        GeometryReader { geometry in
+                            Image(uiImage: accentedPhoto(image, size: geometry.size))
+                                .renderingMode(.original).resizable().widgetAccentedRenderingMode(.fullColor)
+                                .scaledToFill().frame(width: geometry.size.width, height: geometry.size.height)
+                        }
+                    } else {
+                        Image(uiImage: image).resizable().widgetAccentedRenderingMode(.desaturated).scaledToFill()
+                            .opacity(monochrome ? 0.22 : 1)
+                            .overlay { if photo { CardPhotoReadabilityGradient(monochrome: monochrome) } }
+                    }
                 } else {
                     Image(uiImage: image).resizable().scaledToFill()
                         .overlay { if photo { CardPhotoReadabilityGradient(monochrome: monochrome) } }
                 }
             } else { TrackerCardBackdrop(row: row, text: text, now: entry.date, monochrome: monochrome).opacity(monochrome ? 0.45 : 1) }
+        }
+    }
+
+    /// Accented mode tints SwiftUI gradients white and maps desaturated luminance to alpha.
+    /// Flatten the crop and dark gradient into a display-only image so white labels stay readable.
+    private func accentedPhoto(_ image: UIImage, size: CGSize) -> UIImage {
+        guard size.width > 0, size.height > 0, image.size.width > 0, image.size.height > 0 else { return image }
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 320 / max(size.width, size.height)
+        format.opaque = true
+        format.preferredRange = .standard
+        return UIGraphicsImageRenderer(size: size, format: format).image { renderer in
+            let context = renderer.cgContext
+            let bounds = CGRect(origin: .zero, size: size)
+            let scale = max(size.width / image.size.width, size.height / image.size.height)
+            let cropSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+            image.draw(in: CGRect(x: (size.width - cropSize.width) / 2, y: (size.height - cropSize.height) / 2,
+                                  width: cropSize.width, height: cropSize.height))
+            // Preserve the photo's luminance without introducing color into tinted or clear modes.
+            context.setBlendMode(.saturation)
+            context.setFillColor(UIColor.black.cgColor)
+            context.fill(bounds)
+            context.setBlendMode(.normal)
+            let colors = [UIColor.black.withAlphaComponent(0).cgColor,
+                          UIColor.black.withAlphaComponent(0.1).cgColor,
+                          UIColor.black.withAlphaComponent(contrast == .increased ? 0.88 : 0.7).cgColor,
+                          UIColor.black.withAlphaComponent(contrast == .increased ? 0.94 : 0.84).cgColor]
+            if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors as CFArray,
+                                         locations: [0, 0.35, 0.6, 1]) {
+                context.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: 0, y: size.height), options: [])
+            }
         }
     }
 }
