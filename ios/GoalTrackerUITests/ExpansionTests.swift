@@ -87,4 +87,67 @@ nonisolated final class ExpansionTests: XCTestCase {
         screenshot(app, "Satisfied place gate saves with no extra success prompt")
     }
 
+    @MainActor func testTrackerMetadataPhotoBoundsAndProgress() {
+        continueAfterFailure = false
+        let app = launch()
+        app.tabBars.buttons.element(boundBy: 1).tap()
+        button(app, prefix: "tracker.", text: "SCORE").tap()
+        XCTAssertTrue(app.staticTexts["tracker.description"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["tracker.website"].exists)
+        let photo = app.buttons["tracker.photo.0"]
+        XCTAssertTrue(photo.waitForExistence(timeout: 10)); photo.tap()
+        XCTAssertTrue(app.buttons["photo.close"].waitForExistence(timeout: 10))
+        screenshot(app, "Tracker-owned photo opens full screen")
+        app.buttons["photo.close"].tap()
+        let view = app.segmentedControls["snapshot.view"]
+        for _ in 0..<8 { if view.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(view.waitForExistence(timeout: 10)); view.buttons["Goal progress"].tap()
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "snapshot.progress").firstMatch.waitForExistence(timeout: 10))
+        screenshot(app, "Signed numeric goal progress ring")
+        app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
+        let lower = app.textFields["tracker.axisLower"], upper = app.textFields["tracker.axisUpper"]
+        for _ in 0..<12 { if lower.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(lower.waitForExistence(timeout: 10)); XCTAssertEqual(lower.value as? String, "0")
+        lower.tap(); lower.typeText(XCUIKeyboardKey.delete.rawValue + "10")
+        app.buttons["tracker.keyboard.done"].tap()
+        upper.tap(); upper.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 2) + "30")
+        app.buttons["tracker.keyboard.done"].tap()
+        screenshot(app, "Optional chart bounds grouped with explanation")
+        app.buttons["tracker.save"].tap()
+        XCTAssertTrue(app.buttons["tracker.menu"].waitForExistence(timeout: 10))
+        app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
+        for _ in 0..<12 { if lower.isHittable { break }; app.swipeUp() }
+        XCTAssertEqual(lower.value as? String, "10"); XCTAssertEqual(upper.value as? String, "30")
+        app.buttons["Cancel"].tap()
+    }
+    @MainActor func testLocationConditionEditorAndAllCombinationPersist() {
+        continueAfterFailure = false
+        let app = launch()
+        app.tabBars.buttons.element(boundBy: 1).tap()
+        let office = button(app, prefix: "tracker.", text: "OFFICE")
+        for _ in 0..<8 { if office.isHittable { break }; app.swipeUp() }
+        office.tap(); app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
+        let condition = button(app, prefix: "tracker.condition.", text: "Office A")
+        for _ in 0..<12 { if condition.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(condition.waitForExistence(timeout: 10)); condition.tap()
+        let map = app.descendants(matching: .any).matching(identifier: "condition.map").firstMatch
+        XCTAssertTrue(map.waitForExistence(timeout: 10))
+        screenshot(app, "Chosen searchable place editor with fixed boundary")
+        let relation = app.segmentedControls["condition.relation"]
+        for _ in 0..<6 { if relation.isHittable { break }; app.swipeUp() }
+        relation.buttons["Outside"].tap()
+        app.buttons["condition.confirm"].tap()
+        let combination = app.buttons["tracker.conditions.combination"]
+        XCTAssertTrue(combination.waitForExistence(timeout: 10)); combination.tap()
+        app.buttons["All conditions"].tap()
+        screenshot(app, "Multiple location conditions and ALL combination")
+        app.buttons["tracker.save"].tap()
+        XCTAssertTrue(app.buttons["tracker.menu"].waitForExistence(timeout: 10))
+        app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
+        for _ in 0..<12 { if condition.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(condition.label.contains("Outside"))
+        XCTAssertTrue(combination.label.contains("All conditions"))
+        app.buttons["Cancel"].tap()
+    }
+
 }
