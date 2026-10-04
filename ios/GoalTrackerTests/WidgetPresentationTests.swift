@@ -222,6 +222,74 @@ import ImageIO
         #expect(decoded.plot?.map(\.value) == values && decoded.value == values[2])
     }
 
+    @Test func lineClippingKeepsExactBoundsWhenDrawingValuesCollapse() {
+        let values = ["12345678901234567890.1", "12345678901234567890.2", "12345678901234567890.3"]
+        let points = [CardPlotPoint(date: now, value: values[0]),
+                      CardPlotPoint(date: now.addingTimeInterval(20), value: values[2])]
+        let original = points
+        #expect(Set(values.compactMap(Numbers.plottedValue)).count == 1)
+        #expect(CardPlotScale.clippedSegments(points, lower: values[0], upper: values[1]) == [
+            CardPlotSegment(id: 0, start: points[0],
+                            end: CardPlotPoint(date: now.addingTimeInterval(10), value: values[1]))
+        ])
+        for value in values {
+            let constant = points.map { CardPlotPoint(date: $0.date, value: value) }
+            let segments = CardPlotScale.clippedSegments(constant, lower: values[0], upper: values[1])
+            #expect(segments.isEmpty == (value == values[2]))
+            if let segment = segments.first { #expect(segment.start == constant[0] && segment.end == constant[1]) }
+        }
+        #expect(points == original)
+    }
+
+    @Test func lineClippingPreservesCrossingsOpenSidesAndExcludedGaps() throws {
+        let points = [CardPlotPoint(date: now, value: "-5"),
+                      CardPlotPoint(date: now.addingTimeInterval(20), value: "15")]
+        let low = CardPlotPoint(date: now.addingTimeInterval(5), value: "0")
+        let high = CardPlotPoint(date: now.addingTimeInterval(15), value: "10")
+        #expect(CardPlotScale.clippedSegments(points, lower: "0", upper: "10") == [CardPlotSegment(id: 0, start: low, end: high)])
+        let falling = [CardPlotPoint(date: now, value: "15"), CardPlotPoint(date: points[1].date, value: "-5")]
+        #expect(CardPlotScale.clippedSegments(falling, lower: "0", upper: "10") == [
+            CardPlotSegment(id: 0, start: CardPlotPoint(date: low.date, value: "10"),
+                            end: CardPlotPoint(date: high.date, value: "0"))
+        ])
+        #expect(CardPlotScale.clippedSegments(points, lower: "0") == [CardPlotSegment(id: 0, start: low, end: points[1])])
+        #expect(CardPlotScale.clippedSegments(points, upper: "10") == [CardPlotSegment(id: 0, start: points[0], end: high)])
+        let unbounded = [CardPlotSegment(id: 0, start: points[0], end: points[1])]
+        #expect(CardPlotScale.clippedSegments(points) == unbounded)
+        #expect(CardPlotScale.clippedSegments(points, lower: "invalid", upper: "NaN") == unbounded)
+        for bounds in [("10", "0"), ("10", "10")] {
+            #expect(CardPlotScale.clippedSegments(points, lower: bounds.0, upper: bounds.1) == unbounded)
+        }
+        for values in [["5", "15", "15", "5"], ["5", "-5", "-5", "5"]] {
+            let gap = values.enumerated().map { CardPlotPoint(date: now.addingTimeInterval(Double($0.offset * 10)), value: $0.element) }
+            let boundary = values[1] == "15" ? "10" : "0"
+            #expect(CardPlotScale.clippedSegments(gap, lower: "0", upper: "10") == [
+                CardPlotSegment(id: 0, start: gap[0], end: CardPlotPoint(date: now.addingTimeInterval(5), value: boundary)),
+                CardPlotSegment(id: 2, start: CardPlotPoint(date: now.addingTimeInterval(25), value: boundary), end: gap[3])
+            ])
+        }
+        let thirds = [CardPlotPoint(date: now, value: "-1"), CardPlotPoint(date: now.addingTimeInterval(30), value: "2")]
+        let repeating = try #require(CardPlotScale.clippedSegments(thirds, lower: "0", upper: "1").first)
+        #expect(repeating.start.value == "0" && repeating.end.value == "1")
+        #expect(abs(repeating.start.date.timeIntervalSince(now) - 10) < 0.000001)
+        #expect(abs(repeating.end.date.timeIntervalSince(now) - 20) < 0.000001)
+    }
+
+    @Test func lineClippingHandlesDuplicateDatesAndDropsUnsafeAdjacentPairs() {
+        let vertical = [CardPlotPoint(date: now, value: "-5"), CardPlotPoint(date: now, value: "15")]
+        #expect(CardPlotScale.clippedSegments(vertical, lower: "0", upper: "10") == [
+            CardPlotSegment(id: 0, start: CardPlotPoint(date: now, value: "0"), end: CardPlotPoint(date: now, value: "10"))
+        ])
+        let invalid = [CardPlotPoint(date: now, value: "5"), CardPlotPoint(date: now, value: "invalid"),
+                       CardPlotPoint(date: now, value: "5")]
+        #expect(CardPlotScale.clippedSegments(invalid).isEmpty)
+        let overflow = [CardPlotPoint(date: Date(timeIntervalSinceReferenceDate: -Double.greatestFiniteMagnitude), value: "-5"),
+                        CardPlotPoint(date: Date(timeIntervalSinceReferenceDate: Double.greatestFiniteMagnitude), value: "15")]
+        #expect(CardPlotScale.clippedSegments(overflow, lower: "0", upper: "10").isEmpty)
+        #expect(CardPlotScale.clippedSegments([vertical[0]]).isEmpty)
+        #expect(CardPlotScale.clippedSegments([]).isEmpty)
+    }
+
     @Test func numericWidgetSelectsNextRuleAtExactBoundaryWithoutSharingLedger() throws {
         let effective = now.addingTimeInterval(-86400), next = now.addingTimeInterval(100)
         var t = Tracker(name: "Rule change", kind: .number, cardBackground: .progress)

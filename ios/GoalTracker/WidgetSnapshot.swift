@@ -13,6 +13,13 @@ nonisolated struct CardPlotPoint: Codable, Equatable {
     }
 }
 
+/// Each adjacent pair is a separate drawing series, never a ledger record or selectable sample.
+nonisolated struct CardPlotSegment: Identifiable, Equatable {
+    let id: Int
+    let start: CardPlotPoint
+    let end: CardPlotPoint
+}
+
 /// Separate series: these are drawing coordinates, never ledger records or selectable samples.
 nonisolated struct CardCarrySegment: Identifiable, Equatable {
     var id: String
@@ -93,16 +100,63 @@ nonisolated struct GoalProgress: Codable, Equatable {
 /// Overview charts keep context: at least 10% of the value magnitude and ten precision ticks.
 /// Extrema still fit with 25% range padding; near-flat growth is never enlarged corner-to-corner.
 nonisolated enum CardPlotScale {
+    private static func bound(_ text: String?) -> Decimal? {
+        guard let text, Numbers.isCanonical(text) else { return nil }
+        return Numbers.decimal(text)
+    }
+
     /// Only explicit decimal bounds exclude data; automatic drawing limits do not.
     static func excludes(_ value: String, lower: String?, upper: String?) -> Bool {
         guard let value = Numbers.decimal(value), !value.isNaN else { return false }
-        func bound(_ text: String?) -> Decimal? {
-            guard let text, Numbers.isCanonical(text) else { return nil }
-            return Numbers.decimal(text)
-        }
         let lower = bound(lower), upper = bound(upper)
         if let lower, let upper, lower >= upper { return false }
         return lower.map { value < $0 } == true || upper.map { value > $0 } == true
+    }
+
+    /// IDs are original pair indices; callers must draw each segment as its own series to retain gaps.
+    static func clippedSegments(_ points: [CardPlotPoint], lower: String? = nil,
+                                upper: String? = nil) -> [CardPlotSegment] {
+        var lower = bound(lower), upper = bound(upper)
+        if let low = lower, let high = upper, low >= high { lower = nil; upper = nil }
+        var result: [CardPlotSegment] = []
+        for (index, pair) in zip(points, points.dropFirst()).enumerated() {
+            let (start, end) = pair
+            guard let a = Numbers.decimal(start.value), !a.isNaN, start.plottedValue != nil,
+                  let b = Numbers.decimal(end.value), !b.isNaN, end.plottedValue != nil,
+                  start.date.timeIntervalSinceReferenceDate.isFinite,
+                  end.date.timeIntervalSinceReferenceDate.isFinite else { continue }
+            let duration = end.date.timeIntervalSince(start.date)
+            guard duration.isFinite else { continue }
+            if let lower, a < lower && b < lower { continue }
+            if let upper, a > upper && b > upper { continue }
+
+            func clipped(_ point: CardPlotPoint, value: Decimal) -> CardPlotPoint? {
+                let boundary: Decimal
+                if let lower, value < lower { boundary = lower }
+                else if let upper, value > upper { boundary = upper }
+                else { return point }
+                var first = a, last = b, limit = boundary
+                var numerator = Decimal(), denominator = Decimal(), ratio = Decimal()
+                guard NSDecimalSubtract(&numerator, &limit, &first, .plain) == .noError,
+                      NSDecimalSubtract(&denominator, &last, &first, .plain) == .noError,
+                      denominator != 0 else { return nil }
+                let error = NSDecimalDivide(&ratio, &numerator, &denominator, .plain)
+                // Repeating fractions can round for drawing dates; exact endpoint values do not.
+                guard error == .noError || error == .lossOfPrecision,
+                      !ratio.isNaN, ratio >= 0, ratio <= 1 else { return nil }
+                let fraction = NSDecimalNumber(decimal: ratio).doubleValue
+                let offset = duration * fraction
+                let timestamp = start.date.timeIntervalSinceReferenceDate + offset
+                guard fraction.isFinite, offset.isFinite, timestamp.isFinite else { return nil }
+                return CardPlotPoint(date: Date(timeIntervalSinceReferenceDate: timestamp),
+                                     value: NSDecimalNumber(decimal: boundary).stringValue)
+            }
+
+            guard let clippedStart = clipped(start, value: a),
+                  let clippedEnd = clipped(end, value: b) else { continue }
+            result.append(CardPlotSegment(id: index, start: clippedStart, end: clippedEnd))
+        }
+        return result
     }
 
     static func domain(points: [CardPlotPoint], precision: Int, completion: Bool = false,
