@@ -248,4 +248,41 @@ import Testing
         do { try await task.value; Issue.record("Canceled verification must throw") }
         catch { #expect(error is CancellationError) }
     }
+    @Test func unarchiveAndRestoreRejectAggregateCapacityBeforePersisting() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString, isDirectory: true)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("store")
+        let store = try AppStore(url: url)
+        var archived = Tracker(name: "Twenty places", kind: .daily)
+        archived.conditions = (0..<20).map { index in
+            PlaceCondition(name: "Place \(index)", location: RecordedLocation(latitude: Double(index) / 10_000, longitude: 0))
+        }
+        archived.remindWhenMet = true; archived.archived = true
+        var active = Tracker(name: "Another place", kind: .daily)
+        active.conditions = [PlaceCondition(name: "Other", location: RecordedLocation(latitude: 1, longitude: 1))]
+        active.remindWhenMet = true
+        try store.replace([archived, active])
+        let original = store.trackers
+        var unarchived = archived; unarchived.archived = false
+        let overCapacity = try Backup(trackers: [unarchived, active]).encoded()
+        let preference = L.defaults.object(forKey: "remindersEnabled")
+        defer {
+            if let preference { L.defaults.set(preference, forKey: "remindersEnabled") }
+            else { L.defaults.removeObject(forKey: "remindersEnabled") }
+        }
+        for enabled in [false, true] {
+            L.defaults.set(enabled, forKey: "remindersEnabled")
+            #expect(throws: (any Error).self) { try store.save(unarchived) }
+            #expect(throws: (any Error).self) { try store.restore(overCapacity) }
+            #expect(store.trackers == original)
+            #expect(try AppStore(url: url).trackers == original)
+        }
+        // Removing the other reminder leaves exactly 20 centers and permits reactivation.
+        active.remindWhenMet = false
+        try store.save(active); try store.save(unarchived)
+        #expect(try ConditionPlan.centers(store.trackers).count == 20)
+        #expect(store.trackers.first { $0.id == archived.id }?.archived == false)
+    }
+
 }
