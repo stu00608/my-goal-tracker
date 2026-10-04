@@ -123,6 +123,13 @@ nonisolated enum L {
                     office.conditionCombination = .any; office.gateSave = true
                     fixture = [score, cook, travel, fourth, office]
                     if args.contains("--goalooker-progress-fixture") { score.cardBackground = .progress; fixture[0] = score }
+                    if args.contains("--goalooker-orphan-fixture") {
+                        score.entries = []
+                        let date = now.addingTimeInterval(-7200)
+                        score.put(Entry(occurredAt: date, localDay: score.day(date), value: "18.5", note: "Anchor value"))
+                        score.put(Entry(occurredAt: now.addingTimeInterval(-3600), localDay: score.day(now), change: "0.25", note: "Derived change"))
+                        fixture[0] = score
+                    }
                 }
                 try loaded.replace(fixture)
             }

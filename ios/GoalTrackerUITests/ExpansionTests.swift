@@ -208,4 +208,34 @@ nonisolated final class ExpansionTests: XCTestCase {
         XCTAssertTrue(app.buttons["condition.confirm"].isEnabled)
     }
 
+    @MainActor func testDeletingAnchorRequiresConfirmationAndCancellationPreservesData() {
+        continueAfterFailure = false
+        let app = launch(extra: ["--goalooker-orphan-fixture"])
+        app.tabBars.buttons.element(boundBy: 1).tap()
+        button(app, prefix: "tracker.", text: "SCORE").tap()
+        let anchor = button(app, prefix: "entry.", text: "Anchor value")
+        for _ in 0..<12 { if anchor.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(anchor.waitForExistence(timeout: 10)); anchor.tap()
+        let delete = app.buttons["entry.delete"]
+        for _ in 0..<8 { if delete.isHittable { break }; app.swipeUp() }
+        delete.tap(); app.buttons["Delete record"].tap()
+        XCTAssertTrue(app.alerts["Keep later change records?"].waitForExistence(timeout: 10))
+        screenshot(app, "Anchor removal has explicit conversion proposal")
+        app.alerts.buttons["Cancel"].tap()
+        app.buttons["entry.cancel"].tap()
+        XCTAssertTrue(anchor.waitForExistence(timeout: 10), "Canceling conversion cannot delete the baseline")
+        anchor.tap()
+        for _ in 0..<8 { if delete.isHittable { break }; app.swipeUp() }
+        delete.tap(); app.buttons["Delete record"].tap()
+        app.alerts.buttons["Convert first change to a value"].tap()
+        XCTAssertTrue(anchor.waitForNonExistence(timeout: 10))
+        let retained = button(app, prefix: "entry.", text: "Derived change")
+        XCTAssertTrue(retained.waitForExistence(timeout: 10)); retained.tap()
+        let display = app.descendants(matching: .any).matching(identifier: "entry.value.scrubber").firstMatch
+        XCTAssertTrue(display.waitForExistence(timeout: 10)); display.tap()
+        XCTAssertEqual(app.textFields["entry.value"].value as? String, "18.75")
+        screenshot(app, "Explicit conversion retains the previous derived value")
+        app.buttons["entry.cancel"].tap()
+    }
+
 }
