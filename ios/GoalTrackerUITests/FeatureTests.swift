@@ -1,9 +1,14 @@
 import XCTest
 
 nonisolated final class FeatureTests: XCTestCase {
-    @MainActor func app(language: String = "en", appearance: String = "light", large: Bool = false) -> XCUIApplication {
+    @MainActor func app(language: String = "en", appearance: String = "light", large: Bool = false, reset: Bool = true, fixedLayout: Bool = true) -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["--uitesting", "--reset-test-store", "--feature-test-fixture", "-language", language, "-appearance", appearance, "-homeLayout", "grid"]
+        app.launchArguments = ["--uitesting", "--reset-test-store", "--feature-test-fixture", "-language", language, "-appearance", appearance, "-homeLayout", "grid", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        if !reset { app.launchArguments.removeAll { $0 == "--reset-test-store" } }
+        // Foundation's argument domain overrides runtime preference changes.
+        if !fixedLayout, let index = app.launchArguments.firstIndex(of: "-homeLayout") {
+            app.launchArguments.removeSubrange(index...index + 1)
+        }
         if large { app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] }
         app.launch(); return app
     }
@@ -44,7 +49,7 @@ nonisolated final class FeatureTests: XCTestCase {
         image.doubleTap()
         XCTAssertNotEqual(image.value as? String, "100%")
         attach(app, "Zoomed photo")
-        app.buttons["Next photo"].tap()
+        app.buttons["photo.next"].tap()
         app.buttons["photo.close"].tap()
         XCTAssertTrue(app.buttons["entry.save"].waitForExistence(timeout: 10))
         app.buttons["Cancel"].tap()
@@ -67,12 +72,22 @@ nonisolated final class FeatureTests: XCTestCase {
         app.buttons[first].tap()
         XCTAssertTrue(app.buttons["entry.save"].waitForExistence(timeout: 10))
         app.buttons["Cancel"].tap()
+        for (label, id) in [("Bar chart", "completion.chart"), ("Progress bar", "completion.progress")] {
+            for _ in 0..<4 { if app.descendants(matching: .any).matching(identifier: "completion.view").firstMatch.isHittable { break }; app.swipeDown() }
+            app.descendants(matching: .any).matching(identifier: "completion.view").firstMatch.tap(); app.buttons[label].tap()
+            let presentation = app.descendants(matching: .any).matching(identifier: id).firstMatch
+            XCTAssertTrue(presentation.waitForExistence(timeout: 10))
+            if id == "completion.chart" { XCTAssertTrue(app.staticTexts["Target"].exists) }
+            else { XCTAssertEqual(presentation.value as? String, "1 / 2") }
+            attach(app, label)
+        }
         app.navigationBars["COOK"].buttons["BackButton"].tap()
         element(app, prefix: "tracker.", name: "EMPTY").tap()
-        XCTAssertTrue(app.otherElements["snapshot.chart"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "snapshot.chart").firstMatch.waitForExistence(timeout: 10))
         for label in ["30 days", "90 days", "All", "Custom"] {
-            app.segmentedControls["snapshot.period"].buttons[label].tap()
-            XCTAssertTrue(app.otherElements["snapshot.chart"].exists)
+            app.descendants(matching: .any).matching(identifier: "snapshot.period").firstMatch.tap()
+            app.buttons[label].tap()
+            XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "snapshot.chart").firstMatch.exists)
         }
         XCTAssertTrue(app.datePickers["snapshot.custom.start"].exists)
         XCTAssertTrue(app.datePickers["snapshot.custom.end"].exists)
@@ -87,7 +102,78 @@ nonisolated final class FeatureTests: XCTestCase {
             element(app, prefix: "card.", name: "SCORE").tap()
             XCTAssertTrue(app.buttons["entry.save"].waitForExistence(timeout: 10))
             attach(app, "Record editor " + language)
+            app.buttons["entry.cancel"].tap()
+            app.tabBars.buttons.element(boundBy: 1).tap()
+            element(app, prefix: "tracker.", name: "COOK").tap()
+            XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "completion.view").firstMatch.waitForExistence(timeout: 10))
+            attach(app, "Completion calendar " + language)
             app.terminate()
         }
     }
+    @MainActor func testRecordedMapOpensEntry() {
+        continueAfterFailure = false
+        let app = app()
+        app.tabBars.buttons["Goals"].tap()
+        element(app, prefix: "tracker.", name: "TRAVEL").tap()
+        let pin = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "location.")).firstMatch
+        for _ in 0..<6 { if pin.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(pin.waitForExistence(timeout: 10))
+        attach(app, "Recorded location map")
+        pin.tap()
+        XCTAssertTrue(app.textFields["entry.value"].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.textFields["entry.value"].value as? String, "1")
+        XCTAssertEqual(app.switches["entry.location"].value as? String, "1")
+        app.buttons["entry.cancel"].tap()
+    }
+
+    @MainActor func testGridReorderPersistsAndLayoutSwitches() {
+        continueAfterFailure = false
+        let app = app()
+        let cook = element(app, prefix: "card.", name: "COOK")
+        let score = element(app, prefix: "card.", name: "SCORE")
+        XCTAssertTrue(cook.waitForExistence(timeout: 10))
+        let id = String(cook.identifier.dropFirst("card.".count))
+        app.buttons["home.edit"].tap()
+        app.buttons["card.moveEarlier." + id].tap()
+        XCTAssertLessThan(cook.frame.minX, score.frame.minX)
+        attach(app, "Grid reordered in edit mode")
+        app.buttons["home.edit"].tap()
+        app.terminate()
+        let reopened = self.app(reset: false, fixedLayout: false)
+        let first = element(reopened, prefix: "card.", name: "COOK")
+        let second = element(reopened, prefix: "card.", name: "SCORE")
+        XCTAssertTrue(first.waitForExistence(timeout: 10))
+        XCTAssertLessThan(first.frame.minX, second.frame.minX)
+        second.press(forDuration: 1, thenDragTo: first)
+        XCTAssertLessThan(second.frame.minX, first.frame.minX)
+        attach(reopened, "Grid reordered by long press drag")
+        reopened.buttons["settings.open"].tap()
+        reopened.buttons["settings.homeLayout"].tap()
+        reopened.buttons["List"].tap()
+        reopened.buttons["settings.done"].tap()
+        XCTAssertTrue(element(reopened, prefix: "tracker.", name: "COOK").waitForExistence(timeout: 10))
+        attach(reopened, "Native list selected from settings")
+    }
+
+    @MainActor func testLocationDenialStillSavesRecord() {
+        continueAfterFailure = false
+        let app = app()
+        element(app, prefix: "card.", name: "SCORE").tap()
+        let value = app.textFields["entry.value"]
+        XCTAssertTrue(value.waitForExistence(timeout: 10)); value.tap(); value.typeText("20")
+        let toggle = app.switches["entry.location"]
+        for _ in 0..<5 { if toggle.isHittable { break }; app.swipeUp() }
+        toggle.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let deny = springboard.alerts.buttons.matching(NSPredicate(format: "label MATCHES[c] %@", "don.t allow|不允許|許可しない")).firstMatch
+        if deny.waitForExistence(timeout: 5) { deny.tap() }
+        let status = app.staticTexts["entry.location.status"]
+        XCTAssertTrue(status.waitForExistence(timeout: 10))
+        let denied = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", "denied"), object: status)
+        XCTAssertEqual(XCTWaiter.wait(for: [denied], timeout: 10), .completed)
+        attach(app, "Location denied without blocking save")
+        app.buttons["entry.save"].tap()
+        XCTAssertTrue(app.staticTexts["20.000"].waitForExistence(timeout: 10))
+    }
+
 }

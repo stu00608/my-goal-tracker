@@ -44,7 +44,8 @@ nonisolated final class FlowTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["18.500"].waitForExistence(timeout: 10))
         app.tabBars.buttons["Goals"].tap()
         button(app, "tracker.", "VOLFORCE").tap()
-        XCTAssertTrue(app.otherElements["snapshot.chart"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "snapshot.chart").firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "snapshot.point.")).firstMatch.waitForExistence(timeout: 10))
         screenshot(app, "Single snapshot detail")
         app.buttons["entry.add"].tap()
         type(app.textFields["entry.value"], "19.25")
@@ -70,7 +71,7 @@ nonisolated final class FlowTests: XCTestCase {
         XCTAssertTrue(reopened.staticTexts["1 / 2 · This week"].exists)
         reopened.tabBars.buttons["Goals"].tap()
         button(reopened, "tracker.", "VOLFORCE").tap()
-        XCTAssertTrue(reopened.otherElements["snapshot.chart"].waitForExistence(timeout: 10))
+        XCTAssertTrue(reopened.descendants(matching: .any).matching(identifier: "snapshot.chart").firstMatch.waitForExistence(timeout: 10))
         screenshot(reopened, "Snapshot detail")
     }
     @MainActor func testInvalidValueIsNotSaved() {

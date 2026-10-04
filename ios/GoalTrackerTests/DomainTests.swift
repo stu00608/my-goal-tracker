@@ -205,7 +205,7 @@ import ImageIO
         number.put(Entry(occurredAt: now, localDay: number.day(now), value: "18.1234567890123456789"))
         number.put(Entry(occurredAt: now.addingTimeInterval(-86400), localDay: "2024-03-09", value: "20"))
         var hidden = tracker(); hidden.archived = true; hidden.name = "Archived secret"
-        let snapshot = WidgetSnapshot([daily, number, hidden], language: "ja")
+        let snapshot = WidgetSnapshot([daily, number, hidden], language: "ja", now: now)
         let data = try JSONEncoder().encode(snapshot)
         let text = String(decoding: data, as: UTF8.self)
         #expect(!text.contains("private note") && !text.contains("private photo") && !text.contains("photos") && !text.contains("Archived secret"))
@@ -217,7 +217,7 @@ import ImageIO
         #expect(summary.rule(at: now)?.target == "2")
         #expect(summary.rule(at: date("2024-04-01T04:00:00Z"))?.target == "10")
         #expect(snapshot.nextRefresh(after: now) == date("2024-03-10T15:00:00Z"))
-        #expect(WidgetSnapshot([daily], language: "en").nextRefresh(after: now) == date("2024-03-11T04:00:00Z"))
+        #expect(WidgetSnapshot([daily], language: "en", now: now).nextRefresh(after: now) == date("2024-03-11T04:00:00Z"))
         #expect(summary.count(in: summary.interval(date("2024-03-11T04:00:00Z"), period: .weekly)) == 0)
         #expect(WidgetSnapshot([], language: "en").rows.isEmpty)
     }

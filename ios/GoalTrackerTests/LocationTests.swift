@@ -39,13 +39,15 @@ import UIKit
 
     @Test func malformedOrMissingGPSCannotBecomeALocation() throws {
         #expect(photoLocation(try gpsPhoto(latitude: 91)) == nil)
-        #expect(photoLocation(try gpsPhoto(longitude: 181)) == nil)
         // ImageIO's JPEG writer supplies missing hemisphere refs; use a genuinely GPS-free copy.
         #expect(photoLocation(try photoCopy(gpsPhoto())) == nil)
         #expect(photoLocation(try gpsPhoto(latitudeRef: "E")) == nil)
         var draft = RecordLocationDraft()
         draft.setFirstPhoto(RecordedLocation(latitude: .nan, longitude: 0))
         draft.setEnabled(true)
+        #expect(draft.location == nil && draft.needsCurrentLocation)
+        // iOS ImageIO normalizes an out-of-range longitude while writing JPEG.
+        draft.setFirstPhoto(RecordedLocation(latitude: 0, longitude: 181))
         #expect(draft.location == nil && draft.needsCurrentLocation)
     }
 

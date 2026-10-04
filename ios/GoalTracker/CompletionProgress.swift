@@ -35,6 +35,10 @@ import Charts
     private var barChart: some View {
         let periods = CompletionProgressData.history(for: tracker, now: now)
         let maximum = periods.map { max($0.count, $0.target ?? 0) }.max() ?? 0
+        let step = max(1, Int(ceil(Double(periods.count) / 4)))
+        let labels = periods.enumerated().compactMap { index, period in
+            index % step == 0 || index == periods.count - 1 ? period.interval.start : nil
+        }
         return Section(L.text("Completion history")) {
             Chart(periods) { period in
                 BarMark(x: .value(L.text("Period"), period.interval.start), y: .value(L.text("Recorded completions"), period.count))
@@ -53,16 +57,17 @@ import Charts
             .frame(height: 240)
             .chartYScale(domain: 0...max(maximum + 1, 1))
             .chartXAxis {
-                AxisMarks(values: periods.map { $0.interval.start }) { value in
+                AxisMarks(values: labels) { value in
                     AxisGridLine()
                     AxisTick()
                     AxisValueLabel {
                         if let date = value.as(Date.self) {
-                            Text(date, format: Date.FormatStyle(date: .numeric, time: .omitted, locale: L.locale, calendar: tracker.calendar, timeZone: tracker.calendar.timeZone))
+                            Text(date, format: Date.FormatStyle(date: .omitted, time: .omitted, locale: L.locale, calendar: tracker.calendar, timeZone: tracker.calendar.timeZone).month(.abbreviated).day())
                         }
                     }
                 }
             }
+            .accessibilityElement(children: .contain)
             .accessibilityLabel(L.text("Completion history"))
             .accessibilityIdentifier("completion.chart")
             .accessibilityChildren {

@@ -54,7 +54,6 @@ import UIKit
         }
         .environment(\.colorScheme, .dark)
         .tint(.white)
-        .accessibilityIdentifier("photo.viewer")
     }
 
     private func pageLabel(_ index: Int) -> String {

@@ -1,10 +1,13 @@
 import SwiftUI
 import Charts
+import MapKit
 
 struct RootView: View {
     @Environment(AppStore.self) private var store
+    @AppStorage("homeLayout") private var homeLayout = "grid"
     @State private var selected = 0
     @State private var todayNavigationID = UUID()
+    @State private var editMode = EditMode.inactive
     @State private var settings = false
     @State private var creating = false
     @State private var entryTracker: Tracker?
@@ -12,19 +15,23 @@ struct RootView: View {
         TimelineView(.everyMinute) { _ in screen(at: Date()) }
     }
     private func screen(at date: Date) -> some View {
-        @Bindable var store = store
-        return TabView(selection: $selected) {
+        TabView(selection: $selected) {
             NavigationStack { trackerList(today: true, at: date) }.id(todayNavigationID).tabItem { Label(L.text("Today"), systemImage: "checkmark.circle") }.tag(0)
             NavigationStack { trackerList(today: false, at: date) }.tabItem { Label(L.text("Goals"), systemImage: "chart.xyaxis.line") }.tag(1)
         }
+        .environment(\.editMode, $editMode)
         .task(id: store.trackers) {
             do { try await Reminders.sync(store.trackers) }
             catch is CancellationError { }
             catch { store.error = L.error(error) }
         }
         .onOpenURL { url in
-            guard url.scheme == "goaltracker", url.host == "today" else { return }
-            settings = false; creating = false; entryTracker = nil; selected = 0; todayNavigationID = UUID()
+            guard url.scheme == "goaltracker", url.host == "today" || url.host == "record" else { return }
+            settings = false; creating = false; entryTracker = nil; selected = 0; editMode = .inactive; todayNavigationID = UUID()
+            if url.host == "record", url.pathComponents.count == 2,
+               let id = UUID(uuidString: url.pathComponents[1]) {
+                entryTracker = store.trackers.first { $0.id == id && !$0.archived }
+            }
         }
         .sheet(isPresented: $settings) { SettingsView() }
         .sheet(isPresented: $creating) { TrackerEditor() }
@@ -34,64 +41,91 @@ struct RootView: View {
         } message: { Text(store.error ?? "") }
     }
     private func trackerList(today: Bool, at date: Date) -> some View {
-        List {
-            if store.trackers.filter({ !$0.archived }).isEmpty {
-                ContentUnavailableView {
-                    Label(L.text("Make room for progress"), systemImage: "leaf")
-                } description: { Text(L.text("Track a number or mark a day. Start with one thing that matters to you.")) }
-                actions: { Button(L.text("Create a tracker")) { creating = true }.accessibilityIdentifier("empty.create") }
-                .listRowBackground(Color.clear)
-            }
-            ForEach(store.trackers.filter { !$0.archived }) { tracker in
-                HStack(spacing: 14) {
-                    if today && tracker.kind == .daily {
-                        let done = tracker.entries.contains { $0.localDay == tracker.day(date) }
-                        Button {
-                            store.perform {
-                                var copy = store.trackers.first { $0.id == tracker.id } ?? tracker
-                                let now = Date()
-                                let day = copy.day(now)
-                                if copy.entries.contains(where: { $0.localDay == day }) {
-                                    if let entry = copy.entries.first(where: { $0.localDay == day }), !entry.note.isEmpty || !entry.photos.isEmpty {
-                                        entryTracker = copy; return
+        let active = store.trackers.filter { !$0.archived }
+        return Group {
+            if today && homeLayout != "list" && !active.isEmpty {
+                DashboardView(trackers: store.trackers, now: date, editing: editMode.isEditing,
+                              onRecord: { entryTracker = $0 }, onReorder: reorder)
+            } else {
+                List {
+                    if active.isEmpty {
+                        ContentUnavailableView {
+                            Label(L.text("Make room for progress"), systemImage: "leaf")
+                        } description: { Text(L.text("Track a number or mark a day. Start with one thing that matters to you.")) }
+                        actions: { Button(L.text("Create a tracker")) { creating = true }.accessibilityIdentifier("empty.create") }
+                        .listRowBackground(Color.clear)
+                    }
+                    ForEach(active) { tracker in
+                        HStack(spacing: 14) {
+                            if today && tracker.kind == .daily {
+                                let done = tracker.entries.contains { $0.localDay == tracker.day(date) }
+                                Button {
+                                    store.perform {
+                                        var copy = store.trackers.first { $0.id == tracker.id } ?? tracker
+                                        let now = Date(), day = copy.day(now)
+                                        if let entry = copy.entries.first(where: { $0.localDay == day }) {
+                                            if !entry.note.isEmpty || !entry.photos.isEmpty || entry.location != nil { entryTracker = copy; return }
+                                            copy.entries.removeAll { $0.localDay == day }
+                                        } else { copy.put(Entry(occurredAt: now, localDay: day)) }
+                                        try store.save(copy)
                                     }
-                                    copy.entries.removeAll { $0.localDay == day }
-                                }
-                                else { copy.put(Entry(occurredAt: now, localDay: day)) }
-                                try store.save(copy)
+                                } label: { Image(systemName: done ? "checkmark.circle.fill" : "circle").font(.title2).frame(minWidth: 44, minHeight: 44) }
+                                .buttonStyle(.borderless)
+                                .accessibilityLabel(L.text(done ? "Undo completion" : "Mark complete") + ": " + tracker.name)
+                                .accessibilityIdentifier("complete." + tracker.id.uuidString)
                             }
-                        } label: { Image(systemName: done ? "checkmark.circle.fill" : "circle").font(.title2).frame(minWidth: 44, minHeight: 44) }
-                        .buttonStyle(.borderless)
-                        .accessibilityLabel(L.text(done ? "Undo completion" : "Mark complete") + ": " + tracker.name)
-                        .accessibilityIdentifier("complete." + tracker.id.uuidString)
+                            if today {
+                                Button { entryTracker = tracker } label: {
+                                    TrackerSummary(tracker: tracker, now: date).frame(maxWidth: .infinity, alignment: .leading)
+                                }.buttonStyle(.borderless).accessibilityIdentifier("tracker." + tracker.id.uuidString)
+                                .contextMenu {
+                                    NavigationLink { TrackerDetail(id: tracker.id) } label: { Label(L.text("Details"), systemImage: "chart.xyaxis.line") }
+                                }
+                            } else {
+                                NavigationLink { TrackerDetail(id: tracker.id) } label: { TrackerSummary(tracker: tracker, now: date) }
+                                    .accessibilityIdentifier("tracker." + tracker.id.uuidString)
+                            }
+                            if today && tracker.kind == .number {
+                                Button { entryTracker = tracker } label: { Image(systemName: "plus.circle").font(.title2).frame(minWidth: 44, minHeight: 44) }
+                                    .buttonStyle(.borderless).accessibilityLabel(L.text("Add a snapshot") + ": " + tracker.name)
+                                    .accessibilityIdentifier("snapshot." + tracker.id.uuidString)
+                            }
+                        }.padding(.vertical, 6)
+                    }.onMove { indices, destination in
+                        store.perform {
+                            var reordered = active
+                            reordered.move(fromOffsets: indices, toOffset: destination)
+                            try store.replace(reordered + store.trackers.filter(\.archived))
+                        }
                     }
-                    NavigationLink { TrackerDetail(id: tracker.id) } label: { TrackerSummary(tracker: tracker, now: date) }
-                        .accessibilityIdentifier("tracker." + tracker.id.uuidString)
-                    if today && tracker.kind == .number {
-                        Button { entryTracker = tracker } label: { Image(systemName: "plus.circle").font(.title2).frame(minWidth: 44, minHeight: 44) }
-                            .buttonStyle(.borderless).accessibilityLabel(L.text("Add a snapshot") + ": " + tracker.name)
-                            .accessibilityIdentifier("snapshot." + tracker.id.uuidString)
-                    }
-                }.padding(.vertical, 6)
-            }.onMove { indices, destination in
-                store.perform {
-                    var active = store.trackers.filter { !$0.archived }
-                    active.move(fromOffsets: indices, toOffset: destination)
-                    try store.replace(active + store.trackers.filter(\.archived))
                 }
             }
         }
+        .environment(\.editMode, $editMode)
         .navigationTitle(L.text(today ? "Today" : "Goals"))
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button { settings = true } label: { Image(systemName: "gearshape") }
                     .accessibilityLabel(L.text("Settings")).accessibilityIdentifier("settings.open")
             }
-            if !today { ToolbarItem(placement: .topBarTrailing) { EditButton() } }
+            if !active.isEmpty { ToolbarItem(placement: .topBarTrailing) {
+                Button(L.text(editMode.isEditing ? "Done" : "Edit")) {
+                    withAnimation { editMode = editMode.isEditing ? .inactive : .active }
+                }.accessibilityIdentifier("home.edit")
+            } }
             ToolbarItem(placement: .topBarTrailing) {
                 Button { creating = true } label: { Image(systemName: "plus") }
                     .accessibilityLabel(L.text("Create a tracker")).accessibilityIdentifier("tracker.create")
             }
+        }
+    }
+    private func reorder(_ source: UUID, _ target: UUID) {
+        store.perform {
+            var active = store.trackers.filter { !$0.archived }
+            guard source != target, let from = active.firstIndex(where: { $0.id == source }),
+                  let to = active.firstIndex(where: { $0.id == target }) else { return }
+            let tracker = active.remove(at: from); active.insert(tracker, at: to)
+            try store.replace(active + store.trackers.filter(\.archived))
         }
     }
 }
@@ -109,12 +143,10 @@ struct TrackerSummary: View {
             } else if let rule = tracker.rule(at: now) {
                 Text("\(tracker.count(in: tracker.interval(now, period: rule.period))) / \(rule.target) · " + L.text(rule.period == .weekly ? "This week" : "This month"))
                     .foregroundStyle(.secondary).monospacedDigit().accessibilityIdentifier("progress." + tracker.id.uuidString)
-            } else { Text(L.text("Daily completion")).foregroundStyle(.secondary) }
+            } else { Text(L.text("Completion record")).foregroundStyle(.secondary) }
         }.padding(.vertical, 2)
     }
 }
-
-import MapKit
 
 @MainActor struct TrackerDetail: View {
     @Environment(AppStore.self) private var store
@@ -130,12 +162,14 @@ import MapKit
     @State private var deleteTracker = false
     private var tracker: Tracker? { store.trackers.first { $0.id == id } }
     var body: some View {
-        TimelineView(.everyMinute) { context in
+        TimelineView(.everyMinute) { _ in
+        let now = Date()
         Group {
             if let t = tracker {
                 List {
                     Section { TrackerSummary(tracker: t, now: Date()) }
-                    if t.kind == .number { numeric(t, now: context.date) } else { daily(t) }
+                    if t.kind == .number { numeric(t, now: now) }
+                    else { CompletionProgressView(tracker: t, now: now) { daily(t) } }
                     locations(t)
                     if !t.rules.isEmpty {
                         Section(L.text("Goal history")) {
@@ -176,7 +210,7 @@ import MapKit
                 .environment(\.calendar, t.calendar)
                 .onAppear {
                     guard !initializedRange else { return }
-                    customEnd = t.calendar.startOfDay(for: context.date)
+                    customEnd = t.calendar.startOfDay(for: now)
                     customStart = t.calendar.date(byAdding: .day, value: -89, to: customEnd) ?? customEnd
                     initializedRange = true
                 }
@@ -269,6 +303,7 @@ import MapKit
                 }
             }
         }
+        .accessibilityElement(children: .contain)
         .accessibilityLabel(L.text("Snapshot chart"))
         .accessibilityIdentifier("snapshot.chart")
         .accessibilityChildren {

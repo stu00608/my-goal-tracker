@@ -155,6 +155,7 @@ struct EntryEditor: View {
                             }
                         }
                     }
+                    if let error { Text(error).foregroundStyle(.red).accessibilityIdentifier("editor.error") }
                     DatePicker(L.text("Date"), selection: Binding(get: { date }, set: { date = $0; dateEdited = true }), in: ...Date(), displayedComponents: tracker.kind == .number ? [.date, .hourAndMinute] : [.date])
                         .environment(\.timeZone, tracker.calendar.timeZone).accessibilityIdentifier("entry.date")
                     TextField(L.text("Notes (optional)"), text: $note, axis: .vertical).lineLimit(3...8).accessibilityIdentifier("entry.note")
@@ -175,7 +176,7 @@ struct EntryEditor: View {
                             Button {
                                 photoPresentation = EditorPhotoPresentation(photos: photos, initialIndex: index)
                             } label: {
-                                Image(uiImage: image).resizable().scaledToFit()
+                                Image(uiImage: image).renderingMode(.original).resizable().scaledToFit()
                             }.buttonStyle(.plain).accessibilityLabel(L.text("Record photo"))
                                 .accessibilityIdentifier("entry.photo.\(index)")
                             Button(L.text("Remove photo"), role: .destructive) {
@@ -193,7 +194,6 @@ struct EntryEditor: View {
                     Text(L.text("Photos are copied into the app. Up to 10 per record, resized to 1600 pixels.")).font(.caption).foregroundStyle(.secondary)
                     if existing == nil { Text(L.text("New records use the first photo’s date when available. You can still change the date.")).font(.caption).foregroundStyle(.secondary) }
                 }
-                if let error { Section { Text(error).foregroundStyle(.red).accessibilityIdentifier("editor.error") } }
                 if let existing, tracker.entries.contains(where: { $0.id == existing.id }) {
                     Section { Button(L.text("Delete record"), role: .destructive) { deleting = true }.accessibilityIdentifier("entry.delete") }
                 }
@@ -201,7 +201,7 @@ struct EntryEditor: View {
             .navigationTitle(L.text(existing == nil ? "New record" : "Record details"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button(L.text("Cancel")) { stopRequests(); dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button(L.text("Cancel")) { stopRequests(); dismiss() }.accessibilityIdentifier("entry.cancel") }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(L.text("Save"), action: save).disabled(loading || note.count > 10000 || (tracker.kind == .number && numericInput.isEmpty)).accessibilityIdentifier("entry.save")
                 }

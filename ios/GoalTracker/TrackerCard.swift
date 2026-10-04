@@ -28,6 +28,9 @@ struct TrackerCardSurface<Backdrop: View>: View {
                 Text(progress).font((compact ? Font.subheadline : .title3).monospacedDigit())
                     .lineLimit(compact ? 1 : 2)
                     .accessibilityIdentifier("progress." + row.id.uuidString)
+                if compact, let completionPeriod {
+                    Text(completionPeriod).font(.caption2).foregroundStyle(.secondary).lineLimit(1)
+                }
                 if showGap, let gap {
                     Text(compact ? gap + " · " + text("Distance to target") : text("Distance to target") + ": " + gap)
                         .font(compact ? .caption2 : .caption).foregroundStyle(.secondary).lineLimit(compact ? 1 : 2)
@@ -57,6 +60,10 @@ struct TrackerCardSurface<Backdrop: View>: View {
         case .map: row.locations?.isEmpty == false ? "Recorded locations" : "No locations yet"
         }
     }
+    private var completionPeriod: String? {
+        guard row.kind == .daily, let rule = row.tracker.rule(at: now) else { return nil }
+        return text(rule.period == .monthly ? "This month" : "This week")
+    }
     private var gap: String? {
         guard row.kind == .number, let target = row.tracker.rule(at: now).flatMap({ Numbers.decimal($0.target) }),
               let value = row.value.flatMap(Numbers.decimal) else { return nil }
@@ -69,7 +76,8 @@ struct TrackerCardSurface<Backdrop: View>: View {
         }
         let t = row.tracker
         guard let rule = t.rule(at: now) else { return text("Completion record") }
-        return "\(t.count(in: t.interval(now, period: rule.period))) / \(rule.target) · " + text(rule.period == .monthly ? "This month" : "This week")
+        let count = "\(t.count(in: t.interval(now, period: rule.period))) / \(rule.target)"
+        return compact ? count : count + " · " + text(rule.period == .monthly ? "This month" : "This week")
     }
 }
 
@@ -95,13 +103,13 @@ struct TrackerCardBackdrop: View {
         case .photo:
             if let data = row.thumbnail, let image = UIImage(data: data) {
                 GeometryReader { geometry in
-                    Image(uiImage: image).resizable().scaledToFill().frame(width: geometry.size.width, height: geometry.size.height).clipped()
+                    Image(uiImage: image).renderingMode(.original).resizable().scaledToFill().frame(width: geometry.size.width, height: geometry.size.height).clipped()
                 }
             } else { empty("No photos yet", symbol: "photo") }
         case .map:
             if let mapImage {
                 GeometryReader { geometry in
-                    Image(uiImage: mapImage).resizable().scaledToFill().frame(width: geometry.size.width, height: geometry.size.height).clipped()
+                    Image(uiImage: mapImage).renderingMode(.original).resizable().scaledToFill().frame(width: geometry.size.width, height: geometry.size.height).clipped()
                 }
             } else { empty(row.locations?.isEmpty == false ? "Map preview unavailable" : "No locations yet", symbol: "map") }
         }

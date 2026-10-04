@@ -14,11 +14,13 @@ nonisolated struct ProgressEntry: TimelineEntry {
 nonisolated struct Provider: TimelineProvider {
     func placeholder(in context: Context) -> ProgressEntry { ProgressEntry(date: Date(), snapshot: nil) }
     func getSnapshot(in context: Context, completion: @escaping @Sendable (ProgressEntry) -> Void) {
-        Task { @MainActor in completion(await readWithMaps(limit: context.family == .systemSmall ? 1 : 3)) }
+        let limit = context.family == .systemSmall ? 1 : 3
+        Task { @MainActor in completion(await readWithMaps(limit: limit)) }
     }
     func getTimeline(in context: Context, completion: @escaping @Sendable (Timeline<ProgressEntry>) -> Void) {
+        let limit = context.family == .systemSmall ? 1 : 3
         Task { @MainActor in
-            let entry = await readWithMaps(limit: context.family == .systemSmall ? 1 : 3)
+            let entry = await readWithMaps(limit: limit)
             let next = entry.snapshot?.nextRefresh(after: entry.date) ?? entry.date.addingTimeInterval(3600)
             completion(Timeline(entries: [entry, ProgressEntry(date: next, snapshot: entry.snapshot, mapImages: entry.mapImages)], policy: .after(next)))
         }
