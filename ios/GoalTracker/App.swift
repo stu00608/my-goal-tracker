@@ -60,6 +60,8 @@ nonisolated enum L {
                 let photos = [UIColor.systemTeal, UIColor.systemOrange].map { color in
                     UIGraphicsImageRenderer(size: CGSize(width: 320, height: 240), format: format).image { context in
                         color.setFill(); context.fill(CGRect(x: 0, y: 0, width: 320, height: 240))
+                        UIColor.white.setStroke(); context.cgContext.setLineWidth(4)
+                        context.cgContext.strokeEllipse(in: CGRect(x: 100, y: 60, width: 120, height: 120))
                     }.jpegData(compressionQuality: 0.8)!
                 }
                 let now = Date()

@@ -23,10 +23,11 @@ nonisolated final class FeatureTests: XCTestCase {
         XCTAssertTrue(app.textFields["entry.value"].waitForExistence(timeout: 10))
         let location = app.switches["entry.location"]
         XCTAssertEqual(location.value as? String, "0")
-        app.segmentedControls["entry.inputMode"].buttons["Change amount"].tap()
+        app.buttons["entry.inputMode"].tap()
+        app.buttons["Change amount"].tap()
         let change = app.textFields["entry.change"]
         XCTAssertTrue(change.waitForExistence(timeout: 10)); change.tap(); change.typeText("-0.125")
-        XCTAssertTrue(app.staticTexts["entry.result"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "entry.result").firstMatch.waitForExistence(timeout: 10))
         attach(app, "Change amount preview")
         app.buttons["entry.save"].tap()
         XCTAssertTrue(app.staticTexts["18.375"].waitForExistence(timeout: 10))
@@ -38,7 +39,10 @@ nonisolated final class FeatureTests: XCTestCase {
         app.buttons["entry.photo.0"].tap()
         XCTAssertTrue(app.buttons["photo.close"].waitForExistence(timeout: 10))
         attach(app, "Full screen photo")
-        app.buttons["Zoom in"].tap()
+        let image = app.descendants(matching: .any).matching(identifier: "photo.page.0").firstMatch
+        XCTAssertTrue(image.waitForExistence(timeout: 10))
+        image.doubleTap()
+        XCTAssertNotEqual(image.value as? String, "100%")
         attach(app, "Zoomed photo")
         app.buttons["Next photo"].tap()
         app.buttons["photo.close"].tap()
