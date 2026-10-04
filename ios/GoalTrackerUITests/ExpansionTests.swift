@@ -55,4 +55,36 @@ nonisolated final class ExpansionTests: XCTestCase {
         screenshot(app, "Settings tab and disabled global reminders")
         XCTAssertFalse(app.staticTexts["Private by default. Stored on this iPhone. No account or server."].exists)
     }
+    @MainActor func testLocationGateFailurePreservesDraftAndListCannotBypassIt() {
+        continueAfterFailure = false
+        let app = launch(extra: ["--condition-gate=unmet", "-homeLayout", "list"])
+        let complete = button(app, prefix: "complete.", text: "OFFICE")
+        for _ in 0..<6 { if complete.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(complete.waitForExistence(timeout: 10)); complete.tap()
+        XCTAssertTrue(app.buttons["entry.save"].waitForExistence(timeout: 10), "Gated quick completion must open the editor")
+        let note = app.textFields["entry.note"]
+        for _ in 0..<6 { if note.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(note.waitForExistence(timeout: 10)); note.tap(); note.typeText("Office draft remains")
+        app.buttons["entry.save"].tap()
+        let error = app.staticTexts["editor.error"]
+        XCTAssertTrue(error.waitForExistence(timeout: 10)); XCTAssertTrue(error.isHittable)
+        XCTAssertTrue(error.label.contains("conditions"))
+        XCTAssertEqual(note.value as? String, "Office draft remains")
+        screenshot(app, "Unmet place gate preserves draft and visible inline notice")
+        app.buttons["entry.cancel"].tap()
+        XCTAssertTrue(complete.waitForExistence(timeout: 10))
+        XCTAssertTrue(complete.label.contains("Mark complete"), "Failed gate cannot silently create a completion")
+    }
+    @MainActor func testLocationGateSuccessRecordsSilently() {
+        continueAfterFailure = false
+        let app = launch(extra: ["--condition-gate=met", "-homeLayout", "list"])
+        let complete = button(app, prefix: "complete.", text: "OFFICE")
+        for _ in 0..<6 { if complete.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(complete.waitForExistence(timeout: 10)); complete.tap()
+        XCTAssertTrue(app.buttons["entry.save"].waitForExistence(timeout: 10)); app.buttons["entry.save"].tap()
+        XCTAssertTrue(complete.waitForExistence(timeout: 10)); XCTAssertTrue(complete.label.contains("Undo completion"))
+        XCTAssertFalse(app.staticTexts["editor.error"].exists); XCTAssertFalse(app.alerts.firstMatch.exists)
+        screenshot(app, "Satisfied place gate saves with no extra success prompt")
+    }
+
 }
