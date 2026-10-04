@@ -1,0 +1,327 @@
+{
+  "Description (optional)": {
+    "zh-Hant": "說明（選填）",
+    "ja": "説明（任意）",
+    "en": "Description (optional)"
+  },
+  "Website (optional)": {
+    "zh-Hant": "網站（選填）",
+    "ja": "ウェブサイト（任意）",
+    "en": "Website (optional)"
+  },
+  "Add a place before enabling location conditions.": {
+    "zh-Hant": "啟用位置條件前，請先加入地點。",
+    "ja": "位置条件を有効にする前に、場所を追加してください。",
+    "en": "Add a place before enabling location conditions."
+  },
+  "Add a place to require a location check or enable a condition reminder.": {
+    "zh-Hant": "加入地點後，可要求位置驗證或啟用條件提醒。",
+    "ja": "場所を追加すると、位置の確認や条件の通知を設定できます。",
+    "en": "Add a place to require a location check or enable a condition reminder."
+  },
+  "Add location condition": {
+    "zh-Hant": "加入位置條件",
+    "ja": "位置条件を追加",
+    "en": "Add location condition"
+  },
+  "All conditions": {
+    "zh-Hant": "所有條件",
+    "ja": "すべての条件",
+    "en": "All conditions"
+  },
+  "All reminders are off in Settings. Your tracker choices are kept.": {
+    "zh-Hant": "設定中已關閉所有提醒，各項目的提醒設定仍會保留。",
+    "ja": "設定ですべての通知がオフになっています。各項目の設定は保持されます。",
+    "en": "All reminders are off in Settings. Your tracker choices are kept."
+  },
+  "Any condition": {
+    "zh-Hant": "任一條件",
+    "ja": "いずれかの条件",
+    "en": "Any condition"
+  },
+  "Chart bounds change the view only. Original values and precision are kept.": {
+    "zh-Hant": "圖表界線只改變顯示，原始數值與精度都會保留。",
+    "ja": "グラフの範囲は表示だけを変更します。元の値と精度は保持されます。",
+    "en": "Chart bounds change the view only. Original values and precision are kept."
+  },
+  "Chart range": {
+    "zh-Hant": "圖表範圍",
+    "ja": "グラフの範囲",
+    "en": "Chart range"
+  },
+  "Choose a deadline today or later when changing a goal.": {
+    "zh-Hant": "變更目標時，請選擇今天或之後的期限。",
+    "ja": "目標を変更する場合は、今日以降の期限を選んでください。",
+    "en": "Choose a deadline today or later when changing a goal."
+  },
+  "Choose a valid place for every condition.": {
+    "zh-Hant": "請為每個條件選擇有效地點。",
+    "ja": "各条件に有効な場所を選んでください。",
+    "en": "Choose a valid place for every condition."
+  },
+  "Choose at least one weekday.": {
+    "zh-Hant": "請至少選擇一天。",
+    "ja": "曜日を少なくとも1つ選んでください。",
+    "en": "Choose at least one weekday."
+  },
+  "Combine conditions": {
+    "zh-Hant": "條件組合",
+    "ja": "条件の組み合わせ",
+    "en": "Combine conditions"
+  },
+  "Confirm place": {
+    "zh-Hant": "確認地點",
+    "ja": "場所を確定",
+    "en": "Confirm place"
+  },
+  "Could not configure location reminders. Open the app to try again.": {
+    "zh-Hant": "無法設定位置提醒，請開啟 App 再試一次。",
+    "ja": "位置の通知を設定できませんでした。アプリを開いて再度お試しください。",
+    "en": "Could not configure location reminders. Open the app to try again."
+  },
+  "Could not deliver the location reminder. Check notification settings.": {
+    "zh-Hant": "無法送出位置提醒，請檢查通知設定。",
+    "ja": "位置の通知を送信できませんでした。通知設定を確認してください。",
+    "en": "Could not deliver the location reminder. Check notification settings."
+  },
+  "Could not search places. Check your connection and try again.": {
+    "zh-Hant": "無法搜尋地點，請檢查網路連線後再試一次。",
+    "ja": "場所を検索できませんでした。接続を確認して再度お試しください。",
+    "en": "Could not search places. Check your connection and try again."
+  },
+  "Could not verify your location. Your draft was kept.": {
+    "zh-Hant": "無法驗證位置，草稿已保留。",
+    "ja": "位置を確認できませんでした。下書きは保持されています。",
+    "en": "Could not verify your location. Your draft was kept."
+  },
+  "Edit location condition": {
+    "zh-Hant": "編輯位置條件",
+    "ja": "位置条件を編集",
+    "en": "Edit location condition"
+  },
+  "Enter a complete http or https website address.": {
+    "zh-Hant": "請輸入完整的 http 或 https 網址。",
+    "ja": "http または https で始まる完全なウェブアドレスを入力してください。",
+    "en": "Enter a complete http or https website address."
+  },
+  "Finding place…": {
+    "zh-Hant": "正在尋找地點⋯",
+    "ja": "場所を検索中…",
+    "en": "Finding place…"
+  },
+  "Goal progress": {
+    "zh-Hant": "目標進度",
+    "ja": "目標の進捗",
+    "en": "Goal progress"
+  },
+  "Location Services are off. Enable them to verify your conditions.": {
+    "zh-Hant": "定位服務已關閉，請開啟以驗證條件。",
+    "ja": "位置情報サービスがオフです。条件を確認するにはオンにしてください。",
+    "en": "Location Services are off. Enable them to verify your conditions."
+  },
+  "Location access is denied. Enable it in iPhone Settings to verify your conditions.": {
+    "zh-Hant": "未允許位置存取，請在 iPhone 設定中開啟以驗證條件。",
+    "ja": "位置情報へのアクセスが許可されていません。条件を確認するには iPhone の設定で許可してください。",
+    "en": "Location access is denied. Enable it in iPhone Settings to verify your conditions."
+  },
+  "Location conditions": {
+    "zh-Hant": "位置條件",
+    "ja": "位置条件",
+    "en": "Location conditions"
+  },
+  "Location reminders are inactive while Precise Location is off.": {
+    "zh-Hant": "精確位置關閉時，位置提醒不會啟用。",
+    "ja": "正確な位置情報がオフの間は、位置の通知は無効です。",
+    "en": "Location reminders are inactive while Precise Location is off."
+  },
+  "Location reminders are inactive. Allow Always location access in iPhone Settings for background reminders.": {
+    "zh-Hant": "位置提醒尚未啟用，背景提醒需要在 iPhone 設定中允許「永遠」存取位置。",
+    "ja": "位置の通知は無効です。バックグラウンドで通知するには、iPhone の設定で位置情報を「常に」許可してください。",
+    "en": "Location reminders are inactive. Allow Always location access in iPhone Settings for background reminders."
+  },
+  "Location reminders need Always location access. They never create records automatically.": {
+    "zh-Hant": "位置提醒需要「永遠」存取位置，不會自動建立紀錄。",
+    "ja": "位置の通知には位置情報の「常に」の許可が必要です。記録が自動で作成されることはありません。",
+    "en": "Location reminders need Always location access. They never create records automatically."
+  },
+  "Location reminders support up to 20 different places. Remove a place or disable a location reminder.": {
+    "zh-Hant": "位置提醒最多支援 20 個不同地點，請移除地點或關閉部分位置提醒。",
+    "ja": "位置の通知は異なる場所を最大20か所まで設定できます。場所を削除するか、位置の通知をオフにしてください。",
+    "en": "Location reminders support up to 20 different places. Remove a place or disable a location reminder."
+  },
+  "Maximum (automatic if empty)": {
+    "zh-Hant": "最大值（留空則自動）",
+    "ja": "最大値（空欄なら自動）",
+    "en": "Maximum (automatic if empty)"
+  },
+  "Minimum (automatic if empty)": {
+    "zh-Hant": "最小值（留空則自動）",
+    "ja": "最小値（空欄なら自動）",
+    "en": "Minimum (automatic if empty)"
+  },
+  "New records and changes to a record’s number or date require a fresh location check. Notes and photos can still be edited.": {
+    "zh-Hant": "新增紀錄或變更紀錄數值、日期時，需要重新驗證位置；仍可編輯筆記與照片。",
+    "ja": "新しい記録や値・日付の変更には、その時点の位置確認が必要です。メモや写真は引き続き編集できます。",
+    "en": "New records and changes to a record’s number or date require a fresh location check. Notes and photos can still be edited."
+  },
+  "No places found. Try a more specific address.": {
+    "zh-Hant": "找不到地點，請嘗試更詳細的地址。",
+    "ja": "場所が見つかりませんでした。より詳しい住所でお試しください。",
+    "en": "No places found. Try a more specific address."
+  },
+  "Open iPhone Settings": {
+    "zh-Hant": "開啟 iPhone 設定",
+    "ja": "iPhone の設定を開く",
+    "en": "Open iPhone Settings"
+  },
+  "Place name": {
+    "zh-Hant": "地點名稱",
+    "ja": "場所の名前",
+    "en": "Place name"
+  },
+  "Precise Location is required to verify these 200 m conditions.": {
+    "zh-Hant": "驗證這些 200 公尺範圍的條件需要精確位置。",
+    "ja": "200 m の条件を確認するには、正確な位置情報が必要です。",
+    "en": "Precise Location is required to verify these 200 m conditions."
+  },
+  "Remind me when conditions are met": {
+    "zh-Hant": "條件符合時提醒我",
+    "ja": "条件を満たしたら通知",
+    "en": "Remind me when conditions are met"
+  },
+  "Remove condition": {
+    "zh-Hant": "移除條件",
+    "ja": "条件を削除",
+    "en": "Remove condition"
+  },
+  "Remove this location condition?": {
+    "zh-Hant": "要移除這個位置條件嗎？",
+    "ja": "この位置条件を削除しますか？",
+    "en": "Remove this location condition?"
+  },
+  "Require conditions to save a record": {
+    "zh-Hant": "儲存紀錄時須符合條件",
+    "ja": "記録の保存時に条件を確認",
+    "en": "Require conditions to save a record"
+  },
+  "Search and choose a result to place the pin.": {
+    "zh-Hant": "搜尋並選擇結果以放置標記。",
+    "ja": "検索結果を選んでピンを配置してください。",
+    "en": "Search and choose a result to place the pin."
+  },
+  "Search for a place or address": {
+    "zh-Hant": "搜尋地點或地址",
+    "ja": "場所または住所を検索",
+    "en": "Search for a place or address"
+  },
+  "Selected place": {
+    "zh-Hant": "所選地點",
+    "ja": "選択した場所",
+    "en": "Selected place"
+  },
+  "Selected place and 200 m boundary": {
+    "zh-Hant": "所選地點及 200 公尺範圍",
+    "ja": "選択した場所と200 m の境界",
+    "en": "Selected place and 200 m boundary"
+  },
+  "Tap the map to move the pin. Use search to select a place with VoiceOver.": {
+    "zh-Hant": "點按地圖可移動標記；使用 VoiceOver 時，請透過搜尋選擇地點。",
+    "ja": "地図をタップするとピンを移動できます。VoiceOver では検索で場所を選べます。",
+    "en": "Tap the map to move the pin. Use search to select a place with VoiceOver."
+  },
+  "The chart minimum must be less than the maximum.": {
+    "zh-Hant": "圖表最小值必須小於最大值。",
+    "ja": "グラフの最小値は最大値より小さくしてください。",
+    "en": "The chart minimum must be less than the maximum."
+  },
+  "The description can contain up to 10,000 characters.": {
+    "zh-Hant": "說明最多可輸入 10,000 個字元。",
+    "ja": "説明は10,000文字以内で入力してください。",
+    "en": "The description can contain up to 10,000 characters."
+  },
+  "The fixed boundary is 200 m. Location accuracy can affect verification.": {
+    "zh-Hant": "固定範圍為 200 公尺，定位精確度可能影響驗證結果。",
+    "ja": "範囲は200 m に固定されています。位置情報の精度が確認結果に影響する場合があります。",
+    "en": "The fixed boundary is 200 m. Location accuracy can affect verification."
+  },
+  "This photo is removed only when you save the tracker.": {
+    "zh-Hant": "這張照片只會在儲存項目時移除。",
+    "ja": "この写真は項目を保存したときに削除されます。",
+    "en": "This photo is removed only when you save the tracker."
+  },
+  "Time and weekdays": {
+    "zh-Hant": "時間與星期",
+    "ja": "時刻と曜日",
+    "en": "Time and weekdays"
+  },
+  "Tracker photo": {
+    "zh-Hant": "項目照片",
+    "ja": "項目の写真",
+    "en": "Tracker photo"
+  },
+  "Tracker photo %lld": {
+    "zh-Hant": "項目照片 %lld",
+    "ja": "項目の写真 %lld",
+    "en": "Tracker photo %lld"
+  },
+  "Your location conditions are met. A moment to record?": {
+    "zh-Hant": "位置條件已符合，要記錄一下嗎？",
+    "ja": "位置条件を満たしました。記録しませんか？",
+    "en": "Your location conditions are met. A moment to record?"
+  },
+  "Your location does not meet the conditions. Your draft was kept.": {
+    "zh-Hant": "目前位置不符合條件，草稿已保留。",
+    "ja": "現在の位置は条件を満たしていません。下書きは保持されています。",
+    "en": "Your location does not meet the conditions. Your draft was kept."
+  },
+  "Your location is too uncertain or stale. Try again in a moment. Your draft was kept.": {
+    "zh-Hant": "定位尚不夠精確或資料過舊，請稍後再試；草稿已保留。",
+    "ja": "位置情報が不確か、または古くなっています。少し待って再度お試しください。下書きは保持されています。",
+    "en": "Your location is too uncertain or stale. Try again in a moment. Your draft was kept."
+  },
+  "Your tracker was saved, but reminders could not be updated. Open the app to try again.": {
+    "zh-Hant": "項目已儲存，但無法更新提醒，請開啟 App 再試一次。",
+    "ja": "項目は保存されましたが、通知を更新できませんでした。アプリを開いて再度お試しください。",
+    "en": "Your tracker was saved, but reminders could not be updated. Open the app to try again."
+  },
+  "Inside": {
+    "zh-Hant": "範圍內",
+    "ja": "範囲内",
+    "en": "Inside"
+  },
+  "Outside": {
+    "zh-Hant": "範圍外",
+    "ja": "範囲外",
+    "en": "Outside"
+  },
+  "Inside 200 m": {
+    "zh-Hant": "200 公尺範圍內",
+    "ja": "200 m の範囲内",
+    "en": "Inside 200 m"
+  },
+  "Outside 200 m": {
+    "zh-Hant": "200 公尺範圍外",
+    "ja": "200 m の範囲外",
+    "en": "Outside 200 m"
+  },
+  "Condition": {
+    "zh-Hant": "條件",
+    "ja": "条件",
+    "en": "Condition"
+  },
+  "Place": {
+    "zh-Hant": "地點",
+    "ja": "場所",
+    "en": "Place"
+  },
+  "Off": {
+    "zh-Hant": "關閉",
+    "ja": "オフ",
+    "en": "Off"
+  },
+  "On": {
+    "zh-Hant": "開啟",
+    "ja": "オン",
+    "en": "On"
+  }
+}
