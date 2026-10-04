@@ -30,7 +30,8 @@ python3 scripts/dev.py screenshot --device <simulator-udid>
 ```
 
 核心 `GoalTracker` 的 Simulator build 無簽名；`GoalTrackerWithWidget` 由腳本使用 ad-hoc 簽名，
-讓系統能載入 Widget 的 AppIntent 設定與共用容器。不要另外覆蓋 `CODE_SIGNING_ALLOWED=NO`。
+讓系統能載入 Widget 與共用容器。ad-hoc build/test 不代表原生目標設定已驗收；
+設定還原的簽署限制與本機驗證方式見下節。不要另外覆蓋 `CODE_SIGNING_ALLOWED=NO`。
 `test` 執行 shared scheme 的 tests，
 保存 `.xcresult` 與 summary，拒絕空測試、失敗、跳過或不完整的結果。
 `run` build 後 boot、install、launch，讀取 app 的實際 bundle ID；這只證明啟動。
@@ -81,6 +82,38 @@ Bridge 使用 private Simulator APIs，Xcode 更新後先重驗 attach／tap／A
 Simulator 的 macOS accessibility tree 未必暴露 iOS 控制項；可靠、可重跑的驗收仍使用 XCTest。
 `simctl` 的截圖／啟動不能代替點擊與資料斷言；它沒有通用的 tap/type verbs。
 缺少完整 Xcode/runtime 時，Orca 列出空 devices 不能算測試通過。
+
+## Simulator 的 Widget 目標設定驗證
+
+本機 Xcode 26.6 / iOS 26.5 實測：ad-hoc 版本的原生選單能保存目標，
+但 App Intents runtime 回報 `TrackerChoice is not a registered AppEntity identifier`，
+timeline 收到預設目標。保持同一份程式、資料及 Widget instance，改用本機
+Apple Development 憑證重新簽署後，query 與 timeline 正確收到所選目標。
+這是本次環境的可重現結果，不應據此改動 EntityQuery、替換 UUID 或宣稱所有系統都有相同限制。
+
+有本機開發憑證時，在 build 後、install 前執行以下步驟；只重簽本 worktree 的產物，
+不把憑證、Team ID 或私人設定放進 Git。若憑證不唯一，命令會停止，不能猜選。
+
+```sh
+python3 scripts/dev.py build --scheme GoalTrackerWithWidget
+python3 - <<'PY'
+import re, subprocess
+from pathlib import Path
+output = subprocess.run(['security', 'find-identity', '-v', '-p', 'codesigning'], capture_output=True, text=True, check=True).stdout
+identities = [key for key, name in re.findall(r'\) ([0-9A-F]{40}) "([^"]+)"', output) if 'Apple Development' in name]
+if len(identities) != 1:
+    raise SystemExit('Expected exactly one Apple Development identity.')
+app = Path('.build/ios/Build/Products/Debug-iphonesimulator/GoalTrackerWithWidget.app')
+for bundle in (app / 'PlugIns/GoalTrackerWidget.appex', app):
+    for product in (*bundle.glob('*.dylib'), bundle):
+        subprocess.run(['codesign', '--force', '--sign', identities[0], '--timestamp=none', '--preserve-metadata=identifier,entitlements,flags', str(product)], check=True, capture_output=True)
+PY
+xcrun simctl install <simulator-udid> .build/ios/Build/Products/Debug-iphonesimulator/GoalTrackerWithWidget.app
+```
+
+接著直接啟動已安裝版本，再操作原生 Widget 設定，核對所選目標、主畫面內容及點擊後的紀錄頁。
+不要接著執行 `dev.py run`，它會重新 build 並覆蓋簽署；也不要安裝不含 extension 的 `GoalTracker.app`。
+CI 沒有私人開發憑證，仍執行 ad-hoc 共用摘要及 URL 測試；其成功不能代替原生設定還原檢查。
 
 ## 真機與免費簽署
 
