@@ -35,7 +35,10 @@ nonisolated final class FlowTests: XCTestCase {
         type(app, app.textFields["tracker.name"], name)
         app.textFields["tracker.name"].typeText("\n")
         if daily {
-            app.buttons["tracker.kind"].tap(); app.buttons["Completion record"].tap()
+            let kind = app.buttons["tracker.kind"]
+            for _ in 0..<10 { if kind.exists && kind.isHittable { break }; app.swipeUp() }
+            XCTAssertTrue(kind.waitForExistence(timeout: 10)); kind.tap()
+            app.buttons["Completion record"].tap()
             let toggle = app.switches["goal.enabled"]
             for _ in 0..<6 {
                 if toggle.isHittable { break }
@@ -125,7 +128,7 @@ nonisolated final class FlowTests: XCTestCase {
             app.buttons["tracker.save"].tap()
             XCTAssertTrue(button(app, "tracker.", name).waitForExistence(timeout: 10))
             screenshot(app, "Today " + language)
-            app.buttons["settings.open"].tap()
+            app.tabBars.buttons.element(boundBy: 2).tap()
             for _ in 0..<8 { if app.buttons["backup.export"].exists { break }; app.swipeUp() }
             XCTAssertTrue(app.buttons["backup.export"].waitForExistence(timeout: 10))
             screenshot(app, "Settings " + language)

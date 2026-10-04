@@ -2,6 +2,7 @@ import Testing
 import Foundation
 import UIKit
 import ImageIO
+import SwiftData
 @testable import GoalTracker
 
 @MainActor struct DomainTests {
@@ -249,6 +250,190 @@ import ImageIO
         #expect(store.trackers == [t])
         #expect(!RecordedLocation(latitude: .nan, longitude: 0).isValid)
         #expect(!RecordedLocation(latitude: 0, longitude: .infinity).isValid)
+    }
+
+    func numericLedger() -> Tracker {
+        var t = tracker(.number)
+        let start = date("2024-06-01T00:00:00Z")
+        t.entries = [Entry(occurredAt: start, localDay: t.day(start), value: "100.1234567890123456789"),
+                     Entry(occurredAt: start.addingTimeInterval(86400), localDay: "2024-06-02", change: "-5"),
+                     Entry(occurredAt: start.addingTimeInterval(172800), localDay: "2024-06-03", change: "2")]
+        return t
+    }
+    @Test func versionTwoRoundTripKeepsRawEventsAndCSVDerivedValuesWithInputProvenance() throws {
+        let t = numericLedger()
+        let backup = Backup(trackers: [t])
+        #expect(backup.version == 2)
+        let loaded = try Backup.decode(backup.encoded())
+        #expect(loaded.trackers == [t])
+        #expect(loaded.trackers[0].sortedEntries[1].value == nil)
+        #expect(loaded.trackers[0].sortedEntries[1].change == "-5")
+        #expect(loaded.trackers[0].latest?.value == "97.1234567890123456789")
+        #expect(loaded.trackers[0].best == Numbers.decimal("100.1234567890123456789"))
+        var withGoal = t
+        withGoal.direction = .down
+        #expect(withGoal.best == Numbers.decimal("95.1234567890123456789"))
+        let rule = GoalRule(period: .deadline, target: "96", effectiveAt: t.createdAt,
+                            deadline: t.entries[2].occurredAt, direction: .down)
+        #expect(withGoal.achieved(rule))
+        withGoal.entries.remove(at: 1)
+        #expect(!withGoal.achieved(rule))
+        let csv = backup.csv()
+        #expect(csv.hasPrefix("tracker_id,name,kind,unit,entry_id,occurred_at,local_day,time_zone,value,note,latitude,longitude,input_kind,change\r\n"))
+        let rows = csv.components(separatedBy: "\r\n")
+        #expect(rows[1].contains("\"100.1234567890123456789\"") && rows[1].hasSuffix("\"value\",\"\""))
+        #expect(rows[2].contains("\"95.1234567890123456789\"") && rows[2].hasSuffix("\"change\",\"-5\""))
+        #expect(rows[3].contains("\"97.1234567890123456789\"") && rows[3].hasSuffix("\"change\",\"2\""))
+        #expect(backup.trackers == [t])
+        #expect(throws: (any Error).self) { try Backup(trackers: [Tracker(name: "display", kind: .number, entries: t.resolvedEntries)]).validate() }
+    }
+    @Test func legacyVersionOneMissingNewKeysLoadsWithoutReinterpretingAnchorsAndUpgradesOnlyOnSave() throws {
+        var t = tracker(.number)
+        let start = date("2024-06-01T00:00:00Z")
+        t.entries = [Entry(occurredAt: start, localDay: "2024-06-01", value: "1.123456789012345678901234567"),
+                     Entry(occurredAt: start.addingTimeInterval(86400), localDay: "2024-06-02", value: "5")]
+        var json = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(Backup(version: 1, trackers: [t]))) as? [String: Any])
+        var trackers = try #require(json["trackers"] as? [[String: Any]])
+        for key in ["description", "website", "photos", "axisLower", "axisUpper", "conditions", "conditionCombination", "gateSave", "remindWhenMet"] { trackers[0].removeValue(forKey: key) }
+        var entries = try #require(trackers[0]["entries"] as? [[String: Any]])
+        for index in entries.indices { entries[index].removeValue(forKey: "change") }
+        trackers[0]["entries"] = entries; json["trackers"] = trackers
+        let payload = try JSONSerialization.data(withJSONObject: json)
+        let loaded = try Backup.decode(payload)
+        #expect(loaded.version == 1 && loaded.trackers == [t])
+        #expect(loaded.trackers[0].resolvedEntries == t.sortedEntries)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("store")
+        let container = try ModelContainer(for: Ledger.self, configurations: ModelConfiguration(url: url, cloudKitDatabase: .none))
+        let context = ModelContext(container); context.autosaveEnabled = false
+        context.insert(Ledger(payload: payload)); try context.save()
+        let store = try AppStore(url: url)
+        #expect(store.trackers == [t])
+        #expect(try context.fetch(FetchDescriptor<Ledger>()).first?.payload == payload)
+        try store.save(t)
+        let reopened = try AppStore(url: url)
+        #expect(reopened.trackers == [t])
+        let disk = try ModelContainer(for: Ledger.self, configurations: ModelConfiguration(url: url, cloudKitDatabase: .none))
+        let diskContext = ModelContext(disk)
+        let persisted = try #require(diskContext.fetch(FetchDescriptor<Ledger>()).first?.payload)
+        #expect(try Backup.decode(persisted).version == 2)
+    }
+    @Test func malformedRawLedgersAndMetadataRejectAtomicallyForSaveRestoreAndReopen() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("store")
+        let store = try AppStore(url: url)
+        let original = numericLedger()
+        try store.save(original)
+        let mutations: [(inout Tracker) -> Void] = [
+            { $0.entries[1].value = "105" }, // Display copies cannot be persisted as raw events.
+            { $0.entries[1].change = nil },
+            { $0.entries.removeFirst() },
+            { $0.entries[0].value = "9999999999999999999999999999"; $0.entries[1].change = "1" },
+            { $0.entries[1].change = "+5" },
+            { $0.description = String(repeating: "a", count: 10001) },
+            { $0.website = "file:///private" },
+            { $0.website = "https://" },
+            { $0.website = "https://example.com/" + String(repeating: "a", count: 2048) },
+            { $0.photos = [Data([1, 2, 3])] },
+            { $0.photos = Array(repeating: Data(), count: 11) },
+            { $0.axisLower = "NaN" },
+            { $0.axisUpper = "01.0" },
+            { $0.axisLower = "2"; $0.axisUpper = "2" },
+            { $0.axisLower = "3"; $0.axisUpper = "2" },
+            { $0.conditions = [PlaceCondition(name: " ", location: RecordedLocation(latitude: 35, longitude: 139))] },
+            { $0.conditions = [PlaceCondition(name: String(repeating: "a", count: 121), location: RecordedLocation(latitude: 35, longitude: 139))] },
+            { $0.conditions = [PlaceCondition(name: "Home", location: RecordedLocation(latitude: 91, longitude: 139))] },
+            { let c = PlaceCondition(name: "Home", location: RecordedLocation(latitude: 35, longitude: 139)); $0.conditions = [c, c] },
+            { $0.conditions = (0..<21).map { PlaceCondition(name: "Place \($0)", location: RecordedLocation(latitude: 35, longitude: 139)) } },
+            { $0.remindWhenMet = true }
+        ]
+        for mutate in mutations {
+            var damaged = original; mutate(&damaged)
+            #expect(throws: (any Error).self) { try store.save(damaged) }
+            #expect(throws: (any Error).self) { try store.restore(JSONEncoder().encode(Backup(trackers: [damaged]))) }
+            #expect(store.trackers == [original])
+            #expect(try AppStore(url: url).trackers == [original])
+        }
+        #expect(throws: (any Error).self) { try Backup(version: 1, trackers: [original]).validate() }
+        #expect(throws: DataError.unsupportedVersion) { try Backup(version: 3, trackers: [original]).validate() }
+        var daily = tracker(); daily.entries = [Entry(occurredAt: daily.createdAt, localDay: daily.day(daily.createdAt), change: "1")]
+        #expect(throws: (any Error).self) { try Backup(trackers: [daily]).validate() }
+    }
+    @Test func optionalMetadataBoundsAndTenOwnedPhotosRoundTripWithoutChangingExistingBytes() throws {
+        var t = numericLedger()
+        let image = try metadataPhoto([:] as CFDictionary)
+        t.description = String(repeating: "a", count: 10000)
+        t.website = "https://example.com/path?query=1"
+        t.photos = Array(repeating: image, count: 10)
+        t.axisLower = "-100.1234567890123456789"
+        try Backup(trackers: [t]).validate() // Lower-only and upper-only bounds are valid.
+        t.axisUpper = "200.1234567890123456789"
+        t.conditions = (0..<20).map { PlaceCondition(name: "Place \($0)", location: RecordedLocation(latitude: 35, longitude: 139)) }
+        t.conditionCombination = .all; t.gateSave = true; t.remindWhenMet = true
+        #expect(try Backup.decode(Backup(trackers: [t]).encoded()).trackers == [t])
+        #expect(t.photos?.first == image)
+        t.axisLower = nil
+        try Backup(trackers: [t]).validate()
+        t.conditions = nil; t.remindWhenMet = false
+        #expect(!t.requiresLocationGate) // A dormant gate flag follows the shared optional-condition contract.
+        try Backup(trackers: [t]).validate()
+    }
+    @Test func malformedPersistedPayloadCannotLoadAndDoesNotRewriteExistingBytes() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("store")
+        var damaged = numericLedger(); damaged.entries.removeFirst()
+        let payload = try JSONEncoder().encode(Backup(trackers: [damaged]))
+        let container = try ModelContainer(for: Ledger.self, configurations: ModelConfiguration(url: url, cloudKitDatabase: .none))
+        let context = ModelContext(container); context.autosaveEnabled = false
+        context.insert(Ledger(payload: payload)); try context.save()
+        #expect(throws: (any Error).self) { try AppStore(url: url) }
+        #expect(try context.fetch(FetchDescriptor<Ledger>()).first?.payload == payload)
+    }
+    @Test func detailedNewPhotoStillFitsByteAndPixelLimits() throws {
+        let side = 1600
+        var bytes = [UInt8](repeating: 255, count: side * side * 4)
+        var state: UInt32 = 7
+        for pixel in 0..<(side * side) {
+            for component in 0..<3 {
+                state = state &* 1664525 &+ 1013904223
+                bytes[pixel * 4 + component] = UInt8(truncatingIfNeeded: state >> 24)
+            }
+        }
+        let provider = try #require(CGDataProvider(data: Data(bytes) as CFData))
+        let image = try #require(CGImage(width: side, height: side, bitsPerComponent: 8, bitsPerPixel: 32,
+                                        bytesPerRow: side * 4, space: CGColorSpaceCreateDeviceRGB(),
+                                        bitmapInfo: CGBitmapInfo(rawValue: CGImageAlphaInfo.noneSkipLast.rawValue),
+                                        provider: provider, decode: nil, shouldInterpolate: false, intent: .defaultIntent))
+        let source = try #require(UIImage(cgImage: image).pngData())
+        let copy = try photoCopy(source)
+        #expect(copy.count <= 2_000_000 && Backup.validPhoto(copy))
+        let result = try #require(UIImage(data: copy)?.cgImage)
+        #expect((1280...side).contains(result.width) && (1280...side).contains(result.height))
+    }
+    @Test func newPhotoCopyIsJPEGWithinLimitsAndStripsGPSAndEXIFButRejectsAnimatedSources() throws {
+        let raw = try metadataPhoto([
+            kCGImagePropertyExifDictionary: [kCGImagePropertyExifDateTimeOriginal: "2024:01:01 12:00:00"],
+            kCGImagePropertyGPSDictionary: [kCGImagePropertyGPSLatitude: 35.0, kCGImagePropertyGPSLatitudeRef: "N", kCGImagePropertyGPSLongitude: 139.0, kCGImagePropertyGPSLongitudeRef: "E"]
+        ] as CFDictionary)
+        let copy = try photoCopy(raw)
+        #expect(copy.count <= 2_000_000 && Backup.validPhoto(copy))
+        #expect(photoDate(copy, timeZone: .gmt) == nil && photoLocation(copy) == nil)
+        let source = try #require(CGImageSourceCreateWithData(copy as CFData, nil))
+        #expect(CGImageSourceGetType(source) as String? == "public.jpeg")
+        let properties = try #require(CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any])
+        #expect(properties[kCGImagePropertyGPSDictionary as String] == nil)
+        let sourceImage = try #require(UIImage(data: raw)?.cgImage)
+        let data = NSMutableData()
+        let destination = try #require(CGImageDestinationCreateWithData(data, "com.compuserve.gif" as CFString, 2, nil))
+        for _ in 0..<2 { CGImageDestinationAddImage(destination, sourceImage, nil) }
+        #expect(CGImageDestinationFinalize(destination))
+        #expect(throws: DataError.photoFailed) { try photoCopy(data as Data) }
     }
 
 }

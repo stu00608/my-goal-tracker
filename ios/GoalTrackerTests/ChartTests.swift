@@ -3,7 +3,12 @@ import Testing
 @testable import GoalTracker
 
 @MainActor struct ChartTests {
-    private func date(_ text: String) -> Date { ISO8601DateFormatter().date(from: text)! }
+    private func date(_ text: String) -> Date {
+        let formatter = ISO8601DateFormatter()
+        if let date = formatter.date(from: text) { return date }
+        formatter.formatOptions.insert(.withFractionalSeconds)
+        return formatter.date(from: text)!
+    }
     private func tracker(zone: String = "America/New_York") -> Tracker {
         var tracker = Tracker(name: "Chart", kind: .number)
         tracker.timeZoneID = zone
@@ -12,6 +17,78 @@ import Testing
     private func entry(_ text: String, value: String? = "1", tracker: Tracker) -> Entry {
         let instant = date(text)
         return Entry(occurredAt: instant, localDay: tracker.day(instant), value: value)
+    }
+
+    @Test func carriedBaselineInEmptyHistoricalRangePreservesStatisticsAndRawLedger() throws {
+        var t = tracker(zone: "UTC")
+        let baseline = entry("2024-01-01T12:00:00Z", value: "-10.123456789", tracker: t)
+        let outside = entry("2024-01-05T00:00:00Z", value: "99", tracker: t)
+        t.entries = [baseline, outside]
+        let raw = t.entries, best = t.best
+        let snapshot = try #require(ChartRange.custom.snapshot(for: t, now: date("2024-02-01T00:00:00Z"),
+                                                              customStart: date("2024-01-02T00:00:00Z"), customEnd: date("2024-01-03T00:00:00Z")))
+        #expect(snapshot.entries.isEmpty && snapshot.periodChange == nil)
+        let segment = try #require(snapshot.carries.first)
+        #expect(snapshot.carries.count == 1 && segment.id == "leading")
+        #expect(segment.start.date == snapshot.interval.start && segment.end.date == snapshot.interval.end)
+        #expect(segment.start.value == baseline.value && segment.end.value == baseline.value)
+        #expect(snapshot.lastRecordedAt == baseline.occurredAt)
+        #expect(t.entries == raw && t.best == best && t.latest?.id == outside.id)
+        t.entries = [outside]
+        #expect(ChartRange.custom.snapshot(for: t, now: date("2024-02-01T00:00:00Z"),
+                                          customStart: snapshot.interval.start, customEnd: date("2024-01-03T00:00:00Z"))?.carries.isEmpty == true)
+    }
+
+    @Test func carriesUsePriorLeadingBaselineAndNeverExtendIntoFuture() throws {
+        var t = tracker(zone: "UTC")
+        let now = date("2024-03-10T12:00:00Z")
+        t.entries = [entry("2024-03-01T00:00:00Z", value: "10", tracker: t),
+                     entry("2024-03-10T10:00:00Z", value: "12", tracker: t),
+                     entry("2024-03-11T00:00:00Z", value: "99", tracker: t)]
+        let snapshot = try #require(ChartRange.custom.snapshot(for: t, now: now, customStart: now, customEnd: now.addingTimeInterval(86400)))
+        #expect(snapshot.carries.map(\.id) == ["leading", "trailing"])
+        #expect(snapshot.carries[0].start.value == "10" && snapshot.carries[0].end.date == date("2024-03-10T10:00:00Z"))
+        #expect(snapshot.carries[1].end.date == now && snapshot.carries[1].end.value == "12")
+        #expect(snapshot.numericEntries.count == 2 && snapshot.periodChange == 87)
+        let future = try #require(ChartRange.custom.snapshot(for: t, now: now, customStart: now.addingTimeInterval(86400), customEnd: now.addingTimeInterval(86400)))
+        #expect(future.carries.isEmpty)
+    }
+
+    @Test func actualAtHistoricalExclusiveEndCannotReplaceLastKnownCarry() throws {
+        var t = tracker(zone: "UTC")
+        let now = date("2024-03-11T00:00:00Z")
+        t.entries = [entry("2024-03-10T10:00:00Z", value: "12", tracker: t),
+                     entry("2024-03-11T00:00:00Z", value: "99", tracker: t)]
+        let day = date("2024-03-10T00:00:00Z")
+        let snapshot = try #require(ChartRange.custom.snapshot(for: t, now: now, customStart: day, customEnd: day))
+        #expect(snapshot.numericEntries.count == 1 && snapshot.carries.count == 1)
+        #expect(snapshot.carries.last?.end.date == now && snapshot.carries.last?.end.value == "12")
+    }
+
+    @Test func exportNamesUseUTCAndRemainUniqueWhenClockRepeatsOrMovesBackwards() {
+        var names = ExportNameGenerator()
+        let instant = date("2024-01-02T03:04:05.123Z")
+        let first = names.next(csv: false, now: instant)
+        let second = names.next(csv: false, now: instant)
+        let third = names.next(csv: true, now: instant.addingTimeInterval(-100))
+        #expect(first == "Goalooker-backup-20240102-030405-123")
+        #expect(second == "Goalooker-backup-20240102-030405-124")
+        #expect(third == "Goalooker-export-20240102-030405-125")
+        #expect(first != second)
+    }
+
+    @Test func chartsAndCarriesResolveDeltasWithoutChangingRawEvents() throws {
+        var t = tracker(zone: "UTC")
+        let now = date("2024-03-10T12:00:00Z")
+        let anchor = Entry(occurredAt: now.addingTimeInterval(-100), localDay: t.day(now), value: "-10.123456789")
+        let delta = Entry(occurredAt: now.addingTimeInterval(-10), localDay: t.day(now), change: "5")
+        t.entries = [anchor, delta]
+        let raw = t.entries
+        let snapshot = try #require(ChartRange.all.snapshot(for: t, now: now, customStart: now, customEnd: now))
+        #expect(snapshot.numericEntries.last?.value == "-5.123456789")
+        #expect(snapshot.numericEntries.last?.change == "5" && snapshot.numericEntries.last?.id == delta.id)
+        #expect(snapshot.periodChange == 5 && snapshot.carries.last?.end.value == "-5.123456789")
+        #expect(t.entries == raw && t.sortedEntries.last?.value == nil)
     }
 
     @Test(arguments: [ChartRange.thirtyDays, .ninetyDays])
@@ -81,10 +158,13 @@ import Testing
         let only = entry("2024-02-29T03:00:00Z", value: exact, tracker: tracker)
         let missing = entry("2024-02-28T03:00:00Z", value: nil, tracker: tracker)
         let invalid = entry("2024-03-01T03:00:00Z", value: "NaN", tracker: tracker)
-        tracker.entries = [invalid, only, missing]
+        // Malformed values cannot enter the strict numeric ledger. Projection filtering remains defensive.
+        let malformed = ChartSnapshot(interval: DateInterval(start: missing.occurredAt, end: invalid.occurredAt), entries: [missing, only, invalid])
+        #expect(malformed.numericEntries == [only] && malformed.periodChange == nil)
+        tracker.entries = [only]
         let now = date("2024-03-02T03:00:00Z")
         let snapshot = try #require(ChartRange.all.snapshot(for: tracker, now: now, customStart: now, customEnd: now))
-        #expect(snapshot.entries == [missing, only, invalid])
+        #expect(snapshot.entries == [only])
         #expect(snapshot.numericEntries == [only])
         #expect(snapshot.numericEntries[0].value == exact)
         #expect(snapshot.periodChange == nil)
@@ -93,7 +173,7 @@ import Testing
         let two = try #require(ChartRange.all.snapshot(for: tracker, now: now, customStart: now, customEnd: now))
         #expect(two.numericEntries == [only, next])
         #expect(two.periodChange == -1)
-        #expect(tracker.entries[1].value == exact)
+        #expect(tracker.entries[0].value == exact)
     }
 
     @Test func allRangeIncludesOldRecordsButExcludesFutureEvenOnSameDay() throws {

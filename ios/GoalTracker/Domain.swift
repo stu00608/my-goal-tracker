@@ -4,8 +4,9 @@ import ImageIO
 nonisolated enum TrackerKind: String, Codable, CaseIterable { case number, daily }
 nonisolated enum Direction: String, Codable, CaseIterable { case up, down }
 nonisolated enum Period: String, Codable, CaseIterable { case weekly, monthly, deadline }
+nonisolated enum NumericEntryError: Error, Equatable { case missingBaseline, orphanedChange(UUID) }
 
-nonisolated enum CardBackground: String, Codable, CaseIterable { case plot, photo, map }
+nonisolated enum CardBackground: String, Codable, CaseIterable { case plot, photo, trackerPhoto, map, progress }
 nonisolated struct RecordedLocation: Codable, Equatable {
     var latitude: Double
     var longitude: Double
@@ -18,6 +19,7 @@ nonisolated struct Entry: Codable, Identifiable, Equatable {
     var occurredAt: Date
     var localDay: String
     var value: String?
+    var change: String?
     var note = ""
     var photos: [Data] = []
     var location: RecordedLocation?
@@ -40,6 +42,16 @@ nonisolated struct Reminder: Codable, Equatable {
     var weekdays: [Int] // Calendar weekdays: Sunday = 1
 }
 
+nonisolated enum ConditionCombination: String, Codable, CaseIterable { case any, all }
+nonisolated enum PlaceRelation: String, Codable, CaseIterable { case inside, outside }
+nonisolated struct PlaceCondition: Codable, Identifiable, Equatable {
+    static let radius = 200.0
+    var id = UUID()
+    var name: String
+    var location: RecordedLocation
+    var relation = PlaceRelation.inside
+}
+
 nonisolated struct Tracker: Codable, Identifiable, Equatable {
     var id = UUID()
     var name: String
@@ -54,6 +66,19 @@ nonisolated struct Tracker: Codable, Identifiable, Equatable {
     var rules: [GoalRule] = []
     var reminder: Reminder?
     var cardBackground: CardBackground?
+    // Optional keys preserve synthesized decoding of existing version-1 Ledger payloads.
+    var description: String?
+    var website: String?
+    var photos: [Data]?
+    var axisLower: String?
+    var axisUpper: String?
+    var conditions: [PlaceCondition]?
+    var conditionCombination: ConditionCombination?
+    var gateSave: Bool?
+    var remindWhenMet: Bool?
+    var resolvedConditions: [PlaceCondition] { conditions ?? [] }
+    var resolvedCombination: ConditionCombination { conditionCombination ?? .any }
+    var requiresLocationGate: Bool { gateSave == true && !resolvedConditions.isEmpty }
     var resolvedCardBackground: CardBackground { cardBackground ?? .plot }
 
     var calendar: Calendar {
@@ -75,9 +100,30 @@ nonisolated struct Tracker: Codable, Identifiable, Equatable {
     var sortedEntries: [Entry] {
         entries.sorted { ($0.occurredAt, $0.createdAt, $0.id.uuidString) < ($1.occurredAt, $1.createdAt, $1.id.uuidString) }
     }
-    var latest: Entry? { sortedEntries.last }
+    // Display copies retain the raw change for provenance. Never persist these copies.
+    var resolvedEntries: [Entry] { (try? resolveEntries()) ?? [] }
+    func resolvedValue(for id: UUID) -> String? { resolvedEntries.first { $0.id == id }?.value }
+    func resolveEntries() throws -> [Entry] {
+        guard kind == .number else { return sortedEntries }
+        var baseline: String?
+        return try sortedEntries.map { raw in
+            guard (raw.value == nil) != (raw.change == nil) else { throw DataError.invalidNumber }
+            var display = raw
+            if let value = raw.value {
+                guard Numbers.isCanonical(value) else { throw DataError.invalidNumber }
+                baseline = value
+            } else if let change = raw.change {
+                guard Numbers.isCanonical(change) else { throw DataError.invalidNumber }
+                guard let prior = baseline else { throw NumericEntryError.orphanedChange(raw.id) }
+                baseline = try Numbers.add(prior, change)
+            }
+            display.value = baseline
+            return display
+        }
+    }
+    var latest: Entry? { resolvedEntries.last }
     var best: Decimal? {
-        let values = entries.compactMap { $0.value.flatMap(Numbers.decimal) }
+        let values = resolvedEntries.compactMap { $0.value.flatMap(Numbers.decimal) }
         return direction == .up ? values.max() : values.min()
     }
     func rule(at date: Date) -> GoalRule? { rules.filter { $0.effectiveAt <= date }.max { $0.effectiveAt < $1.effectiveAt } }
@@ -92,7 +138,7 @@ nonisolated struct Tracker: Codable, Identifiable, Equatable {
     }
     func achieved(_ rule: GoalRule) -> Bool {
         guard let target = Numbers.decimal(rule.target), let deadline = rule.deadline else { return false }
-        return entries.contains {
+        return resolvedEntries.contains {
             guard $0.occurredAt <= deadline, let v = $0.value.flatMap(Numbers.decimal) else { return false }
             return rule.direction == .up ? v >= target : v <= target
         }
@@ -131,6 +177,20 @@ nonisolated enum Numbers {
               text.filter(\.isNumber).count <= 28, let value = decimal(text), !value.isNaN else { throw DataError.invalidNumber }
         return NSDecimalNumber(decimal: value).stringValue
     }
+    static func isCanonical(_ value: String) -> Bool {
+        (try? parse(value, locale: Locale(identifier: "en_US_POSIX"))) == value
+    }
+    static func add(_ first: String, _ second: String) throws -> String {
+        guard var lhs = decimal(first), var rhs = decimal(second), !lhs.isNaN, !rhs.isNaN else { throw DataError.invalidNumber }
+        var result = Decimal()
+        guard NSDecimalAdd(&result, &lhs, &rhs, .plain) == .noError, !result.isNaN else { throw DataError.invalidNumber }
+        return try parse(NSDecimalNumber(decimal: result).stringValue, locale: Locale(identifier: "en_US_POSIX"))
+    }
+    // Only drawing uses binary floating point; parse the original decimal text once.
+    static func plottedValue(_ text: String) -> Double? {
+        guard let decimal = decimal(text), !decimal.isNaN, let value = Double(text), value.isFinite else { return nil }
+        return value
+    }
     static func display(_ value: Decimal, precision: Int, locale: Locale) -> String {
         let f = NumberFormatter()
         f.locale = locale; f.numberStyle = .decimal
@@ -143,14 +203,14 @@ nonisolated enum DataError: Error { case invalidNumber, invalidBackup, unsupport
 
 nonisolated struct Backup: Codable, Equatable {
     var format = "my-goal-tracker"
-    var version = 1
+    var version = 2
     var exportedAt = Date()
     var trackers: [Tracker]
 
     func validate() throws {
         guard Self.validDate(exportedAt) else { throw DataError.invalidBackup }
         guard format == "my-goal-tracker" else { throw DataError.invalidBackup }
-        guard version == 1 else { throw DataError.unsupportedVersion }
+        guard version == 1 || version == 2 else { throw DataError.unsupportedVersion }
         guard trackers.count <= 1000, Set(trackers.map(\.id)).count == trackers.count else { throw DataError.invalidBackup }
         var entryIDs = Set<UUID>()
         var ruleIDs = Set<UUID>()
@@ -158,6 +218,7 @@ nonisolated struct Backup: Codable, Equatable {
             guard !t.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, t.name.count <= 120, t.unit.count <= 30,
                   (0...8).contains(t.precision), TimeZone(identifier: t.timeZoneID) != nil, Self.validDate(t.createdAt),
                   t.entries.count <= 100000, t.rules.count <= 10000 else { throw DataError.invalidBackup }
+            try Self.validateMetadata(t)
             var days = Set<String>()
             for e in t.entries {
                 guard entryIDs.insert(e.id).inserted, t.date(for: e.localDay) != nil, e.note.count <= 10000,
@@ -165,11 +226,14 @@ nonisolated struct Backup: Codable, Equatable {
                       e.photos.count <= Entry.photoLimit,
                       e.location?.isValid != false, e.photos.allSatisfy(Self.validPhoto) else { throw DataError.invalidBackup }
                 if t.kind == .daily {
-                    guard e.value == nil, days.insert(e.localDay).inserted else { throw DataError.invalidBackup }
+                    guard e.value == nil, e.change == nil, days.insert(e.localDay).inserted else { throw DataError.invalidBackup }
                 } else {
-                    guard let value = e.value, (try? Numbers.parse(value, locale: Locale(identifier: "en_US_POSIX"))) == value else { throw DataError.invalidBackup }
+                    guard (e.value == nil) != (e.change == nil),
+                          version != 1 || e.change == nil,
+                          (e.value ?? e.change).map(Numbers.isCanonical) == true else { throw DataError.invalidBackup }
                 }
             }
+            do { _ = try t.resolveEntries() } catch { throw DataError.invalidBackup }
             for r in t.rules {
                 guard ruleIDs.insert(r.id).inserted, Self.validDate(r.effectiveAt) else { throw DataError.invalidBackup }
                 if t.kind == .daily {
@@ -184,6 +248,26 @@ nonisolated struct Backup: Codable, Equatable {
                       Set(r.weekdays).count == r.weekdays.count, r.weekdays.allSatisfy({ (1...7).contains($0) }) else { throw DataError.invalidBackup }
             }
         }
+    }
+    private static func validateMetadata(_ t: Tracker) throws {
+        guard (t.description?.count ?? 0) <= 10000,
+              (t.photos?.count ?? 0) <= Entry.photoLimit,
+              t.photos?.allSatisfy(validPhoto) != false else { throw DataError.invalidBackup }
+        if let website = t.website {
+            guard website.count <= 2048, let url = URLComponents(string: website),
+                  ["http", "https"].contains(url.scheme?.lowercased() ?? ""),
+                  let host = url.host, !host.isEmpty,
+                  website.rangeOfCharacter(from: .whitespacesAndNewlines) == nil else { throw DataError.invalidBackup }
+        }
+        if let lower = t.axisLower, !Numbers.isCanonical(lower) { throw DataError.invalidBackup }
+        if let upper = t.axisUpper, !Numbers.isCanonical(upper) { throw DataError.invalidBackup }
+        if let lower = t.axisLower.flatMap(Numbers.decimal), let upper = t.axisUpper.flatMap(Numbers.decimal), lower >= upper {
+            throw DataError.invalidBackup
+        }
+        let conditions = t.resolvedConditions
+        guard conditions.count <= 20, Set(conditions.map(\.id)).count == conditions.count,
+              conditions.allSatisfy({ !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0.name.count <= 120 && $0.location.isValid }),
+              t.remindWhenMet != true || !conditions.isEmpty else { throw DataError.invalidBackup }
     }
     static func validDate(_ date: Date) -> Bool {
         // Reject dates outside the supported four-digit Gregorian year range before Calendar arithmetic.
@@ -220,9 +304,9 @@ nonisolated struct Backup: Codable, Equatable {
             return "\"" + safe.replacingOccurrences(of: "\"", with: "\"\"") + "\""
         }
         let iso = ISO8601DateFormatter()
-        var rows = ["tracker_id,name,kind,unit,entry_id,occurred_at,local_day,time_zone,value,note,latitude,longitude"]
-        for t in trackers { for e in t.sortedEntries {
-            let fields = [t.id.uuidString, t.name, t.kind.rawValue, t.unit, e.id.uuidString, iso.string(from: e.occurredAt), e.localDay, t.timeZoneID, e.value ?? "", e.note, e.location.map { String($0.latitude) } ?? "", e.location.map { String($0.longitude) } ?? ""]
+        var rows = ["tracker_id,name,kind,unit,entry_id,occurred_at,local_day,time_zone,value,note,latitude,longitude,input_kind,change"]
+        for t in trackers { for e in t.resolvedEntries {
+            let fields = [t.id.uuidString, t.name, t.kind.rawValue, t.unit, e.id.uuidString, iso.string(from: e.occurredAt), e.localDay, t.timeZoneID, e.value ?? "", e.note, e.location.map { String($0.latitude) } ?? "", e.location.map { String($0.longitude) } ?? "", t.kind == .daily ? "" : (e.change == nil ? "value" : "change"), e.change ?? ""]
             rows.append(fields.enumerated().map { escape($0.element, protect: [1, 3, 9].contains($0.offset)) }.joined(separator: ","))
         } }
         return rows.joined(separator: "\r\n") + "\r\n"

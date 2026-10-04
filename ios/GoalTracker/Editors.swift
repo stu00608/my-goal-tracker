@@ -1,118 +1,7 @@
 import SwiftUI
 import PhotosUI
 import ImageIO
-
-struct TrackerEditor: View {
-    @Environment(AppStore.self) private var store
-    @Environment(\.dismiss) private var dismiss
-    var existing: Tracker?
-    @State private var name = ""
-    @State private var kind = TrackerKind.number
-    @State private var unit = ""
-    @State private var precision = 3
-    @State private var direction = Direction.up
-    @State private var goalEnabled = false
-    @State private var target = ""
-    @State private var due = Date().addingTimeInterval(86400 * 30)
-    @State private var period = Period.weekly
-    @State private var frequency = 2
-    @State private var cardBackground = CardBackground.plot
-    @State private var error: String?
-    private enum Field: Hashable { case name, unit, target }
-    @FocusState private var focusedField: Field?
-    @State private var initialized = false
-    @State private var keyboard = EditorKeyboardControl()
-    var body: some View {
-        NavigationStack {
-            Form {
-                Section(L.text("Tracker")) {
-                    TextField(L.text("Name"), text: $name).focused($focusedField, equals: .name).accessibilityIdentifier("tracker.name")
-                    VStack(alignment: .leading, spacing: 8) {
-                    Picker(L.text("Record type"), selection: $kind) {
-                        Text(L.text("Number snapshot")).tag(TrackerKind.number)
-                        Text(L.text("Completion record")).tag(TrackerKind.daily)
-                    }.accessibilityIdentifier("tracker.kind").disabled(!(existing?.entries.isEmpty ?? true) || !(existing?.rules.isEmpty ?? true))
-                    if !(existing?.entries.isEmpty ?? true) || !(existing?.rules.isEmpty ?? true) { Text(L.text("Create a new tracker to change its type or unit.")).font(.caption).foregroundStyle(TrackerColors.secondaryText) }
-                    }
-                    if kind == .number {
-                        TextField(L.text("Unit (optional)"), text: $unit).focused($focusedField, equals: .unit).disabled(!(existing?.entries.isEmpty ?? true) || !(existing?.rules.isEmpty ?? true)).accessibilityIdentifier("tracker.unit")
-                        Stepper(L.text("Decimal places") + ": \(precision)", value: $precision, in: 0...8)
-                        Picker(L.text("Improvement direction"), selection: $direction) {
-                            Text(L.text("Higher is better")).tag(Direction.up); Text(L.text("Lower is better")).tag(Direction.down)
-                        }
-                    }
-                }
-                Section(L.text("Goal")) {
-                    if existing?.rules.isEmpty ?? true { Toggle(L.text("Set a goal"), isOn: $goalEnabled).accessibilityIdentifier("goal.enabled") }
-                    if goalEnabled {
-                        if kind == .number {
-                            TextField(L.text("Target value"), text: $target).focused($focusedField, equals: .target).keyboardType(.numbersAndPunctuation).accessibilityIdentifier("goal.target")
-                            DatePicker(L.text("Deadline"), selection: $due, in: Date()..., displayedComponents: [.date])
-                        } else {
-                            Picker(L.text("Frequency"), selection: $period) {
-                                Text(L.text("Weekly")).tag(Period.weekly); Text(L.text("Monthly")).tag(Period.monthly)
-                            }
-                            VStack(alignment: .leading, spacing: 8) {
-                            Stepper(L.text("Completions") + ": \(frequency)", value: $frequency, in: 1...(period == .weekly ? 7 : 31))
-                                .accessibilityIdentifier("goal.frequency")
-                            if !(existing?.rules.isEmpty ?? true) { Text(L.text("Changes start with the next full period. Past goals stay unchanged.")).font(.caption).foregroundStyle(TrackerColors.secondaryText) }
-                            }
-                        }
-                    }
-                }
-                Section(L.text("Card background")) {
-                    Picker(L.text("Card background"), selection: $cardBackground) {
-                        Text(L.text("Chart")).tag(CardBackground.plot)
-                        Text(L.text("Latest photo")).tag(CardBackground.photo)
-                        Text(L.text("Location map")).tag(CardBackground.map)
-                    }.accessibilityIdentifier("tracker.cardBackground")
-                }
-                if let error { Section { Text(error).foregroundStyle(.red).accessibilityIdentifier("editor.error") } }
-            }
-            .scrollDismissesKeyboard(.interactively)
-            .background(EditorKeyboardDismissal(keyboard: keyboard) { focusedField = nil })
-            .navigationTitle(L.text(existing == nil ? "New tracker" : "Edit tracker"))
-            .navigationBarTitleDisplayMode(.inline)
-            .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button(L.text("Cancel")) { endEditing(); dismiss() } }
-                ToolbarItem(placement: .confirmationAction) { Button(L.text("Save"), action: save).disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || name.count > 120 || unit.count > 30).accessibilityIdentifier("tracker.save") }
-                ToolbarItemGroup(placement: .keyboard) { Spacer(); Button(L.text("Done"), action: endEditing).accessibilityIdentifier("tracker.keyboard.done") }
-            }
-            .onAppear {
-                guard !initialized else { return }; initialized = true
-                guard let t = existing else { return }
-                name = t.name; kind = t.kind; unit = t.unit; precision = t.precision; direction = t.direction; cardBackground = t.resolvedCardBackground
-                if let rule = t.rules.max(by: { $0.effectiveAt < $1.effectiveAt }) {
-                    goalEnabled = true; target = rule.target; due = rule.deadline ?? due; period = rule.period; frequency = Int(rule.target) ?? 2
-                }
-            }
-            .onChange(of: kind) { _, _ in endEditing() }
-            .onChange(of: period) { _, _ in endEditing(); frequency = min(frequency, period == .weekly ? 7 : 31) }
-        }
-    }
-    private func endEditing() { keyboard.dismiss(); focusedField = nil }
-    private func save() {
-        endEditing()
-        do {
-            var t = existing ?? Tracker(name: name, kind: kind)
-            t.name = name.trimmingCharacters(in: .whitespacesAndNewlines); t.kind = kind; t.unit = unit; t.precision = precision; t.direction = direction
-            t.cardBackground = cardBackground
-            if goalEnabled {
-                if kind == .number {
-                    let value = try Numbers.parse(target, locale: L.locale)
-                    let end = t.calendar.date(byAdding: .day, value: 1, to: t.calendar.startOfDay(for: due))!.addingTimeInterval(-0.001)
-                    let prior = t.rules.max { $0.effectiveAt < $1.effectiveAt }
-                    if prior?.target != value || prior?.deadline != end || prior?.direction != direction {
-                        t.rules.append(GoalRule(period: .deadline, target: value, effectiveAt: Date(), deadline: end, direction: direction))
-                    }
-                } else if t.rules.max(by: { $0.effectiveAt < $1.effectiveAt })?.target != String(frequency) || t.rules.max(by: { $0.effectiveAt < $1.effectiveAt })?.period != period {
-                    t.setFrequency(period, target: frequency, now: Date())
-                }
-            }
-            try store.save(t); dismiss()
-        } catch { self.error = L.error(error) }
-    }
-}
+import UIKit
 
 struct EntryEditor: View {
     @Environment(AppStore.self) private var store
@@ -140,6 +29,10 @@ struct EntryEditor: View {
     @State private var photoTask: Task<Void, Never>?
     @State private var saveTask: Task<Void, Never>?
     @State private var saving = false
+    @State private var gatePending = false
+    @State private var draftEntry = Entry(occurredAt: Date(), localDay: "")
+    @State private var pendingMutation: PendingEntryMutation?
+    @State private var confirmingOrphan = false
     @State private var keyboard = EditorKeyboardControl()
     @State private var photoPresentation: EditorPhotoPresentation?
     @State private var photoRemoval: DraftPhoto?
@@ -164,7 +57,7 @@ struct EntryEditor: View {
                                         Spacer(minLength: 0)
                                     }
                                 } else {
-                                    Text(L.text("New value")).font(.subheadline).foregroundStyle(TrackerColors.secondaryText)
+                                    Text(L.text(inputMode == .change ? "Change amount" : "New value")).font(.subheadline).foregroundStyle(TrackerColors.secondaryText)
                                 }
                                 numericArea
                             }
@@ -172,7 +65,6 @@ struct EntryEditor: View {
                         } else {
                             photoArea
                         }
-                        if let error { Text(error).foregroundStyle(.red).accessibilityIdentifier("editor.error") }
                     }.padding(.vertical, 4)
                 }.listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
@@ -194,7 +86,9 @@ struct EntryEditor: View {
                         }
                         Text(L.text("When enabled, use the first photo’s GPS or your current iPhone location. No background tracking."))
                             .font(.caption).foregroundStyle(TrackerColors.secondaryText)
-                        if saving {
+                        if gatePending {
+                            ProgressView(L.text("Checking record conditions")).accessibilityIdentifier("entry.conditions.pending")
+                        } else if saving {
                             ProgressView(L.text("Getting location before saving")).accessibilityIdentifier("entry.location.pending")
                             Button(L.text("Save without location")) { location.cancel() }
                                 .buttonStyle(.borderless).accessibilityIdentifier("entry.location.saveWithout")
@@ -204,6 +98,17 @@ struct EntryEditor: View {
                 if isPersistedEntry {
                     Section { Button(L.text("Delete record"), role: .destructive) { deleting = true }.accessibilityIdentifier("entry.delete").disabled(saving) }
                 }
+            }
+            .safeAreaInset(edge: .top, spacing: 0) {
+                if let error {
+                    Text(error).font(.callout).foregroundStyle(.red)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding(.horizontal).padding(.vertical, 8).background(.background)
+                        .accessibilityIdentifier("editor.error")
+                }
+            }
+            .onChange(of: error) { _, message in
+                if let message { UIAccessibility.post(notification: .announcement, argument: message) }
             }
             .scrollDismissesKeyboard(.interactively)
             .background(EditorKeyboardDismissal(keyboard: keyboard) { valueFocused = false; noteFocused = false })
@@ -232,20 +137,25 @@ struct EntryEditor: View {
                 editorActive = true
                 guard !initialized else { return }
                 initialized = true
-                if let e = existing {
+                let raw = existing.flatMap { supplied in currentTracker.entries.first { $0.id == supplied.id } } ?? existing
+                if let e = raw {
+                    draftEntry = e
                     date = e.occurredAt; dateEdited = true
                     value = (e.value ?? "").replacingOccurrences(of: ".", with: L.locale.decimalSeparator ?? ".")
+                    change = (e.change ?? "").replacingOccurrences(of: ".", with: L.locale.decimalSeparator ?? ".")
                     note = e.note; photos = e.photos.map { DraftPhoto(data: $0) }
+                } else {
+                    draftEntry = Entry(occurredAt: date, localDay: currentTracker.day(date))
                 }
-                inputMode = NumericEntryMode.initial(preference: preferredInputMode, hasBaseline: numericBaseline != nil, editing: isPersistedEntry)
-                location.draft = RecordLocationDraft(existing: existing?.location, defaultEnabled: !isPersistedEntry && recordLocationByDefault)
+                inputMode = isPersistedEntry ? (raw?.change == nil ? .direct : .change) : NumericEntryMode.initial(preference: preferredInputMode, hasBaseline: numericBaseline != nil, editing: false)
+                location.draft = RecordLocationDraft(existing: raw?.location, defaultEnabled: !isPersistedEntry && recordLocationByDefault)
             }
             .onChange(of: isPresented) { _, presented in if !presented { stopRequests() } }
             .onDisappear { if !isPresented { stopRequests() } }
-            .onChange(of: numericBaseline?.id) { _, id in if id == nil { inputMode = .direct } }
+            .onChange(of: numericBaseline?.id) { _, id in if id == nil, !isPersistedEntry { inputMode = .direct } }
             .onChange(of: inputMode) { _, mode in
                 endEditing()
-                if mode == .change, numericBaseline == nil { inputMode = .direct }
+                if mode == .change, numericBaseline == nil, !isPersistedEntry { inputMode = .direct }
             }
             .fullScreenCover(item: $photoPresentation) { selection in
                 PhotoViewer(photos: selection.photos, initialIndex: selection.initialIndex)
@@ -279,11 +189,17 @@ struct EntryEditor: View {
             .onChange(of: selections) { _, items in importPhotos(items) }
             .confirmationDialog(L.text("Delete this record and its photos?"), isPresented: $deleting, titleVisibility: .visible) {
                 Button(L.text("Delete record"), role: .destructive) {
-                    do {
-                        var t = currentTracker
-                        t.entries.removeAll { $0.id == existing?.id }
-                        try store.save(t); stopRequests(); dismiss()
-                    } catch { self.error = L.error(error) }
+                    prepareDeletion()
+                }.accessibilityIdentifier("entry.delete.confirm")
+            }
+            .alert(L.text("Keep later change records?"), isPresented: $confirmingOrphan) {
+                Button(L.text("Convert first change to a value")) { confirmMutation() }
+                    .accessibilityIdentifier("entry.orphan.confirm")
+                Button(L.text("Cancel"), role: .cancel) { pendingMutation = nil }
+                    .accessibilityIdentifier("entry.orphan.cancel")
+            } message: {
+                if let orphan = pendingMutation?.mutation.orphan {
+                    Text(String(format: L.text("This change would leave later records without a baseline. Convert the first affected record to its previous value %@ and recalculate following changes?"), locale: L.locale, localizedValue(orphan.value ?? "")))
                 }
             }
         }
@@ -316,9 +232,16 @@ struct EntryEditor: View {
                 if case .failure(let failure) = numericPreview, !change.isEmpty {
                     Text(numericError(failure)).font(.caption).foregroundStyle(.red)
                 }
-            } else if !isPersistedEntry, numericBaseline == nil {
-                Text(L.text("No earlier value for this date. Enter a new value first."))
+            } else if inputMode == .change, numericBaseline == nil {
+                Text(L.text(isPersistedEntry && inputMode == .change
+                            ? "No earlier value at this position. Saving requires confirming conversion to the previous value."
+                            : "No earlier value for this date. Enter a new value first."))
                     .font(.caption).foregroundStyle(TrackerColors.secondaryText)
+            }
+            if isPersistedEntry, inputMode == .change {
+                Text(L.text("Editing this change recalculates later values until the next new value record."))
+                    .font(.caption).foregroundStyle(TrackerColors.secondaryText)
+                    .accessibilityIdentifier("entry.change.explanation")
             }
         }.multilineTextAlignment(.center).padding(.bottom, 12)
     }
@@ -360,17 +283,19 @@ struct EntryEditor: View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(L.text("Photos")).font(.subheadline.weight(.semibold))
             Text("\(photos.count)/\(Entry.photoLimit)").font(.caption).foregroundStyle(TrackerColors.secondaryText)
+                .fixedSize(horizontal: true, vertical: false)
                 .accessibilityLabel(L.text("Photos")).accessibilityValue("\(photos.count)/\(Entry.photoLimit)")
                 .accessibilityIdentifier("entry.photos.count")
         }
     }
     private var addPhotos: some View {
-        PhotosPicker(selection: $selections, maxSelectionCount: max(1, Entry.photoLimit - photos.count), selectionBehavior: .ordered, matching: .images, preferredItemEncoding: .current) {
+        let accessibilitySize = dynamicTypeSize.isAccessibilitySize
+        return PhotosPicker(selection: $selections, maxSelectionCount: max(1, Entry.photoLimit - photos.count), selectionBehavior: .ordered, matching: .images, preferredItemEncoding: .current) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Image(systemName: "plus").font(.system(size: 18)).accessibilityHidden(true)
                 Text(L.text("Add photos")).font(.subheadline)
                     .fixedSize(horizontal: false, vertical: true)
-            }.frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : nil, minHeight: 44, alignment: .leading)
+            }.frame(maxWidth: accessibilitySize ? .infinity : nil, minHeight: 44, alignment: .leading)
         }.buttonStyle(.borderless).simultaneousGesture(TapGesture().onEnded { endEditing() })
             .disabled(loading || photos.count == Entry.photoLimit).accessibilityIdentifier("entry.photos")
     }
@@ -422,9 +347,9 @@ struct EntryEditor: View {
     private var numericBinding: Binding<String> {
         inputMode == .direct ? $value : $change
     }
-    private var numericBaseline: Entry? { NumericEntry.baseline(in: currentTracker, at: date, excluding: existing?.id) }
+    private var numericBaseline: Entry? { NumericEntry.baseline(in: currentTracker, at: date, excluding: existing?.id, position: draftEntry) }
     private var numericPreview: Result<NumericEntryResult, Error> {
-        Result { try NumericEntry.calculate(numericInput, mode: inputMode, tracker: currentTracker, at: date, excluding: existing?.id, locale: L.locale) }
+        Result { try NumericEntry.calculate(numericInput, mode: inputMode, tracker: currentTracker, at: date, excluding: existing?.id, position: draftEntry, locale: L.locale) }
     }
     private func localizedValue(_ value: String) -> String {
         value.replacingOccurrences(of: ".", with: L.locale.decimalSeparator ?? ".") + (tracker.unit.isEmpty ? "" : " " + tracker.unit)
@@ -464,13 +389,18 @@ struct EntryEditor: View {
         }
     }
 
-    /// Validate before asking for location, then reconstruct against the latest tracker on commit.
+    /// Preserve unchanged raw dates and parse the same canonical input used by the preview.
     private func preparedEntry(in t: Tracker) throws -> Entry {
-        var e = existing ?? Entry(occurredAt: date, localDay: t.day(date))
+        let raw = existing.flatMap { supplied in t.entries.first { $0.id == supplied.id } }
+        var e = raw ?? draftEntry
         e.occurredAt = date
-        e.localDay = existing?.occurredAt == date ? (existing?.localDay ?? t.day(date)) : t.day(date)
+        e.localDay = raw?.occurredAt == date ? (raw?.localDay ?? t.day(date)) : t.day(date)
         e.note = note; e.photos = photos.map(\.data); e.updatedAt = Date()
-        e.value = t.kind == .number ? try NumericEntry.calculate(numericInput, mode: inputMode, tracker: t, at: date, excluding: existing?.id, locale: L.locale).value : nil
+        e.value = nil; e.change = nil
+        if t.kind == .number {
+            let raw = try NumericEntry.rawInput(numericInput, mode: inputMode, locale: L.locale)
+            if inputMode == .direct { e.value = raw } else { e.change = raw }
+        }
         var priorLocation = e.location
         if t.kind == .daily, let conflict = t.entries.first(where: { $0.localDay == e.localDay && $0.id != e.id }) {
             if existing != nil { throw DataError.duplicateDay }
@@ -484,28 +414,72 @@ struct EntryEditor: View {
     private func beginSave() {
         guard !saving else { return }
         do {
-            _ = try preparedEntry(in: currentTracker)
+            let original = currentTracker
+            let entry = try preparedEntry(in: original)
+            let mutation = try NumericEntry.mutation(in: original, replacing: entry)
             error = nil; endEditing()
-            if location.draft.canResolve {
-                saving = true
-                saveTask = Task {
-                    guard !Task.isCancelled, editorActive else { return }
-                    await location.resolveForSave()
-                    guard !Task.isCancelled, editorActive else { return }
-                    saving = false; commit()
-                }
-            } else { commit() }
+            let pending = PendingEntryMutation(original: original, mutation: mutation, entry: entry)
+            if mutation.orphan != nil { pendingMutation = pending; confirmingOrphan = true }
+            else { save(pending) }
         } catch { self.error = numericError(error) }
     }
-    private func commit() {
+    private func prepareDeletion() {
         do {
-            var t = currentTracker
-            t.put(try preparedEntry(in: t))
-            try store.save(t); stopRequests(); dismiss()
-        } catch { saving = false; self.error = numericError(error) }
+            let original = currentTracker
+            let mutation = try NumericEntry.mutation(in: original, deleting: existing?.id)
+            let pending = PendingEntryMutation(original: original, mutation: mutation, entry: nil)
+            if mutation.orphan != nil { pendingMutation = pending; confirmingOrphan = true }
+            else { save(pending) }
+        } catch { self.error = numericError(error) }
+    }
+    private func confirmMutation() {
+        guard let pending = pendingMutation else { return }
+        pendingMutation = nil
+        save(pending)
+    }
+    private func save(_ pending: PendingEntryMutation) {
+        guard !saving else { return }
+        saving = true
+        saveTask = Task {
+            defer { saving = false; gatePending = false }
+            do {
+                try Task.checkCancellation()
+                guard editorActive else { return }
+                // A confirmed candidate may never overwrite changes made while its dialog was open.
+                guard store.trackers.first(where: { $0.id == tracker.id }) == pending.original else {
+                    error = L.text("Records changed while saving. Review your draft and save again."); return
+                }
+                if let entry = pending.entry, NumericEntry.requiresGate(in: pending.original, for: entry, editing: existing?.id) {
+                    gatePending = true
+                    try await RecordConditions.verify(tracker: pending.original)
+                    gatePending = false
+                }
+                try Task.checkCancellation()
+                guard editorActive else { return }
+                if pending.entry != nil, location.draft.canResolve { await location.resolveForSave() }
+                try Task.checkCancellation()
+                guard editorActive else { return }
+                guard store.trackers.first(where: { $0.id == tracker.id }) == pending.original else {
+                    error = L.text("Records changed while saving. Review your draft and save again."); return
+                }
+                var candidate = pending.mutation.tracker
+                if let entry = pending.entry, let index = candidate.entries.firstIndex(where: { $0.id == entry.id }) {
+                    candidate.entries[index].location = location.draft.applying(to: entry.location)
+                }
+                try store.save(candidate)
+                stopRequests(); dismiss()
+            } catch {
+                if !Task.isCancelled, editorActive { self.error = numericError(error) }
+            }
+        }
     }
 }
 
+private struct PendingEntryMutation {
+    let original: Tracker
+    let mutation: NumericEntryMutation
+    let entry: Entry? // nil is deletion: never location gated.
+}
 private struct EditorPhotoPresentation: Identifiable {
     let id = UUID()
     let photos: [Data]
@@ -514,14 +488,24 @@ private struct EditorPhotoPresentation: Identifiable {
 
 @MainActor func photoCopy(_ data: Data) throws -> Data {
     guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
-          let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+          CGImageSourceGetCount(source) == 1 else { throw DataError.photoFailed }
+    // Extreme detail can exceed 2 MB even at quality .65. Reduce dimensions before degrading further.
+    for edge in [1600, 1440, 1280] {
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: 1600
-          ] as CFDictionary),
-          let copy = UIImage(cgImage: image).jpegData(compressionQuality: 0.8),
-          Backup.validPhoto(copy) else { throw DataError.photoFailed }
-    return copy
+            kCGImageSourceThumbnailMaxPixelSize: edge
+          ] as CFDictionary) else { throw DataError.photoFailed }
+        let still = UIImage(cgImage: image)
+        for quality in [0.8, 0.75, 0.7, 0.65] {
+            guard let copy = still.jpegData(compressionQuality: quality) else { throw DataError.photoFailed }
+            if copy.count <= 2_000_000 {
+                guard Backup.validPhoto(copy) else { throw DataError.photoFailed }
+                return copy
+            }
+        }
+    }
+    throw DataError.photoFailed
 }
 
 // Read the original file before photoCopy strips metadata from the owned JPEG.

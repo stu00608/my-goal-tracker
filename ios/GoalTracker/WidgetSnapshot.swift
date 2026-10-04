@@ -9,24 +9,184 @@ nonisolated struct CardPlotPoint: Codable, Equatable {
     // Source precision stays intact; Double is used only to draw the chart.
     var value: String
     var plottedValue: Double? {
-        guard let decimal = Numbers.decimal(value) else { return nil }
-        let number = NSDecimalNumber(decimal: decimal).doubleValue
-        return number.isFinite ? number : nil
+        Numbers.plottedValue(value)
+    }
+}
+
+/// Each adjacent pair is a separate drawing series, never a ledger record or selectable sample.
+nonisolated struct CardPlotSegment: Identifiable, Equatable {
+    let id: Int
+    let start: CardPlotPoint
+    let end: CardPlotPoint
+}
+
+/// Separate series: these are drawing coordinates, never ledger records or selectable samples.
+nonisolated struct CardCarrySegment: Identifiable, Equatable {
+    var id: String
+    var start: CardPlotPoint
+    var end: CardPlotPoint
+
+    static func segments(points: [CardPlotPoint], interval: DateInterval, now: Date) -> [Self] {
+        let end = min(now, interval.end)
+        guard end >= interval.start else { return [] }
+        let known = points.filter {
+            $0.date <= end && $0.date < interval.end && $0.plottedValue != nil
+        }.sorted { $0.date < $1.date }
+        let actual = known.filter { $0.date >= interval.start }
+        var result: [Self] = []
+        if let prior = known.last(where: { $0.date < interval.start }) {
+            let stop = actual.first?.date ?? end
+            if stop > interval.start {
+                result.append(Self(id: "leading", start: CardPlotPoint(date: interval.start, value: prior.value),
+                                   end: CardPlotPoint(date: stop, value: prior.value)))
+            }
+        }
+        if let last = actual.last, last.date < end {
+            result.append(Self(id: "trailing", start: last, end: CardPlotPoint(date: end, value: last.value)))
+        }
+        return result
+    }
+}
+
+nonisolated struct GoalProgress: Codable, Equatable {
+    var baseline: String
+    var current: String
+    var target: String
+    var fraction: Double
+    var achieved: Bool
+
+    /// Picker eligibility depends on the goal configuration; an empty tracker can select it.
+    static func available(for tracker: Tracker, now: Date = Date()) -> Bool {
+        guard let rule = tracker.rule(at: now), let target = Numbers.decimal(rule.target), !target.isNaN else { return false }
+        if tracker.kind == .daily { return rule.period != .deadline && (Int(rule.target) ?? 0) > 0 }
+        return rule.period == .deadline && rule.deadline != nil
+    }
+
+    static func current(for tracker: Tracker, now: Date = Date()) -> Self? {
+        guard available(for: tracker, now: now), let rule = tracker.rule(at: now) else { return nil }
+        if tracker.kind == .daily {
+            let count = tracker.count(in: tracker.interval(now, period: rule.period))
+            guard let target = Int(rule.target), target > 0 else { return nil }
+            return Self(baseline: "0", current: String(count), target: rule.target,
+                        fraction: min(Double(count) / Double(target), 1), achieved: count >= target)
+        }
+        guard let deadline = rule.deadline, let target = Numbers.decimal(rule.target) else { return nil }
+        let cutoff = min(now, deadline)
+        let entries = tracker.resolvedEntries.filter { $0.occurredAt <= cutoff && $0.value.flatMap(Numbers.decimal)?.isNaN == false }
+        guard let first = entries.first, let last = entries.last else { return nil }
+        let baselineEntry = entries.last(where: { $0.occurredAt <= rule.effectiveAt }) ?? first
+        guard let baselineString = baselineEntry.value, let currentString = last.value,
+              let baseline = Numbers.decimal(baselineString), let current = Numbers.decimal(currentString) else { return nil }
+        // Match deadline achievement, including a hit followed by rollback, excluding future events.
+        let achieved = entries.contains {
+            guard let value = $0.value.flatMap(Numbers.decimal) else { return false }
+            return rule.direction == .up ? value >= target : value <= target
+        }
+        let fraction: Double
+        if achieved || target == baseline { fraction = 1 }
+        else {
+            var a = current, b = baseline, c = target, numerator = Decimal(), denominator = Decimal(), ratio = Decimal()
+            guard NSDecimalSubtract(&numerator, &a, &b, .plain) == .noError,
+                  NSDecimalSubtract(&denominator, &c, &b, .plain) == .noError, denominator != 0,
+                  NSDecimalDivide(&ratio, &numerator, &denominator, .plain) != .overflow, !ratio.isNaN else { return nil }
+            let plotted = NSDecimalNumber(decimal: ratio).doubleValue
+            guard plotted.isFinite else { return nil }
+            fraction = min(max(plotted, 0), 1)
+        }
+        return Self(baseline: baselineString, current: currentString, target: rule.target, fraction: fraction, achieved: achieved)
     }
 }
 
 /// Overview charts keep context: at least 10% of the value magnitude and ten precision ticks.
 /// Extrema still fit with 25% range padding; near-flat growth is never enlarged corner-to-corner.
 nonisolated enum CardPlotScale {
-    static func domain(points: [CardPlotPoint], precision: Int, completion: Bool = false) -> ClosedRange<Double> {
+    private static func bound(_ text: String?) -> Decimal? {
+        guard let text, Numbers.isCanonical(text) else { return nil }
+        return Numbers.decimal(text)
+    }
+
+    /// Only explicit decimal bounds exclude data; automatic drawing limits do not.
+    static func excludes(_ value: String, lower: String?, upper: String?) -> Bool {
+        guard let value = Numbers.decimal(value), !value.isNaN else { return false }
+        let lower = bound(lower), upper = bound(upper)
+        if let lower, let upper, lower >= upper { return false }
+        return lower.map { value < $0 } == true || upper.map { value > $0 } == true
+    }
+
+    /// IDs are original pair indices; callers must draw each segment as its own series to retain gaps.
+    static func clippedSegments(_ points: [CardPlotPoint], lower: String? = nil,
+                                upper: String? = nil) -> [CardPlotSegment] {
+        var lower = bound(lower), upper = bound(upper)
+        if let low = lower, let high = upper, low >= high { lower = nil; upper = nil }
+        var result: [CardPlotSegment] = []
+        for (index, pair) in zip(points, points.dropFirst()).enumerated() {
+            let (start, end) = pair
+            guard let a = Numbers.decimal(start.value), !a.isNaN, start.plottedValue != nil,
+                  let b = Numbers.decimal(end.value), !b.isNaN, end.plottedValue != nil,
+                  start.date.timeIntervalSinceReferenceDate.isFinite,
+                  end.date.timeIntervalSinceReferenceDate.isFinite else { continue }
+            let duration = end.date.timeIntervalSince(start.date)
+            guard duration.isFinite else { continue }
+            if let lower, a < lower && b < lower { continue }
+            if let upper, a > upper && b > upper { continue }
+
+            func clipped(_ point: CardPlotPoint, value: Decimal) -> CardPlotPoint? {
+                let boundary: Decimal
+                if let lower, value < lower { boundary = lower }
+                else if let upper, value > upper { boundary = upper }
+                else { return point }
+                var first = a, last = b, limit = boundary
+                var numerator = Decimal(), denominator = Decimal(), ratio = Decimal()
+                guard NSDecimalSubtract(&numerator, &limit, &first, .plain) == .noError,
+                      NSDecimalSubtract(&denominator, &last, &first, .plain) == .noError,
+                      denominator != 0 else { return nil }
+                let error = NSDecimalDivide(&ratio, &numerator, &denominator, .plain)
+                // Repeating fractions can round for drawing dates; exact endpoint values do not.
+                guard error == .noError || error == .lossOfPrecision,
+                      !ratio.isNaN, ratio >= 0, ratio <= 1 else { return nil }
+                let fraction = NSDecimalNumber(decimal: ratio).doubleValue
+                let offset = duration * fraction
+                let timestamp = start.date.timeIntervalSinceReferenceDate + offset
+                guard fraction.isFinite, offset.isFinite, timestamp.isFinite else { return nil }
+                return CardPlotPoint(date: Date(timeIntervalSinceReferenceDate: timestamp),
+                                     value: NSDecimalNumber(decimal: boundary).stringValue)
+            }
+
+            guard let clippedStart = clipped(start, value: a),
+                  let clippedEnd = clipped(end, value: b) else { continue }
+            result.append(CardPlotSegment(id: index, start: clippedStart, end: clippedEnd))
+        }
+        return result
+    }
+
+    static func domain(points: [CardPlotPoint], precision: Int, completion: Bool = false,
+                       lower: String? = nil, upper: String? = nil) -> ClosedRange<Double> {
         if completion { return 0...2 }
         let values = points.compactMap(\.plottedValue)
-        guard let low = values.min(), let high = values.max() else { return 0...1 }
+        let low = values.min() ?? 0, high = values.max() ?? 1
         let quantum = pow(10.0, -Double(max(0, min(8, precision))))
         let span = max(high - low, max(abs(low), abs(high)) * 0.1, quantum * 10)
         let midpoint = low / 2 + high / 2
-        return (midpoint - span * 0.75)...(midpoint + span * 0.75)
+        let automatic = values.isEmpty ? 0...1 : (midpoint - span * 0.75)...(midpoint + span * 0.75)
+        func bound(_ string: String?) -> Double? {
+            string.flatMap(Numbers.plottedValue)
+        }
+        let lowerDecimal = lower.flatMap(Numbers.decimal), upperDecimal = upper.flatMap(Numbers.decimal)
+        let lower = bound(lower), upper = bound(upper)
+        if let lower, let upper, let lowerDecimal, let upperDecimal {
+            guard lowerDecimal < upperDecimal else { return automatic }
+            return lower...max(upper, lower.nextUp)
+        }
+        // At large magnitudes a precision tick may round away; require a representable positive span.
+        if let lower { return lower...max(automatic.upperBound, lower + quantum, lower.nextUp) }
+        if let upper { return min(automatic.lowerBound, upper - quantum, upper.nextDown)...upper }
+        return automatic
     }
+}
+
+nonisolated struct WidgetRuleProgress: Codable, Equatable {
+    var ruleID: UUID
+    var progress: GoalProgress?
 }
 
 // Bounded presentation data only; original photos, notes and the database stay in the app.
@@ -45,12 +205,20 @@ nonisolated struct WidgetRow: Codable, Identifiable {
     var plot: [CardPlotPoint]?
     var thumbnail: Data?
     var locations: [RecordedLocation]?
+    var progress: GoalProgress?
+    var ruleProgress: [WidgetRuleProgress]?
+    var axisLower: String?
+    var axisUpper: String?
+    var lastRecordedAt: Date?
 
     init(_ t: Tracker, now: Date) {
-        let sorted = t.sortedEntries
+        let sorted = t.resolvedEntries.filter { $0.occurredAt <= now }
         id = t.id; name = t.name; kind = t.kind; value = sorted.last?.value
         unit = t.unit; precision = t.precision; timeZoneID = t.timeZoneID
         background = t.resolvedCardBackground
+        axisLower = t.axisLower; axisUpper = t.axisUpper
+        progress = GoalProgress.current(for: t, now: now)
+        lastRecordedAt = sorted.last(where: { $0.value.flatMap(Numbers.decimal)?.isNaN == false })?.occurredAt
         let week = t.interval(now, period: .weekly)
         let month = t.interval(now, period: .monthly)
         completedDays = t.kind == .daily ? Array(Set(t.entries.compactMap { entry -> String? in
@@ -59,7 +227,17 @@ nonisolated struct WidgetRow: Codable, Identifiable {
             return entry.localDay
         })).sorted() : []
         rules = [t.rule(at: now), t.rules.filter { $0.effectiveAt > now }.min { $0.effectiveAt < $1.effectiveAt }].compactMap { $0 }
-        let entries = sorted.filter { $0.occurredAt <= now }
+        if t.kind == .number {
+            // Reuse the shared calculation without publishing the raw ledger or future records.
+            var published = t
+            published.entries.removeAll { $0.occurredAt > now }
+            ruleProgress = rules.map { rule in
+                published.rules = [rule]
+                return WidgetRuleProgress(ruleID: rule.id,
+                                          progress: GoalProgress.current(for: published, now: max(now, rule.effectiveAt)))
+            }
+        }
+        let entries = sorted
         if t.resolvedCardBackground == .plot {
             if t.kind == .number {
                 plot = Array(entries.compactMap { entry -> CardPlotPoint? in
@@ -76,11 +254,40 @@ nonisolated struct WidgetRow: Codable, Identifiable {
            let data = sorted.reversed().first(where: { !$0.photos.isEmpty })?.photos.first {
             thumbnail = Self.makeThumbnail(data)
         }
+        if t.resolvedCardBackground == .trackerPhoto, let data = t.photos?.first {
+            thumbnail = Self.makeThumbnail(data)
+        }
         if t.resolvedCardBackground == .map {
             locations = Array(sorted.compactMap(\.location).filter(\.isValid).suffix(24))
         }
     }
     var resolvedBackground: CardBackground { background ?? .plot }
+    func currentProgress(at date: Date) -> GoalProgress? {
+        if kind == .daily { return GoalProgress.current(for: tracker, now: date) }
+        guard let rule = tracker.rule(at: date) else { return nil }
+        if let ruleProgress { return ruleProgress.first { $0.ruleID == rule.id }?.progress }
+        // Legacy summaries have only the first rule's cached progress; never carry its target forward.
+        guard rule.id == rules.first?.id, let progress, progress.target == rule.target else { return nil }
+        return progress
+    }
+    var hasPhoto: Bool { (resolvedBackground == .photo || resolvedBackground == .trackerPhoto) && thumbnail != nil }
+    var plotDomain: ClosedRange<Double> { plotDomain(progress: progress) }
+    func plotDomain(at date: Date) -> ClosedRange<Double> {
+        plotDomain(progress: currentProgress(at: date))
+    }
+    private func plotDomain(progress: GoalProgress?) -> ClosedRange<Double> {
+        let target = progress.map { CardPlotPoint(date: .distantPast, value: $0.target) }
+        return CardPlotScale.domain(points: (plot ?? []) + [target].compactMap { $0 }, precision: precision,
+                                    completion: kind == .daily, lower: axisLower, upper: axisUpper)
+    }
+    var clippedPointCount: Int {
+        (plot ?? []).filter { CardPlotScale.excludes($0.value, lower: axisLower, upper: axisUpper) }.count
+    }
+    func carries(at now: Date) -> [CardCarrySegment] {
+        guard kind == .number, let points = plot, let start = points.first?.date else { return [] }
+        // A half-open display window includes an actual sample exactly at the timeline instant.
+        return CardCarrySegment.segments(points: points, interval: DateInterval(start: start, end: max(start, now).addingTimeInterval(1)), now: now)
+    }
     var recordURL: URL { URL(string: "goaltracker://record/" + id.uuidString)! }
 
     var tracker: Tracker {

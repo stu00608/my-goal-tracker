@@ -19,6 +19,7 @@ nonisolated enum L {
     }
     static func error(_ error: Error) -> String {
         switch error {
+        case let condition as ConditionError: text(condition.key)
         case DataError.invalidNumber: text("Enter a number with at most 28 digits, without grouping separators.")
         case DataError.invalidBackup, DataError.unsupportedVersion: text("This backup is damaged or uses an unsupported format. Your data was kept.")
         case DataError.duplicateDay: text("This date already has a record. Edit that record instead.")
@@ -32,6 +33,7 @@ nonisolated enum L {
 }
 
 @main struct GoalTrackerApp: App {
+    @UIApplicationDelegateAdaptor(GoalookerAppDelegate.self) private var appDelegate
     @AppStorage("appearance") private var appearance = "system"
     @AppStorage("language") private var language = "system"
     @Environment(\.scenePhase) private var scenePhase
@@ -49,6 +51,7 @@ nonisolated enum L {
                 if args.contains("--reset-test-store") {
                     L.defaults.removeObject(forKey: "recordLocationByDefault")
                     L.defaults.removeObject(forKey: "numericInputMode")
+                    L.defaults.removeObject(forKey: "remindersEnabled")
                 }
                 let directory = URL.applicationSupportDirectory.appendingPathComponent("UITests", isDirectory: true)
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -104,6 +107,36 @@ nonisolated enum L {
                     var duplicate = Tracker(name: fourth.name, kind: .number)
                     duplicate.put(Entry(occurredAt: now, localDay: duplicate.day(now), value: "22"))
                     fixture.append(duplicate)
+                }
+                if args.contains("--goalooker-test-fixture") {
+                    score.description = "Small steps leave a visible trace."
+                    score.website = "https://example.com"
+                    score.photos = photos
+                    score.axisLower = "0"; score.axisUpper = "25"
+                    score.rules = [GoalRule(period: .deadline, target: "20", effectiveAt: now.addingTimeInterval(-90 * 86400), deadline: now.addingTimeInterval(30 * 86400))]
+                    score.put(Entry(occurredAt: now.addingTimeInterval(-86400), localDay: score.day(now.addingTimeInterval(-86400)), change: "0.25", note: "Derived change"))
+                    cook.photos = photos; cook.cardBackground = .trackerPhoto
+                    var office = Tracker(name: "OFFICE", kind: .daily)
+                    office.description = "Record only when either office condition is satisfied."
+                    office.setFrequency(.weekly, target: 2, now: now)
+                    office.conditions = [PlaceCondition(name: "Office A", location: RecordedLocation(latitude: 35.68, longitude: 139.76)), PlaceCondition(name: "Office B", location: RecordedLocation(latitude: 34.69, longitude: 135.5))]
+                    office.conditionCombination = .any; office.gateSave = true
+                    fixture = [score, cook, travel, fourth, office]
+                    if args.contains("--goalooker-progress-fixture") { score.cardBackground = .progress; fixture[0] = score }
+                    if args.contains("--goalooker-clipping-fixture") {
+                        score.entries = []; score.rules = []; score.precision = 1
+                        score.axisLower = "12345678901234567890.1"; score.axisUpper = "12345678901234567890.2"
+                        let date = now.addingTimeInterval(-40 * 86400)
+                        score.put(Entry(occurredAt: date, localDay: score.day(date), value: "12345678901234567890.3", note: "Excluded precision sample"))
+                        fixture[0] = score
+                    }
+                    if args.contains("--goalooker-orphan-fixture") {
+                        score.entries = []
+                        let date = now.addingTimeInterval(-7200)
+                        score.put(Entry(occurredAt: date, localDay: score.day(date), value: "18.5", note: "Anchor value"))
+                        score.put(Entry(occurredAt: now.addingTimeInterval(-3600), localDay: score.day(now), change: "0.25", note: "Derived change"))
+                        fixture[0] = score
+                    }
                 }
                 try loaded.replace(fixture)
             }

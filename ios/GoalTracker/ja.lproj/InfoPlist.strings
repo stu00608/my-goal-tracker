@@ -1,1 +1,4 @@
-"NSLocationWhenInUseUsageDescription" = "「位置を記録」をオンにして最初の写真に GPS 情報がない場合、この記録に iPhone の現在地を使用します。";
+"CFBundleDisplayName" = "Goalooker";
+"NSLocationWhenInUseUsageDescription" = "位置の記録やトラッカーの場所条件の確認に、iPhone の現在地を使用します。";
+"NSLocationAlwaysAndWhenInUseUsageDescription" = "Goalooker を閉じている間も、トラッカーの場所条件を満たしたときに通知します。";
+"GoalookerCondition" = "正確な位置情報を使い、選んだ場所の範囲内か範囲外かを確認します。";
