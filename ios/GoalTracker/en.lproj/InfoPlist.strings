@@ -1,1 +1,4 @@
-"NSLocationWhenInUseUsageDescription" = "When you enable Record location and the first photo has no GPS, use your current iPhone location for this record.";
+"CFBundleDisplayName" = "Goalooker";
+"NSLocationWhenInUseUsageDescription" = "Use your current location when you record location or check a tracker’s place conditions.";
+"NSLocationAlwaysAndWhenInUseUsageDescription" = "Notify you when a tracker’s place conditions become satisfied, including while Goalooker is closed.";
+"GoalookerCondition" = "Use precise location to check whether you are inside or outside your chosen place.";

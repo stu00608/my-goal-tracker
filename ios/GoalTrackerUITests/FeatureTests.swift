@@ -175,10 +175,10 @@ nonisolated final class FeatureTests: XCTestCase {
         second.press(forDuration: 1, thenDragTo: first)
         XCTAssertLessThan(second.frame.minX, first.frame.minX)
         attach(reopened, "Grid reordered by long press drag")
-        reopened.buttons["settings.open"].tap()
+        reopened.tabBars.buttons.element(boundBy: 2).tap()
         reopened.buttons["settings.homeLayout"].tap()
         reopened.buttons["List"].tap()
-        reopened.buttons["settings.done"].tap()
+        reopened.tabBars.buttons.element(boundBy: 0).tap()
         XCTAssertTrue(element(reopened, prefix: "tracker.", name: "COOK").waitForExistence(timeout: 10))
         attach(reopened, "Native list selected from settings")
     }
@@ -248,10 +248,10 @@ nonisolated final class FeatureTests: XCTestCase {
     @MainActor func testDefaultNumericInputModePersistsAndFallsBackForFirstRecord() {
         continueAfterFailure = false
         let app = app()
-        app.buttons["settings.open"].tap()
+        app.tabBars.buttons.element(boundBy: 2).tap()
         app.buttons["settings.numericInputMode"].tap(); app.buttons["Change amount"].tap()
         attach(app, "Default numeric input preference")
-        app.buttons["settings.done"].tap()
+        app.tabBars.buttons.element(boundBy: 0).tap()
         element(app, prefix: "card.", name: "SCORE").tap()
         let change = app.descendants(matching: .any).matching(identifier: "entry.change.scrubber").firstMatch
         XCTAssertTrue(change.waitForExistence(timeout: 10))
@@ -274,14 +274,14 @@ nonisolated final class FeatureTests: XCTestCase {
     @MainActor func testLocationDefaultOnlyInitializesNewRecords() {
         continueAfterFailure = false
         let app = app()
-        app.buttons["settings.open"].tap()
+        app.tabBars.buttons.element(boundBy: 2).tap()
         let preference = app.switches["settings.recordLocationDefault"]
         XCTAssertTrue(preference.waitForExistence(timeout: 10)); XCTAssertEqual(preference.value as? String, "0")
         preference.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
         XCTAssertEqual(preference.value as? String, "1")
         XCTAssertFalse(XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.firstMatch.exists)
         attach(app, "Location default in Settings without permission request")
-        app.buttons["settings.done"].tap()
+        app.tabBars.buttons.element(boundBy: 0).tap()
         element(app, prefix: "card.", name: "SCORE").tap()
         for _ in 0..<6 { if app.switches["entry.location"].exists { break }; app.swipeUp() }
         XCTAssertTrue(app.switches["entry.location"].waitForExistence(timeout: 10))
@@ -290,10 +290,10 @@ nonisolated final class FeatureTests: XCTestCase {
         app.buttons["entry.cancel"].tap()
         app.terminate()
         let reopened = self.app(reset: false)
-        reopened.buttons["settings.open"].tap()
+        reopened.tabBars.buttons.element(boundBy: 2).tap()
         XCTAssertEqual(reopened.switches["settings.recordLocationDefault"].value as? String, "1")
         reopened.buttons["settings.homeLayout"].tap(); reopened.buttons["List"].tap()
-        reopened.buttons["settings.done"].tap()
+        reopened.tabBars.buttons.element(boundBy: 0).tap()
         // Preference mutation must be observable; the argument-domain layout override is removed on reopen.
         reopened.terminate()
         let list = self.app(reset: false, fixedLayout: false)
@@ -317,13 +317,13 @@ nonisolated final class FeatureTests: XCTestCase {
         XCTAssertEqual(list.switches["entry.location"].value as? String, "1")
         list.buttons["entry.cancel"].tap()
         // A persisted record without coordinates stays OFF when the global default is ON.
-        list.buttons["settings.open"].tap()
+        list.tabBars.buttons.element(boundBy: 2).tap()
         list.switches["settings.recordLocationDefault"].coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
-        list.buttons["settings.done"].tap()
+        list.tabBars.buttons.element(boundBy: 0).tap()
         completion.tap()
-        list.buttons["settings.open"].tap()
+        list.tabBars.buttons.element(boundBy: 2).tap()
         list.switches["settings.recordLocationDefault"].coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
-        list.buttons["settings.done"].tap()
+        list.tabBars.buttons.element(boundBy: 0).tap()
         element(list, prefix: "tracker.", name: "DEFAULT COOK").tap()
         for _ in 0..<6 { if list.switches["entry.location"].exists { break }; list.swipeUp() }
         XCTAssertEqual(list.switches["entry.location"].value as? String, "0")

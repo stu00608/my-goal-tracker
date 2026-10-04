@@ -49,6 +49,7 @@ nonisolated enum L {
                 if args.contains("--reset-test-store") {
                     L.defaults.removeObject(forKey: "recordLocationByDefault")
                     L.defaults.removeObject(forKey: "numericInputMode")
+                    L.defaults.removeObject(forKey: "remindersEnabled")
                 }
                 let directory = URL.applicationSupportDirectory.appendingPathComponent("UITests", isDirectory: true)
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

@@ -1,1 +1,4 @@
-"NSLocationWhenInUseUsageDescription" = "開啟「記錄位置」且第一張照片沒有 GPS 時，使用 iPhone 目前位置作為這筆紀錄的位置。";
+"CFBundleDisplayName" = "過路客";
+"NSLocationWhenInUseUsageDescription" = "在記錄位置或驗證追蹤項目的地點條件時，使用 iPhone 目前位置。";
+"NSLocationAlwaysAndWhenInUseUsageDescription" = "當追蹤項目的地點條件符合時提醒你，即使過路客沒有開啟。";
+"GoalookerCondition" = "使用精確位置，確認你是否位於所選地點的範圍內或範圍外。";

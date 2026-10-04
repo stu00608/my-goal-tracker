@@ -125,7 +125,7 @@ nonisolated final class FlowTests: XCTestCase {
             app.buttons["tracker.save"].tap()
             XCTAssertTrue(button(app, "tracker.", name).waitForExistence(timeout: 10))
             screenshot(app, "Today " + language)
-            app.buttons["settings.open"].tap()
+            app.tabBars.buttons.element(boundBy: 2).tap()
             for _ in 0..<8 { if app.buttons["backup.export"].exists { break }; app.swipeUp() }
             XCTAssertTrue(app.buttons["backup.export"].waitForExistence(timeout: 10))
             screenshot(app, "Settings " + language)
