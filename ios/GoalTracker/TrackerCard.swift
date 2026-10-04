@@ -72,7 +72,7 @@ struct TrackerCardLabel: View {
                 Text(text("Some records are outside chart bounds")).font(.caption2).lineLimit(compact ? 1 : 2)
             }
             if row.resolvedBackground == .plot, let date = row.lastRecordedAt, date < now {
-                (Text(text("Last recorded")) + Text(" ") + Text(date, format: .dateTime.month().day()))
+                (Text(text("Last recorded")) + Text(" ") + Text(date.formatted(Date.FormatStyle(locale: locale, calendar: row.tracker.calendar, timeZone: row.tracker.calendar.timeZone).month().day())))
                     .font(.caption2).lineLimit(1)
             }
         }

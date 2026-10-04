@@ -4,12 +4,6 @@ import CoreLocation
 import Observation
 import UIKit
 
-// Kept as a source-compatible route for the existing settings caller during integration.
-struct ReminderEditor: View {
-    let tracker: Tracker
-    var body: some View { TrackerEditor(existing: tracker) }
-}
-
 // This edits a tracker draft, including a tracker that has never been persisted.
 struct ReminderScheduleEditor: View {
     @Binding var reminder: Reminder?
@@ -299,7 +293,7 @@ struct ReminderScheduleEditor: View {
                 history[t.id.uuidString] = ConditionTransition(signature: ConditionPlan.signature(t))
             }
         }
-        guard monitorTask != nil || canMonitor else { return }
+        // The named native monitor persists across processes. Reconcile it even on inactive cold launch.
         let monitor = await monitor()
         guard revision == token else { return }
         let desired = canMonitor ? Set(centers.map(\.identifier)) : []
