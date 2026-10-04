@@ -15,6 +15,7 @@ struct SettingsView: View {
     @Environment(\.dismiss) private var dismiss
     @AppStorage("appearance") private var appearance = "system"
     @AppStorage("language") private var language = "system"
+    @AppStorage("homeLayout") private var homeLayout = "grid"
     @State private var export: ExportDocument?
     @State private var exporting = false
     @State private var csv = false
@@ -26,6 +27,10 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section(L.text("Preferences")) {
+                    Picker(L.text("Home layout"), selection: $homeLayout) {
+                        Text(L.text("Grid")).tag("grid")
+                        Text(L.text("List")).tag("list")
+                    }.accessibilityIdentifier("settings.homeLayout")
                     Picker(L.text("Appearance"), selection: $appearance) {
                         Text(L.text("System")).tag("system"); Text(L.text("Light")).tag("light"); Text(L.text("Dark")).tag("dark")
                     }.accessibilityIdentifier("settings.appearance")
