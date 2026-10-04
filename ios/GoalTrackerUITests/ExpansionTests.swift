@@ -62,7 +62,11 @@ nonisolated final class ExpansionTests: XCTestCase {
         let complete = button(app, prefix: "complete.", text: "OFFICE")
         for _ in 0..<6 { if complete.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(complete.waitForExistence(timeout: 10)); complete.tap()
-        XCTAssertTrue(app.buttons["entry.save"].waitForExistence(timeout: 10), "Gated quick completion must open the editor")
+        XCTAssertTrue(app.staticTexts["home.conditions.error"].waitForExistence(timeout: 10))
+        XCTAssertFalse(app.buttons["entry.save"].exists, "Failed quick completion stays in Today")
+        XCTAssertTrue(complete.label.contains("Mark complete"))
+        button(app, prefix: "tracker.", text: "OFFICE").tap()
+        XCTAssertTrue(app.buttons["entry.save"].waitForExistence(timeout: 10))
         let note = app.textFields["entry.note"]
         for _ in 0..<6 { if note.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(note.waitForExistence(timeout: 10)); note.tap(); note.typeText("Office draft remains")
@@ -82,8 +86,10 @@ nonisolated final class ExpansionTests: XCTestCase {
         let complete = button(app, prefix: "complete.", text: "OFFICE")
         for _ in 0..<6 { if complete.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(complete.waitForExistence(timeout: 10)); complete.tap()
-        XCTAssertTrue(app.buttons["entry.save"].waitForExistence(timeout: 10)); app.buttons["entry.save"].tap()
-        XCTAssertTrue(complete.waitForExistence(timeout: 10)); XCTAssertTrue(complete.label.contains("Undo completion"))
+        let recorded = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", "Undo completion"), object: complete)
+        XCTAssertEqual(XCTWaiter.wait(for: [recorded], timeout: 10), .completed)
+        XCTAssertFalse(app.buttons["entry.save"].exists, "Met quick completion saves without an extra sheet")
+        XCTAssertFalse(app.staticTexts["home.conditions.error"].exists)
         XCTAssertFalse(app.staticTexts["editor.error"].exists); XCTAssertFalse(app.alerts.firstMatch.exists)
         screenshot(app, "Satisfied place gate saves with no extra success prompt")
     }

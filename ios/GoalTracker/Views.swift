@@ -12,16 +12,29 @@ struct RootView: View {
     @State private var goalsNavigationID = UUID()
     @State private var creating = false
     @State private var entryTracker: Tracker?
+    @State private var gateNotice: String?
     var body: some View {
         TimelineView(.everyMinute) { _ in screen(at: Date()) }
     }
     private func screen(at date: Date) -> some View {
         TabView(selection: $selected) {
-            NavigationStack { trackerList(today: true, at: date) }.id(todayNavigationID).tabItem { Label(L.text("Today"), systemImage: "checkmark.circle") }.tag(0)
+            NavigationStack {
+                trackerList(today: true, at: date).safeAreaInset(edge: .top, spacing: 0) {
+                    if let gateNotice {
+                        Text(gateNotice).font(.callout).foregroundStyle(.red)
+                            .frame(maxWidth: .infinity, alignment: .leading).padding().background(.background)
+                            .accessibilityIdentifier("home.conditions.error")
+                    }
+                }
+            }.id(todayNavigationID).tabItem { Label(L.text("Today"), systemImage: "checkmark.circle") }.tag(0)
             NavigationStack { trackerList(today: false, at: date) }.id(goalsNavigationID).tabItem { Label(L.text("Goals"), systemImage: "chart.xyaxis.line") }.tag(1)
             SettingsView().tabItem { Label(L.text("Settings"), systemImage: "gearshape") }.tag(2)
         }
         .environment(\.editMode, $editMode)
+        .onChange(of: selected) { _, _ in gateNotice = nil }
+        .onChange(of: gateNotice) { _, notice in
+            if let notice { UIAccessibility.post(notification: .announcement, argument: notice) }
+        }
         .task(id: store.trackers) {
             do { try await Reminders.sync(store.trackers) }
             catch is CancellationError { }
@@ -67,24 +80,11 @@ struct RootView: View {
                                     .accessibilityIdentifier("tracker." + tracker.id.uuidString)
                             }
                             if today && tracker.kind == .daily {
-                                let done = tracker.entries.contains { $0.localDay == tracker.day(date) }
-                                Button {
-                                    store.perform {
-                                        var copy = store.trackers.first { $0.id == tracker.id } ?? tracker
-                                        let now = Date(), day = copy.day(now)
-                                        if let entry = copy.entries.first(where: { $0.localDay == day }) {
-                                            if !entry.note.isEmpty || !entry.photos.isEmpty || entry.location != nil { entryTracker = copy; return }
-                                            copy.entries.removeAll { $0.localDay == day }
-                                        } else {
-                                            if recordLocationByDefault || copy.requiresLocationGate { entryTracker = copy; return }
-                                            copy.put(Entry(occurredAt: now, localDay: day))
-                                        }
-                                        try store.save(copy)
-                                    }
-                                } label: { Image(systemName: done ? "checkmark.circle.fill" : "circle").font(.title2).frame(minWidth: 44, minHeight: 44) }
-                                .buttonStyle(.borderless)
-                                .accessibilityLabel(L.text(done ? "Undo completion" : "Mark complete") + ": " + tracker.name)
-                                .accessibilityIdentifier("complete." + tracker.id.uuidString)
+                                DailyCompletionButton(tracker: tracker, now: date,
+                                    recordLocationByDefault: recordLocationByDefault,
+                                    cancelForPresentation: entryTracker != nil || creating || selected != 0,
+                                    onEditor: { entryTracker = $0 }, onBegin: { gateNotice = nil },
+                                    onFailure: { gateNotice = $0 })
                             }
                             if today && tracker.kind == .number {
                                 Button { entryTracker = tracker } label: { Image(systemName: "plus.circle").font(.title2).frame(minWidth: 44, minHeight: 44) }
@@ -124,6 +124,82 @@ struct RootView: View {
                   let to = active.firstIndex(where: { $0.id == target }) else { return }
             let tracker = active.remove(at: from); active.insert(tracker, at: to)
             try store.replace(active + store.trackers.filter(\.archived))
+        }
+    }
+}
+
+private struct DailyCompletionButton: View {
+    @Environment(AppStore.self) private var store
+    let tracker: Tracker
+    let now: Date
+    let recordLocationByDefault: Bool
+    let cancelForPresentation: Bool
+    let onEditor: (Tracker) -> Void
+    let onBegin: () -> Void
+    let onFailure: (String) -> Void
+    @State private var checking = false
+    @State private var verification: Task<Void, Never>?
+    private var done: Bool { tracker.entries.contains { $0.localDay == tracker.day(now) } }
+    var body: some View {
+        Button(action: toggle) {
+            Group {
+                if checking { ProgressView() }
+                else { Image(systemName: done ? "checkmark.circle.fill" : "circle").font(.title2) }
+            }.frame(minWidth: 44, minHeight: 44)
+        }.buttonStyle(.borderless).disabled(checking)
+            .accessibilityLabel(L.text(checking ? "Checking record conditions" : done ? "Undo completion" : "Mark complete") + ": " + tracker.name)
+            .accessibilityIdentifier("complete." + tracker.id.uuidString)
+            .onDisappear { verification?.cancel() }
+            .onChange(of: cancelForPresentation) { _, cancel in if cancel { verification?.cancel() } }
+    }
+    private func toggle() {
+        guard !checking, var original = store.trackers.first(where: { $0.id == tracker.id }) else { return }
+        onBegin()
+        let instant = Date(), day = original.day(instant)
+        if let entry = original.entries.first(where: { $0.localDay == day }) {
+            if !entry.note.isEmpty || !entry.photos.isEmpty || entry.location != nil { onEditor(original); return }
+            original.entries.removeAll { $0.localDay == day }
+            store.perform { try store.save(original) }
+            return
+        }
+        if recordLocationByDefault { onEditor(original); return }
+        guard original.requiresLocationGate else {
+            original.put(Entry(occurredAt: instant, localDay: day))
+            store.perform { try store.save(original) }
+            return
+        }
+        checking = true
+        let snapshot = original
+        verification = Task {
+            defer { checking = false }
+            do {
+                try await RecordConditions.verify(tracker: snapshot)
+                try Task.checkCancellation()
+                guard store.trackers.first(where: { $0.id == snapshot.id }) == snapshot else {
+                    onFailure(L.text("Records changed while saving. Review your draft and save again.")); return
+                }
+                var candidate = snapshot
+                let instant = Date()
+                candidate.put(Entry(occurredAt: instant, localDay: candidate.day(instant)))
+                try store.save(candidate)
+            } catch is CancellationError { }
+            catch {
+                if !Task.isCancelled {
+                    if let condition = error as? ConditionError {
+                        let key: String
+                        switch condition.key {
+                        case "Your location does not meet the conditions. Your draft was kept.":
+                            key = "Your location does not meet the conditions. No record was saved."
+                        case "Your location is too uncertain or stale. Try again in a moment. Your draft was kept.":
+                            key = "Your location is too uncertain or stale. No record was saved."
+                        case "Could not verify your location. Your draft was kept.":
+                            key = "Could not verify your location. No record was saved."
+                        default: key = condition.key
+                        }
+                        onFailure(L.text(key))
+                    } else { onFailure(L.error(error)) }
+                }
+            }
         }
     }
 }

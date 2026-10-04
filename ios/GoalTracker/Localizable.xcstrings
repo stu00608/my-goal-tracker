@@ -6725,6 +6725,75 @@
           }
         }
       }
+    },
+    "Your location does not meet the conditions. No record was saved.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your location does not meet the conditions. No record was saved."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "現在地が条件を満たしていません。記録は保存されていません。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目前位置尚未符合條件，未新增紀錄。"
+          }
+        }
+      }
+    },
+    "Your location is too uncertain or stale. No record was saved.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Your location is too uncertain or stale. No record was saved."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "位置情報の精度が不足しているか、古くなっています。記録は保存されていません。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "位置資訊不夠準確或已過期，未新增紀錄。"
+          }
+        }
+      }
+    },
+    "Could not verify your location. No record was saved.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Could not verify your location. No record was saved."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "現在地を確認できませんでした。記録は保存されていません。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無法驗證目前位置，未新增紀錄。"
+          }
+        }
+      }
     }
   },
   "version": "1.0"
