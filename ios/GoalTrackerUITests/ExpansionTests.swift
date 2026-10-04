@@ -248,4 +248,31 @@ nonisolated final class ExpansionTests: XCTestCase {
         app.buttons["entry.cancel"].tap()
     }
 
+    @MainActor func testExactBoundsExcludeCarriedHugeValueWithoutCreatingRecords() {
+        continueAfterFailure = false
+        let app = launch(extra: ["--goalooker-clipping-fixture"])
+        let card = button(app, prefix: "card.", text: "SCORE")
+        XCTAssertTrue(card.waitForExistence(timeout: 10))
+        XCTAssertTrue((card.value as? String)?.contains("outside the chart bounds") == true)
+        screenshot(app, "Exact bounds exclude collapsed huge value from overview")
+        app.tabBars.buttons.element(boundBy: 1).tap()
+        button(app, prefix: "tracker.", text: "SCORE").tap()
+        let period = app.buttons["snapshot.period"]
+        for _ in 0..<10 { if period.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(period.waitForExistence(timeout: 10)); period.tap()
+        app.buttons["30 days"].tap()
+        let notice = app.staticTexts["snapshot.clipped"]
+        for _ in 0..<8 { if notice.exists { break }; app.swipeUp() }
+        XCTAssertTrue(notice.waitForExistence(timeout: 10))
+        XCTAssertTrue(notice.label.contains("Last recorded value is outside"))
+        screenshot(app, "Carried-only chart has exact exclusion notice and no false line")
+        let record = button(app, prefix: "entry.", text: "Excluded precision sample")
+        for _ in 0..<10 { if record.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(record.waitForExistence(timeout: 10)); record.tap()
+        let value = app.descendants(matching: .any).matching(identifier: "entry.value.scrubber").firstMatch
+        XCTAssertTrue(value.waitForExistence(timeout: 10)); value.tap()
+        XCTAssertEqual(app.textFields["entry.value"].value as? String, "12345678901234567890.3")
+        app.buttons["entry.cancel"].tap()
+    }
+
 }

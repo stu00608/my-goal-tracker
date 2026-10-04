@@ -123,6 +123,13 @@ nonisolated enum L {
                     office.conditionCombination = .any; office.gateSave = true
                     fixture = [score, cook, travel, fourth, office]
                     if args.contains("--goalooker-progress-fixture") { score.cardBackground = .progress; fixture[0] = score }
+                    if args.contains("--goalooker-clipping-fixture") {
+                        score.entries = []; score.rules = []; score.precision = 1
+                        score.axisLower = "12345678901234567890.1"; score.axisUpper = "12345678901234567890.2"
+                        let date = now.addingTimeInterval(-40 * 86400)
+                        score.put(Entry(occurredAt: date, localDay: score.day(date), value: "12345678901234567890.3", note: "Excluded precision sample"))
+                        fixture[0] = score
+                    }
                     if args.contains("--goalooker-orphan-fixture") {
                         score.entries = []
                         let date = now.addingTimeInterval(-7200)
