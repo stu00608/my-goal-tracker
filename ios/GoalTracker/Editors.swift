@@ -100,6 +100,7 @@ struct EntryEditor: View {
     let tracker: Tracker
     var existing: Entry?
     @State private var date = Date()
+    @State private var dateEdited = false
     @State private var value = ""
     @State private var note = ""
     @State private var photos: [Data] = []
@@ -114,7 +115,7 @@ struct EntryEditor: View {
                     if tracker.kind == .number {
                         TextField(L.text("Value"), text: $value).keyboardType(.numbersAndPunctuation).accessibilityIdentifier("entry.value")
                     }
-                    DatePicker(L.text("Date"), selection: $date, in: ...Date(), displayedComponents: tracker.kind == .number ? [.date, .hourAndMinute] : [.date])
+                    DatePicker(L.text("Date"), selection: Binding(get: { date }, set: { date = $0; dateEdited = true }), in: ...Date(), displayedComponents: tracker.kind == .number ? [.date, .hourAndMinute] : [.date])
                         .environment(\.timeZone, tracker.calendar.timeZone).accessibilityIdentifier("entry.date")
                     TextField(L.text("Notes (optional)"), text: $note, axis: .vertical).lineLimit(3...8).accessibilityIdentifier("entry.note")
                 }
@@ -122,16 +123,17 @@ struct EntryEditor: View {
                     ForEach(Array(photos.enumerated()), id: \.offset) { index, data in
                         if let image = UIImage(data: data) {
                             Image(uiImage: image).resizable().scaledToFit().accessibilityLabel(L.text("Record photo"))
-                            Button(L.text("Remove photo"), role: .destructive) { photos.remove(at: index) }
+                            Button(L.text("Remove photo"), role: .destructive) { photos.remove(at: index) }.disabled(loading)
                         }
                     }
-                    if photos.count < 6 {
-                        PhotosPicker(selection: $selections, maxSelectionCount: 6 - photos.count, matching: .images) {
+                    if photos.count < Entry.photoLimit {
+                        PhotosPicker(selection: $selections, maxSelectionCount: Entry.photoLimit - photos.count, selectionBehavior: .ordered, matching: .images, preferredItemEncoding: .current) {
                             Label(L.text("Add photos"), systemImage: "photo.badge.plus")
                         }.disabled(loading).accessibilityIdentifier("entry.photos")
                     }
                     if loading { ProgressView(L.text("Saving photo copies")) }
-                    Text(L.text("Photos are copied into the app. Up to 6 per record, resized to 1600 pixels.")).font(.caption).foregroundStyle(.secondary)
+                    Text(L.text("Photos are copied into the app. Up to 10 per record, resized to 1600 pixels.")).font(.caption).foregroundStyle(.secondary)
+                    if existing == nil { Text(L.text("New records use the first photo’s date when available. You can still change the date.")).font(.caption).foregroundStyle(.secondary) }
                 }
                 if let error { Section { Text(error).foregroundStyle(.red).accessibilityIdentifier("editor.error") } }
                 if let existing, tracker.entries.contains(where: { $0.id == existing.id }) {
@@ -150,18 +152,22 @@ struct EntryEditor: View {
                 if let e = existing { date = e.occurredAt; value = e.value ?? ""; note = e.note; photos = e.photos }
             }
             .onChange(of: selections) { _, items in
-                guard !items.isEmpty else { return }
+                guard !items.isEmpty, !loading else { return }
+                loading = true
                 Task {
-                    loading = true
                     defer { loading = false; selections = [] }
                     do {
                         var copies: [Data] = []
-                        for item in items {
+                        var firstDate: Date?
+                        for (index, item) in items.enumerated() {
                             guard let data = try await item.loadTransferable(type: Data.self) else { throw DataError.photoFailed }
-                            let copy = try photoCopy(data)
-                            copies.append(copy)
+                            if index == 0 { firstDate = photoDate(data, timeZone: tracker.calendar.timeZone) }
+                            copies.append(try photoCopy(data))
                         }
+                        guard photos.count + copies.count <= Entry.photoLimit else { throw DataError.tooManyPhotos }
+                        if existing == nil, photos.isEmpty, !dateEdited, let firstDate { date = firstDate }
                         photos.append(contentsOf: copies)
+                        error = nil
                     } catch { self.error = L.error(error) }
                 }
             }
@@ -188,6 +194,7 @@ struct EntryEditor: View {
                 e.id = conflict.id; e.createdAt = conflict.createdAt
                 if existing == nil { e.photos = conflict.photos + photos; e.note = note.isEmpty ? conflict.note : note }
             }
+            guard e.photos.count <= Entry.photoLimit else { throw DataError.tooManyPhotos }
             t.put(e); try store.save(t); dismiss()
         } catch { self.error = L.error(error) }
     }
@@ -203,4 +210,34 @@ struct EntryEditor: View {
           let copy = UIImage(cgImage: image).jpegData(compressionQuality: 0.8),
           Backup.validPhoto(copy) else { throw DataError.photoFailed }
     return copy
+}
+
+// Read the original file before photoCopy strips metadata from the owned JPEG.
+@MainActor func photoDate(_ data: Data, timeZone: TimeZone, now: Date = Date()) -> Date? {
+    guard let source = CGImageSourceCreateWithData(data as CFData, nil),
+          let properties = CGImageSourceCopyPropertiesAtIndex(source, 0, nil) as? [String: Any] else { return nil }
+    let exif = properties[kCGImagePropertyExifDictionary as String] as? [String: Any] ?? [:]
+    let tiff = properties[kCGImagePropertyTIFFDictionary as String] as? [String: Any] ?? [:]
+    let original = exif[kCGImagePropertyExifDateTimeOriginal as String] as? String
+    let digitized = exif[kCGImagePropertyExifDateTimeDigitized as String] as? String
+    var result: Date?
+    if let raw = original ?? digitized ?? (tiff[kCGImagePropertyTIFFDateTime as String] as? String) {
+        let offsetKey = original != nil ? kCGImagePropertyExifOffsetTimeOriginal : digitized != nil ? kCGImagePropertyExifOffsetTimeDigitized : kCGImagePropertyExifOffsetTime
+        let offset = exif[offsetKey as String] as? String
+        let formatter = DateFormatter()
+        formatter.locale = Locale(identifier: "en_US_POSIX")
+        formatter.calendar = Calendar(identifier: .gregorian)
+        formatter.timeZone = timeZone
+        formatter.isLenient = false
+        if let offset {
+            guard offset.range(of: #"^[+-][0-9]{2}:[0-9]{2}$"#, options: .regularExpression) != nil else { return nil }
+            let parts = offset.dropFirst().split(separator: ":").compactMap { Int($0) }
+            guard parts.count == 2, parts[1] < 60, parts[0] * 60 + parts[1] <= 14 * 60 else { return nil }
+            formatter.timeZone = TimeZone(secondsFromGMT: (parts[0] * 3600 + parts[1] * 60) * (offset.first == "-" ? -1 : 1))
+        }
+        formatter.dateFormat = "yyyy:MM:dd HH:mm:ss"
+        if let date = formatter.date(from: raw), formatter.string(from: date) == raw { result = date }
+    }
+    guard let result, Backup.validDate(result), result <= now else { return nil }
+    return result
 }

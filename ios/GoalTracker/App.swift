@@ -23,6 +23,7 @@ nonisolated enum L {
         case DataError.duplicateDay: text("This date already has a record. Edit that record instead.")
         case DataError.tooManyReminders: text("Too many reminders. Choose fewer weekdays or trackers.")
         case DataError.tooLarge: text("The backup exceeds the 100 MB limit.")
+        case DataError.tooManyPhotos: text("Each record can have up to 10 photos. Remove photos before saving.")
         case DataError.photoFailed: text("Could not read this photo. Try a different image.")
         default: text("Could not complete this action. Your saved data was kept. Please try again.")
         }
