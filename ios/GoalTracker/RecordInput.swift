@@ -6,7 +6,7 @@ struct DraftPhoto: Identifiable {
     let data: Data
 }
 
-/// The display owns scrubbing; the replacement TextField owns all text gestures.
+/// Change amounts scrub by exact Decimal ticks. Absolute values only accept tap-to-type.
 struct NumericValueEditor: View {
     @Binding var text: String
     let precision: Int
@@ -14,63 +14,71 @@ struct NumericValueEditor: View {
     let isChange: Bool
     let focus: FocusState<Bool>.Binding
     @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @ScaledMetric(relativeTo: .largeTitle) private var valueSize = 56.0
     @State private var editing = false
     @State private var origin: String?
     @State private var lastStep = 0
+    @State private var countingDown = false
     @State private var adjustmentError: String?
     private var fieldID: String { isChange ? "entry.change" : "entry.value" }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            Text(L.text(isChange ? "Change amount" : "New value"))
-                .font(.subheadline.weight(.medium)).foregroundStyle(TrackerColors.secondaryText)
-                .accessibilityIdentifier("entry.value.kind")
+        VStack(spacing: 6) {
             Group {
                 if editing {
                     TextField(L.text(isChange ? "Change amount" : "Value"), text: $text)
                         .keyboardType(.decimalPad).focused(focus)
+                        .multilineTextAlignment(.center)
                         .onAppear { focus.wrappedValue = true }
-                        .frame(minHeight: 96)
                         .accessibilityIdentifier(fieldID)
                 } else {
-                    Text(displayValue).foregroundStyle(text.isEmpty ? TrackerColors.secondaryText : Color.primary)
-                        .lineLimit(1).minimumScaleFactor(0.2)
-                        .frame(maxWidth: .infinity, minHeight: 96, alignment: .leading)
-                        .contentShape(Rectangle())
-                        .overlay {
-                            ValueGestureSurface(onTap: { editing = true }, onBegin: {
-                                origin = text; lastStep = 0; adjustmentError = nil
-                            }, onMove: scrub, onEnd: { origin = nil }, onCancel: restore)
-                                .accessibilityHidden(true)
-                        }
-                        .accessibilityElement(children: .ignore)
-                        .accessibilityLabel(L.text(isChange ? "Change amount" : "Value"))
-                        .accessibilityValue(text.isEmpty ? L.text("Not entered") : displayValue)
-                        .accessibilityHint(L.text("Swipe up or down to adjust. Double-tap to type."))
-                        .accessibilityIdentifier(fieldID + ".scrubber")
-                        .accessibilityAddTraits(.isButton)
-                        .accessibilityAction { editing = true }
-                        .accessibilityAdjustableAction { direction in
-                            switch direction {
-                            case .increment: adjust(steps: 1)
-                            case .decrement: adjust(steps: -1)
-                            @unknown default: break
-                            }
-                        }
+                    display
                 }
             }
-            .font(.system(.largeTitle, design: .rounded, weight: .semibold)).monospacedDigit()
-            .fixedSize(horizontal: false, vertical: true)
-            if !unit.isEmpty { Text(unit).font(.subheadline).foregroundStyle(TrackerColors.secondaryText).fixedSize(horizontal: false, vertical: true) }
+            .font(.system(size: valueSize, weight: .medium)).monospacedDigit()
+            .lineLimit(1).minimumScaleFactor(0.2)
+            .frame(maxWidth: .infinity, minHeight: 88)
+            if !unit.isEmpty {
+                Text(unit).font(.subheadline).foregroundStyle(TrackerColors.secondaryText)
+                    .fixedSize(horizontal: false, vertical: true)
+            }
             if let adjustmentError { Text(adjustmentError).font(.caption).foregroundStyle(.red) }
-            Text(L.text("Slide vertically to adjust · Tap to type"))
-                .font(.caption).foregroundStyle(TrackerColors.secondaryText)
         }
-        .padding(18).frame(maxWidth: .infinity, alignment: .leading)
-        .background(TrackerColors.accent.opacity(0.07), in: RoundedRectangle(cornerRadius: 20))
+        .frame(maxWidth: .infinity)
         .onChange(of: scenePhase) { _, phase in if phase != .active { restore() } }
         .onChange(of: focus.wrappedValue) { _, focused in if !focused { editing = false } }
         .onChange(of: isChange) { _, _ in editing = false; focus.wrappedValue = false; restore(); adjustmentError = nil }
+    }
+
+    @ViewBuilder private var display: some View {
+        let label = Text(displayValue)
+            .foregroundStyle(text.isEmpty ? TrackerColors.secondaryText : Color.primary)
+            .contentTransition(isChange && !reduceMotion ? .numericText(countsDown: countingDown) : .identity)
+            .frame(maxWidth: .infinity, minHeight: 88)
+            .contentShape(Rectangle())
+            .overlay {
+                ValueGestureSurface(allowsScrubbing: isChange, onTap: { editing = true }, onBegin: {
+                    origin = text; lastStep = 0; adjustmentError = nil
+                }, onMove: scrub, onEnd: { origin = nil }, onCancel: restore)
+                    .accessibilityHidden(true)
+            }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(L.text(isChange ? "Change amount" : "Value"))
+            .accessibilityValue(text.isEmpty ? L.text("Not entered") : displayValue)
+            .accessibilityHint(L.text(isChange ? "Swipe up or down to adjust. Double-tap to type." : "Double-tap to type."))
+            .accessibilityIdentifier(fieldID + ".scrubber")
+            .accessibilityAddTraits(.isButton)
+            .accessibilityAction { editing = true }
+        if isChange {
+            label.accessibilityAdjustableAction { direction in
+                switch direction {
+                case .increment: adjust(steps: 1)
+                case .decrement: adjust(steps: -1)
+                @unknown default: break
+                }
+            }
+        } else { label }
     }
 
     private var displayValue: String {
@@ -78,10 +86,15 @@ struct NumericValueEditor: View {
         if isChange, !text.hasPrefix("-"), !text.hasPrefix("+") { return "+" + text }
         return text
     }
+    private func setCounter(_ newValue: String, decreasing: Bool) {
+        countingDown = decreasing
+        withAnimation(reduceMotion ? nil : .snappy(duration: 0.18, extraBounce: 0)) { text = newValue }
+    }
     private func scrub(_ translation: CGFloat) {
-        guard let origin, let steps = NumericEntry.scrubSteps(translation: Double(translation)), steps != lastStep else { return }
+        guard isChange, let origin, let steps = NumericEntry.scrubSteps(translation: Double(translation)), steps != lastStep else { return }
         do {
-            text = try NumericEntry.adjust(origin, precision: precision, steps: steps, locale: L.locale)
+            let result = try NumericEntry.adjust(origin, precision: precision, steps: steps, locale: L.locale)
+            setCounter(result, decreasing: steps < lastStep)
             lastStep = steps; adjustmentError = nil
         } catch { lastStep = steps; adjustmentError = L.error(error) }
     }
@@ -90,8 +103,11 @@ struct NumericValueEditor: View {
         origin = nil; lastStep = 0; adjustmentError = nil
     }
     private func adjust(steps: Int) {
-        do { text = try NumericEntry.adjust(text, precision: precision, steps: steps, locale: L.locale); adjustmentError = nil }
-        catch { adjustmentError = L.error(error) }
+        guard isChange else { return }
+        do {
+            setCounter(try NumericEntry.adjust(text, precision: precision, steps: steps, locale: L.locale), decreasing: steps < 0)
+            adjustmentError = nil
+        } catch { adjustmentError = L.error(error) }
     }
 }
 
@@ -119,13 +135,14 @@ struct EditorDismissalObserver: UIViewControllerRepresentable {
 }
 
 private struct ValueGestureSurface: UIViewRepresentable {
+    var allowsScrubbing: Bool
     var onTap: () -> Void
     var onBegin: () -> Void
     var onMove: (CGFloat) -> Void
     var onEnd: () -> Void
     var onCancel: () -> Void
     func makeUIView(context: Context) -> Surface { Surface(callbacks: self) }
-    func updateUIView(_ view: Surface, context: Context) { view.callbacks = self }
+    func updateUIView(_ view: Surface, context: Context) { view.callbacks = self; view.pan.isEnabled = allowsScrubbing }
     static func dismantleUIView(_ view: Surface, coordinator: ()) { view.cancel() }
 
     // UIPanGestureRecognizer subtracts its recognition threshold from translation.
@@ -145,10 +162,12 @@ private struct ValueGestureSurface: UIViewRepresentable {
     final class Surface: UIView, UIGestureRecognizerDelegate {
         var callbacks: ValueGestureSurface
         private var active = false
+        private(set) var pan: UIPanGestureRecognizer!
         init(callbacks: ValueGestureSurface) {
             self.callbacks = callbacks
             super.init(frame: .zero)
-            let pan = FullDistancePan(target: self, action: #selector(panned))
+            pan = FullDistancePan(target: self, action: #selector(panned))
+            pan.isEnabled = callbacks.allowsScrubbing
             pan.maximumNumberOfTouches = 1; pan.delegate = self
             let tap = UITapGestureRecognizer(target: self, action: #selector(tapped))
             tap.require(toFail: pan)

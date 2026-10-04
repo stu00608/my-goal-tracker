@@ -19,7 +19,7 @@ import ImageIO
         let fourth = Tracker(name: "Fourth", kind: .daily)
         let original = number
         let snapshot = WidgetSnapshot([hidden, number, next, third, fourth], language: "ja", now: now)
-        #expect(snapshot.rows.map(\.id) == [number.id, next.id, third.id])
+        #expect(snapshot.rows.map(\.id) == [number.id, next.id, third.id, fourth.id])
         let row = try #require(snapshot.rows.first)
         #expect(row.plot?.count == 24)
         #expect(row.plot?.first?.date == now.addingTimeInterval(-23 * 86400))
@@ -30,6 +30,39 @@ import ImageIO
         #expect(!encoded.contains("private note") && !encoded.contains("full photo") && !encoded.contains("photos") && !encoded.contains("Archived secret"))
         #expect(number == original)
         #expect(row.recordURL.absoluteString == "goaltracker://record/" + number.id.uuidString)
+    }
+
+    @Test func photoTextContrastFollowsImageRatherThanSystemAppearance() throws {
+        let format = UIGraphicsImageRendererFormat(); format.scale = 1
+        for (color, light) in [(UIColor.white, false), (.black, true), (.systemTeal, false)] {
+            let image = UIGraphicsImageRenderer(size: CGSize(width: 32, height: 24), format: format).image { context in
+                color.setFill(); context.fill(CGRect(x: 0, y: 0, width: 32, height: 24))
+            }
+            #expect(CardImageContrast.prefersLightText(try #require(image.pngData())) == light)
+        }
+    }
+
+    @Test func configuredWidgetSelectsFourthAndDoesNotReplaceMissingGoal() {
+        let trackers = (1...5).map { _ in Tracker(name: "Same name", kind: .number) }
+        var snapshot = WidgetSnapshot(trackers, language: "en", now: now)
+        #expect(snapshot.row(selectedID: trackers[3].id)?.id == trackers[3].id)
+        #expect(snapshot.row(selectedID: nil)?.id == trackers[0].id)
+        snapshot.rows.removeAll { $0.id == trackers[3].id }
+        #expect(snapshot.row(selectedID: trackers[3].id) == nil)
+        #expect(snapshot.row(selectedID: nil)?.id == trackers[0].id)
+    }
+
+    @Test func overviewPlotPreservesSmallChangesAndFiniteContext() {
+        func points(_ values: [String]) -> [CardPlotPoint] { values.map { CardPlotPoint(date: now, value: $0) } }
+        let narrow = CardPlotScale.domain(points: points(["21.530", "21.536"]), precision: 3)
+        #expect(narrow.lowerBound < 21.530 && narrow.upperBound > 21.536)
+        #expect((21.536 - 21.530) / (narrow.upperBound - narrow.lowerBound) < 0.01)
+        for values in [["0"], ["-4", "-3"], ["-0.001", "0.001"], ["12345678901234567890.12345678"]] {
+            let domain = CardPlotScale.domain(points: points(values), precision: 8)
+            #expect(domain.lowerBound.isFinite && domain.upperBound.isFinite && domain.lowerBound < domain.upperBound)
+            #expect(points(values).compactMap(\.plottedValue).allSatisfy { domain.contains($0) })
+        }
+        #expect(CardPlotScale.domain(points: points(["0", "1"]), precision: 0, completion: true) == 0...2)
     }
 
     @Test func legacySummaryDecodesWithoutNewPresentationFields() throws {

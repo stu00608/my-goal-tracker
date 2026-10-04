@@ -25,15 +25,16 @@ struct DashboardView: View {
     private func card(_ tracker: Tracker) -> some View {
         let row = WidgetRow(tracker, now: now)
         return Button { onRecord(tracker) } label: {
-            TrackerCardSurface(row: row, now: now, locale: L.locale, text: L.text, minimumHeight: grid ? 200 : 164) {
+            TrackerCardSurface(row: row, now: now, locale: L.locale, text: L.text, minimumHeight: grid ? 0 : 164, fillsHeight: grid) {
                 if row.resolvedBackground == .map, let locations = row.locations, !locations.isEmpty {
                     Map(interactionModes: []) {
                         ForEach(Array(locations.enumerated()), id: \.offset) { _, location in
-                            Marker(tracker.name, coordinate: CLLocationCoordinate2D(latitude: location.latitude, longitude: location.longitude))
+                            Marker(tracker.name, coordinate: CLLocationCoordinate2D(latitude: location.latitude, longitude: location.longitude)).annotationTitles(.hidden)
                         }
                     }.mapStyle(.standard(elevation: .flat, pointsOfInterest: .excludingAll))
                 } else { TrackerCardBackdrop(row: row, text: L.text) }
             }
+            .modifier(DashboardTileSize(square: grid))
             .contentShape(RoundedRectangle(cornerRadius: 20))
         }
         .buttonStyle(.plain)
@@ -73,5 +74,13 @@ struct TrackerReorderInteraction: ViewModifier {
     private func neighbor(_ offset: Int) -> UUID? {
         guard let index = active.firstIndex(where: { $0.id == id }), active.indices.contains(index + offset) else { return nil }
         return active[index + offset].id
+    }
+}
+
+private struct DashboardTileSize: ViewModifier {
+    let square: Bool
+    @ViewBuilder func body(content: Content) -> some View {
+        if square { content.aspectRatio(1, contentMode: .fit) }
+        else { content.fixedSize(horizontal: false, vertical: true) }
     }
 }

@@ -1,41 +1,100 @@
 import WidgetKit
 import SwiftUI
 import MapKit
+import AppIntents
 
 nonisolated struct CardMapImages {
     let light: Data?
     let dark: Data?
 }
+nonisolated struct TrackerChoice: AppEntity {
+    let id: UUID
+    let name: String
+    var detail: String?
+    static let typeDisplayRepresentation: TypeDisplayRepresentation = "Tracker"
+    static let defaultQuery = TrackerChoiceQuery()
+    var displayRepresentation: DisplayRepresentation {
+        // The Home Screen's compact picker omits subtitles, so duplicate names need a distinct title.
+        if let detail { DisplayRepresentation(title: "\(name) · \(detail)") }
+        else { DisplayRepresentation(title: "\(name)") }
+    }
+}
+
+nonisolated struct TrackerChoiceQuery: EntityQuery {
+    func entities(for identifiers: [UUID]) async throws -> [TrackerChoice] {
+        let snapshot = WidgetSnapshot.read()
+        let choices = snapshot.map(makeChoices) ?? []
+        return identifiers.map { id in
+            choices.first { $0.id == id } ?? TrackerChoice(id: id, name: String(localized: "Unavailable tracker"))
+        }
+    }
+    func suggestedEntities() async throws -> [TrackerChoice] {
+        WidgetSnapshot.read().map(makeChoices) ?? []
+    }
+    private func makeChoices(_ snapshot: WidgetSnapshot) -> [TrackerChoice] {
+        let locale = Locale(identifier: snapshot.language)
+        func summary(_ row: WidgetRow) -> String {
+            let type = String(localized: row.kind == .number ? "Number snapshot" : "Completion record")
+            if row.kind == .number {
+                let value = row.value.flatMap(Numbers.decimal).map { Numbers.display($0, precision: row.precision, locale: locale) }
+                return [type, value, row.unit.isEmpty ? nil : row.unit].compactMap { $0 }.joined(separator: " · ")
+            }
+            let tracker = row.tracker, now = Date()
+            let count = tracker.rule(at: now).map { "\(tracker.count(in: tracker.interval(now, period: $0.period))) / \($0.target)" }
+            return [type, count].compactMap { $0 }.joined(separator: " · ")
+        }
+        return snapshot.rows.map { row in
+            let duplicates = snapshot.rows.filter { $0.name == row.name }
+            guard duplicates.count > 1 else { return TrackerChoice(id: row.id, name: row.name) }
+            let description = summary(row)
+            let identical = duplicates.filter { summary($0) == description }
+            var detail = description
+            if identical.count > 1 {
+                var length = 8
+                while identical.contains(where: { $0.id != row.id && $0.id.uuidString.prefix(length) == row.id.uuidString.prefix(length) }) { length += 1 }
+                detail = row.id.uuidString.prefix(length) + " · " + description
+            }
+            return TrackerChoice(id: row.id, name: row.name, detail: detail)
+        }
+    }
+    func defaultResult() async -> TrackerChoice? { try? await suggestedEntities().first }
+}
+
+struct SelectTrackerIntent: WidgetConfigurationIntent {
+    static let title: LocalizedStringResource = "Select tracker"
+    static let description = IntentDescription("Choose the tracker shown in this widget.")
+    @Parameter(title: "Tracker") var tracker: TrackerChoice?
+}
+
 nonisolated struct ProgressEntry: TimelineEntry {
     let date: Date
     let snapshot: WidgetSnapshot?
+    var selectedID: UUID?
     var mapImages: [UUID: CardMapImages] = [:]
+    var row: WidgetRow? { snapshot?.row(selectedID: selectedID) }
 }
-nonisolated struct Provider: TimelineProvider {
+
+struct Provider: AppIntentTimelineProvider {
     func placeholder(in context: Context) -> ProgressEntry { ProgressEntry(date: Date(), snapshot: nil) }
-    func getSnapshot(in context: Context, completion: @escaping @Sendable (ProgressEntry) -> Void) {
-        let limit = context.family == .systemSmall ? 1 : 3
-        Task { @MainActor in completion(await readWithMaps(limit: limit)) }
+    func snapshot(for configuration: SelectTrackerIntent, in context: Context) async -> ProgressEntry {
+        await readWithMaps(selectedID: configuration.tracker?.id)
     }
-    func getTimeline(in context: Context, completion: @escaping @Sendable (Timeline<ProgressEntry>) -> Void) {
-        let limit = context.family == .systemSmall ? 1 : 3
-        Task { @MainActor in
-            let entry = await readWithMaps(limit: limit)
-            let next = entry.snapshot?.nextRefresh(after: entry.date) ?? entry.date.addingTimeInterval(3600)
-            completion(Timeline(entries: [entry, ProgressEntry(date: next, snapshot: entry.snapshot, mapImages: entry.mapImages)], policy: .after(next)))
-        }
+    func timeline(for configuration: SelectTrackerIntent, in context: Context) async -> Timeline<ProgressEntry> {
+        let entry = await readWithMaps(selectedID: configuration.tracker?.id)
+        let next = entry.snapshot?.nextRefresh(after: entry.date) ?? entry.date.addingTimeInterval(3600)
+        return Timeline(entries: [entry, ProgressEntry(date: next, snapshot: entry.snapshot, selectedID: entry.selectedID, mapImages: entry.mapImages)], policy: .after(next))
     }
-    @MainActor private func readWithMaps(limit: Int) async -> ProgressEntry {
-        let snapshot = WidgetSnapshot.url.flatMap { try? Data(contentsOf: $0) }.flatMap { try? JSONDecoder().decode(WidgetSnapshot.self, from: $0) }
-        var entry = ProgressEntry(date: Date(), snapshot: snapshot)
-        for row in snapshot?.rows.prefix(limit) ?? [].prefix(limit) where row.resolvedBackground == .map {
+    @MainActor private func readWithMaps(selectedID: UUID?) async -> ProgressEntry {
+        var entry = ProgressEntry(date: Date(), snapshot: WidgetSnapshot.read(), selectedID: selectedID)
+        if let row = entry.row, row.resolvedBackground == .map {
             let locations = Array((row.locations ?? []).filter(\.isValid).suffix(24))
-            guard !locations.isEmpty else { continue }
-            async let light = mapImage(locations, dark: false)
-            async let dark = mapImage(locations, dark: true)
-            entry.mapImages[row.id] = await CardMapImages(light: light, dark: dark)
+            if !locations.isEmpty {
+                async let light = mapImage(locations, dark: false)
+                async let dark = mapImage(locations, dark: true)
+                entry.mapImages[row.id] = await CardMapImages(light: light, dark: dark)
+            }
         }
-        return ProgressEntry(date: Date(), snapshot: snapshot, mapImages: entry.mapImages)
+        return entry
     }
     @MainActor private func mapImage(_ locations: [RecordedLocation], dark: Bool) async -> Data? {
         let options = MKMapSnapshotter.Options()
@@ -72,11 +131,11 @@ nonisolated struct Provider: TimelineProvider {
 }
 
 struct GoalWidgetView: View {
-    @Environment(\.widgetFamily) private var family
-    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.widgetRenderingMode) private var renderingMode
     let entry: ProgressEntry
     private var locale: Locale { Locale(identifier: entry.snapshot?.language ?? Locale.current.identifier) }
+    private var monochrome: Bool { renderingMode != .fullColor }
     private func text(_ key: String) -> String {
         let language = entry.snapshot?.language ?? Locale.preferredLanguages.first ?? "en"
         let bundle = Bundle.main.path(forResource: language, ofType: "lproj").flatMap(Bundle.init(path:)) ?? .main
@@ -84,44 +143,48 @@ struct GoalWidgetView: View {
     }
     var body: some View {
         GeometryReader { geometry in
-            ViewThatFits(in: .vertical) {
-                content(limit: family == .systemSmall || dynamicTypeSize.isAccessibilitySize ? 1 : 3, compact: family != .systemSmall)
-                if family == .systemMedium { content(limit: 2, compact: true) }
-                content(limit: 1, compact: true, showGap: false, essential: true, minimumHeight: geometry.size.height)
-            }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
-        }
-        .containerBackground(.fill.tertiary, for: .widget)
-        .widgetURL(family == .systemSmall ? entry.snapshot?.rows.first?.recordURL : URL(string: "goaltracker://today"))
-    }
-    private func content(limit: Int, compact: Bool, showGap: Bool = true, essential: Bool = false, minimumHeight: CGFloat? = nil) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            if family == .systemSmall && !compact {
-                Label(text("Your progress"), systemImage: "chart.xyaxis.line").font(.caption.weight(.semibold)).foregroundStyle(TrackerColors.accent).lineLimit(1)
-            }
-            if let rows = entry.snapshot?.rows, !rows.isEmpty {
-                HStack(alignment: .top, spacing: 6) {
-                    ForEach(Array(rows.prefix(limit))) { row in
-                        Link(destination: row.recordURL) {
-                            TrackerCardSurface(row: row, now: entry.date, locale: locale, text: text, compact: compact, showGap: showGap, essential: essential, minimumHeight: minimumHeight ?? (compact ? 100 : 120)) {
-                                let images = entry.mapImages[row.id]
-                                let data = colorScheme == .dark ? images?.dark : images?.light
-                                TrackerCardBackdrop(row: row, text: text, mapImage: data.flatMap(UIImage.init(data:)))
-                            }
-                        }.buttonStyle(.plain).privacySensitive()
-                    }
+            ZStack(alignment: .bottomTrailing) {
+                if let row = entry.row {
+                    backdrop(row).frame(width: geometry.size.width, height: geometry.size.height).clipped()
+                        .allowsHitTesting(false).accessibilityHidden(true)
+                    TrackerCardLabel(row: row, now: entry.date, locale: locale, text: text, compact: true, monochrome: monochrome)
+                        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+                        .padding(16).padding(.bottom, row.resolvedBackground == .map && !monochrome ? 18 : 0)
+                } else {
+                    Text(text(entry.selectedID == nil ? "Open the app to add your first tracker." : "This tracker is unavailable. Edit the widget to choose another."))
+                        .font(.caption).foregroundStyle(.primary).padding(16)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-            } else { Text(text("Open the app to add your first tracker.")).font(.caption).foregroundStyle(TrackerColors.secondaryText) }
-        }.fixedSize(horizontal: false, vertical: true)
+            }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+        }
+        .containerBackground(Color(uiColor: .secondarySystemGroupedBackground), for: .widget)
+        .widgetURL(entry.row?.recordURL ?? URL(string: "goaltracker://today"))
+        .privacySensitive()
+    }
+    @ViewBuilder private func backdrop(_ row: WidgetRow) -> some View {
+        if row.resolvedBackground == .plot {
+            TrackerCardBackdrop(row: row, text: text, monochrome: monochrome)
+                .opacity(monochrome ? 0.45 : 1)
+        } else {
+            let images = entry.mapImages[row.id]
+            let data = row.resolvedBackground == .photo ? row.thumbnail : colorScheme == .dark ? images?.dark : images?.light
+            if let data, let image = UIImage(data: data) {
+                if #available(iOS 18, *) {
+                    Image(uiImage: image).resizable().widgetAccentedRenderingMode(.desaturated).scaledToFill()
+                        .opacity(monochrome ? 0.22 : 1)
+                } else { Image(uiImage: image).resizable().scaledToFill() }
+            } else { TrackerCardBackdrop(row: row, text: text, monochrome: monochrome).opacity(monochrome ? 0.45 : 1) }
+        }
     }
 }
 
 @main struct GoalTrackerWidget: Widget {
     let kind = WidgetSnapshot.kind
     var body: some WidgetConfiguration {
-        StaticConfiguration(kind: kind, provider: Provider()) { entry in GoalWidgetView(entry: entry) }
+        AppIntentConfiguration(kind: kind, intent: SelectTrackerIntent.self, provider: Provider()) { entry in GoalWidgetView(entry: entry) }
             .configurationDisplayName("Your progress")
             .description("Numbers and completion records, at a glance.")
-            .supportedFamilies([.systemSmall, .systemMedium])
+            .supportedFamilies([.systemSmall])
+            .contentMarginsDisabled()
     }
 }

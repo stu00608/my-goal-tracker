@@ -48,6 +48,7 @@ nonisolated enum L {
                 }
                 if args.contains("--reset-test-store") {
                     L.defaults.removeObject(forKey: "recordLocationByDefault")
+                    L.defaults.removeObject(forKey: "numericInputMode")
                 }
                 let directory = URL.applicationSupportDirectory.appendingPathComponent("UITests", isDirectory: true)
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -89,7 +90,22 @@ nonisolated enum L {
                 cook.put(Entry(occurredAt: now, localDay: cook.day(now), note: "Synthetic completion", photos: photos, location: RecordedLocation(latitude: 35.68, longitude: 139.76)))
                 var travel = Tracker(name: "TRAVEL", kind: .number); travel.cardBackground = .map
                 travel.put(Entry(occurredAt: now, localDay: travel.day(now), value: "1", location: RecordedLocation(latitude: 35.68, longitude: 139.76)))
-                try loaded.replace([score, cook, travel, Tracker(name: "EMPTY", kind: .number)])
+                var fourth = Tracker(name: "EMPTY", kind: .number)
+                if args.contains("--ux-widget-fourth") {
+                    fourth.name = "VOLFORCE"
+                    for (offset, value) in ["21.53", "21.533", "21.536"].enumerated() {
+                        let date = now.addingTimeInterval(Double(offset - 3) * 86400)
+                        fourth.put(Entry(occurredAt: date, localDay: fourth.day(date), value: value, photos: photos,
+                                         location: RecordedLocation(latitude: 35.68 + Double(offset) * 0.01, longitude: 139.76)))
+                    }
+                }
+                var fixture = [score, cook, travel, fourth]
+                if args.contains("--ux-widget-duplicates") {
+                    var duplicate = Tracker(name: fourth.name, kind: .number)
+                    duplicate.put(Entry(occurredAt: now, localDay: duplicate.day(now), value: "22"))
+                    fixture.append(duplicate)
+                }
+                try loaded.replace(fixture)
             }
             #endif
             #endif

@@ -17,6 +17,7 @@ struct SettingsView: View {
     @AppStorage("language") private var language = "system"
     @AppStorage("homeLayout") private var homeLayout = "grid"
     @AppStorage("recordLocationByDefault", store: L.defaults) private var recordLocationByDefault = false
+    @AppStorage("numericInputMode", store: L.defaults) private var numericInputMode = NumericEntryMode.direct.rawValue
     @State private var export: ExportDocument?
     @State private var exporting = false
     @State private var csv = false
@@ -38,6 +39,10 @@ struct SettingsView: View {
                     Picker(L.text("Language"), selection: $language) {
                         Text(L.text("System")).tag("system"); Text("繁體中文").tag("zh-Hant"); Text("日本語").tag("ja"); Text("English").tag("en")
                     }.accessibilityIdentifier("settings.language")
+                    Picker(L.text("Default value input"), selection: $numericInputMode) {
+                        Text(L.text("New value")).tag(NumericEntryMode.direct.rawValue)
+                        Text(L.text("Change amount")).tag(NumericEntryMode.change.rawValue)
+                    }.accessibilityIdentifier("settings.numericInputMode")
                     VStack(alignment: .leading, spacing: 8) {
                         Toggle(L.text("Record location by default"), isOn: $recordLocationByDefault)
                             .accessibilityIdentifier("settings.recordLocationDefault")
