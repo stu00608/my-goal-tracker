@@ -47,8 +47,13 @@ nonisolated final class FlowTests: XCTestCase {
         screenshot(app, "Single snapshot detail")
         app.buttons["entry.add"].tap()
         type(app.textFields["entry.value"], "19.25")
-        app.buttons["entry.save"].tap()
-        app.navigationBars.buttons.firstMatch.tap()
+        let save = app.buttons["entry.save"]
+        XCTAssertEqual(app.textFields["entry.value"].value as? String, "19.25")
+        save.tap()
+        XCTAssertTrue(save.waitForNonExistence(timeout: 10))
+        let back = app.navigationBars["VOLFORCE"].buttons["BackButton"]
+        XCTAssertTrue(back.waitForExistence(timeout: 10))
+        back.tap()
         XCTAssertTrue(app.staticTexts["19.250"].waitForExistence(timeout: 10))
         create(app, name: "COOK", daily: true)
         button(app, "complete.", "COOK").tap()
