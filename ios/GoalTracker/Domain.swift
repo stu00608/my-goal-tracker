@@ -5,6 +5,13 @@ nonisolated enum TrackerKind: String, Codable, CaseIterable { case number, daily
 nonisolated enum Direction: String, Codable, CaseIterable { case up, down }
 nonisolated enum Period: String, Codable, CaseIterable { case weekly, monthly, deadline }
 
+nonisolated enum CardBackground: String, Codable, CaseIterable { case plot, photo, map }
+nonisolated struct RecordedLocation: Codable, Equatable {
+    var latitude: Double
+    var longitude: Double
+    var isValid: Bool { latitude.isFinite && longitude.isFinite && (-90...90).contains(latitude) && (-180...180).contains(longitude) }
+}
+
 nonisolated struct Entry: Codable, Identifiable, Equatable {
     static let photoLimit = 10
     var id = UUID()
@@ -13,6 +20,7 @@ nonisolated struct Entry: Codable, Identifiable, Equatable {
     var value: String?
     var note = ""
     var photos: [Data] = []
+    var location: RecordedLocation?
     var createdAt = Date()
     var updatedAt = Date()
 }
@@ -45,6 +53,8 @@ nonisolated struct Tracker: Codable, Identifiable, Equatable {
     var entries: [Entry] = []
     var rules: [GoalRule] = []
     var reminder: Reminder?
+    var cardBackground: CardBackground?
+    var resolvedCardBackground: CardBackground { cardBackground ?? .plot }
 
     var calendar: Calendar {
         var c = Calendar(identifier: .gregorian)
@@ -152,7 +162,8 @@ nonisolated struct Backup: Codable, Equatable {
             for e in t.entries {
                 guard entryIDs.insert(e.id).inserted, t.date(for: e.localDay) != nil, e.note.count <= 10000,
                       Self.validDate(e.occurredAt), Self.validDate(e.createdAt), Self.validDate(e.updatedAt),
-                      e.photos.count <= Entry.photoLimit, e.photos.allSatisfy(Self.validPhoto) else { throw DataError.invalidBackup }
+                      e.photos.count <= Entry.photoLimit,
+                      e.location?.isValid != false, e.photos.allSatisfy(Self.validPhoto) else { throw DataError.invalidBackup }
                 if t.kind == .daily {
                     guard e.value == nil, days.insert(e.localDay).inserted else { throw DataError.invalidBackup }
                 } else {
@@ -209,9 +220,9 @@ nonisolated struct Backup: Codable, Equatable {
             return "\"" + safe.replacingOccurrences(of: "\"", with: "\"\"") + "\""
         }
         let iso = ISO8601DateFormatter()
-        var rows = ["tracker_id,name,kind,unit,entry_id,occurred_at,local_day,time_zone,value,note"]
+        var rows = ["tracker_id,name,kind,unit,entry_id,occurred_at,local_day,time_zone,value,note,latitude,longitude"]
         for t in trackers { for e in t.sortedEntries {
-            let fields = [t.id.uuidString, t.name, t.kind.rawValue, t.unit, e.id.uuidString, iso.string(from: e.occurredAt), e.localDay, t.timeZoneID, e.value ?? "", e.note]
+            let fields = [t.id.uuidString, t.name, t.kind.rawValue, t.unit, e.id.uuidString, iso.string(from: e.occurredAt), e.localDay, t.timeZoneID, e.value ?? "", e.note, e.location.map { String($0.latitude) } ?? "", e.location.map { String($0.longitude) } ?? ""]
             rows.append(fields.enumerated().map { escape($0.element, protect: [1, 3, 9].contains($0.offset)) }.joined(separator: ","))
         } }
         return rows.joined(separator: "\r\n") + "\r\n"
