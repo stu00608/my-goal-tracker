@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 nonisolated enum L {
     static var defaults: UserDefaults {
@@ -42,7 +43,7 @@ nonisolated enum L {
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("--uitesting") {
                 let args = ProcessInfo.processInfo.arguments
-                for key in ["language", "appearance"] {
+                for key in ["language", "appearance", "homeLayout"] {
                     if let index = args.firstIndex(of: "-" + key), args.indices.contains(index + 1) { L.defaults.set(args[index + 1], forKey: key) }
                 }
                 let directory = URL.applicationSupportDirectory.appendingPathComponent("UITests", isDirectory: true)
@@ -53,6 +54,30 @@ nonisolated enum L {
             let loaded = try AppStore(url: url)
             #if DEBUG
             if ProcessInfo.processInfo.arguments.contains("--reset-test-store") && url != nil { try loaded.replace([]) }
+            #if targetEnvironment(simulator)
+            if url != nil, ProcessInfo.processInfo.arguments.contains("--feature-test-fixture"), loaded.trackers.isEmpty {
+                let format = UIGraphicsImageRendererFormat(); format.scale = 1
+                let photos = [UIColor.systemTeal, UIColor.systemOrange].map { color in
+                    UIGraphicsImageRenderer(size: CGSize(width: 320, height: 240), format: format).image { context in
+                        color.setFill(); context.fill(CGRect(x: 0, y: 0, width: 320, height: 240))
+                        UIColor.white.setStroke(); context.cgContext.setLineWidth(4)
+                        context.cgContext.strokeEllipse(in: CGRect(x: 100, y: 60, width: 120, height: 120))
+                    }.jpegData(compressionQuality: 0.8)!
+                }
+                let now = Date()
+                var score = Tracker(name: "SCORE", kind: .number)
+                for days in [365, 60, 7] {
+                    let date = score.calendar.date(byAdding: .day, value: -days, to: now)!
+                    score.put(Entry(occurredAt: date, localDay: score.day(date), value: days == 365 ? "16.5" : days == 60 ? "17.25" : "18.5", note: "Synthetic snapshot", photos: photos, location: RecordedLocation(latitude: 35.68, longitude: 139.76)))
+                }
+                var cook = Tracker(name: "COOK", kind: .daily); cook.cardBackground = .photo
+                cook.setFrequency(.weekly, target: 2, now: now)
+                cook.put(Entry(occurredAt: now, localDay: cook.day(now), note: "Synthetic completion", photos: photos, location: RecordedLocation(latitude: 35.68, longitude: 139.76)))
+                var travel = Tracker(name: "TRAVEL", kind: .number); travel.cardBackground = .map
+                travel.put(Entry(occurredAt: now, localDay: travel.day(now), value: "1", location: RecordedLocation(latitude: 35.68, longitude: 139.76)))
+                try loaded.replace([score, cook, travel, Tracker(name: "EMPTY", kind: .number)])
+            }
+            #endif
             #endif
             loaded.refreshWidget()
             _store = State(initialValue: loaded)

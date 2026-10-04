@@ -4,7 +4,7 @@ nonisolated final class WidgetTests: XCTestCase {
     @MainActor func testWidgetSharingAndTodayLink() {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = ["--uitesting", "--reset-test-store", "--widgettesting", "-language", "en", "-appearance", "system"]
+        app.launchArguments = ["--uitesting", "--reset-test-store", "--widgettesting", "-language", "en", "-appearance", "system", "-homeLayout", "list"]
         app.launch()
         app.launchArguments.removeAll { $0 == "--reset-test-store" }
         app.buttons["tracker.create"].tap()
@@ -24,7 +24,7 @@ nonisolated final class WidgetTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["18.500"].waitForExistence(timeout: 10))
         app.buttons["tracker.create"].tap()
         name.tap(); name.typeText("煮飯\n")
-        app.buttons["tracker.kind"].tap(); app.buttons["Daily completion"].tap()
+        app.buttons["tracker.kind"].tap(); app.buttons["Completion record"].tap()
         let dailyGoal = app.switches["goal.enabled"]
         for _ in 0..<6 { if dailyGoal.isHittable { break }; app.swipeUp() }
         dailyGoal.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
@@ -35,6 +35,7 @@ nonisolated final class WidgetTests: XCTestCase {
         name.tap(); name.typeText("日本語の長い目標名\n"); app.buttons["tracker.save"].tap()
         XCTAssertFalse(app.alerts["Action failed"].exists, "The App Group summary must publish successfully")
         let detail = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "tracker.", "VOLFORCE")).firstMatch
+        app.tabBars.buttons["Goals"].tap()
         detail.tap()
         XCTAssertTrue(app.navigationBars["VOLFORCE"].waitForExistence(timeout: 10))
         app.open(URL(string: "goaltracker://today")!)
@@ -44,6 +45,19 @@ nonisolated final class WidgetTests: XCTestCase {
         XCTAssertTrue(app.navigationBars["Today"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts["18.500"].exists)
         XCTAssertTrue(app.staticTexts["1 / 2 · This week"].exists)
+        let trackerID = String(snapshot.identifier.dropFirst("snapshot.".count))
+        app.open(URL(string: "goaltracker://record/" + trackerID)!)
+        XCTAssertTrue(app.textFields["entry.value"].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.textFields["entry.value"].value as? String, "Value")
+        attach(app, "Widget record link opens new snapshot sheet")
+        app.buttons["entry.cancel"].tap()
+        app.buttons["settings.open"].tap()
+        XCTAssertTrue(app.buttons["settings.done"].waitForExistence(timeout: 10))
+        app.open(URL(string: "goaltracker://record/" + trackerID)!)
+        XCTAssertTrue(app.textFields["entry.value"].waitForExistence(timeout: 10))
+        app.buttons["entry.cancel"].tap()
+        app.open(URL(string: "goaltracker://record/00000000-0000-0000-0000-000000000000")!)
+        XCTAssertTrue(app.navigationBars["Today"].waitForExistence(timeout: 10))
         attach(app, "Widget link opens Today with saved records")
     }
     @MainActor func attach(_ app: XCUIApplication, _ name: String) {

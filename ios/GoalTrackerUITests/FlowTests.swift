@@ -3,7 +3,7 @@ import XCTest
 nonisolated final class FlowTests: XCTestCase {
     @MainActor func app(reset: Bool = true, language: String = "en") -> XCUIApplication {
         let app = XCUIApplication()
-        app.launchArguments = ["--uitesting", "-language", language, "-appearance", "system"]
+        app.launchArguments = ["--uitesting", "-language", language, "-appearance", "system", "-homeLayout", "list"]
         if reset { app.launchArguments.append("--reset-test-store") }
         app.launch(); return app
     }
@@ -19,7 +19,7 @@ nonisolated final class FlowTests: XCTestCase {
         type(app.textFields["tracker.name"], name)
         app.textFields["tracker.name"].typeText("\n")
         if daily {
-            app.buttons["tracker.kind"].tap(); app.buttons["Daily completion"].tap()
+            app.buttons["tracker.kind"].tap(); app.buttons["Completion record"].tap()
             let toggle = app.switches["goal.enabled"]
             for _ in 0..<6 {
                 if toggle.isHittable { break }
@@ -42,8 +42,10 @@ nonisolated final class FlowTests: XCTestCase {
         type(app.textFields["entry.note"], "snapshot note")
         app.buttons["entry.save"].tap()
         XCTAssertTrue(app.staticTexts["18.500"].waitForExistence(timeout: 10))
+        app.tabBars.buttons["Goals"].tap()
         button(app, "tracker.", "VOLFORCE").tap()
-        XCTAssertTrue(app.otherElements["snapshot.chart"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "snapshot.chart").firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "snapshot.point.")).firstMatch.waitForExistence(timeout: 10))
         screenshot(app, "Single snapshot detail")
         app.buttons["entry.add"].tap()
         type(app.textFields["entry.value"], "19.25")
@@ -54,6 +56,7 @@ nonisolated final class FlowTests: XCTestCase {
         let back = app.navigationBars["VOLFORCE"].buttons["BackButton"]
         XCTAssertTrue(back.waitForExistence(timeout: 10))
         back.tap()
+        app.tabBars.buttons["Today"].tap()
         XCTAssertTrue(app.staticTexts["19.250"].waitForExistence(timeout: 10))
         create(app, name: "COOK", daily: true)
         button(app, "complete.", "COOK").tap()
@@ -66,8 +69,9 @@ nonisolated final class FlowTests: XCTestCase {
         let reopened = self.app(reset: false)
         XCTAssertTrue(reopened.staticTexts["19.250"].waitForExistence(timeout: 10))
         XCTAssertTrue(reopened.staticTexts["1 / 2 · This week"].exists)
+        reopened.tabBars.buttons["Goals"].tap()
         button(reopened, "tracker.", "VOLFORCE").tap()
-        XCTAssertTrue(reopened.otherElements["snapshot.chart"].waitForExistence(timeout: 10))
+        XCTAssertTrue(reopened.descendants(matching: .any).matching(identifier: "snapshot.chart").firstMatch.waitForExistence(timeout: 10))
         screenshot(reopened, "Snapshot detail")
     }
     @MainActor func testInvalidValueIsNotSaved() {
@@ -80,9 +84,10 @@ nonisolated final class FlowTests: XCTestCase {
     @MainActor func testDarkLargeTypeCalendar() {
         continueAfterFailure = false
         let app = XCUIApplication()
-        app.launchArguments = ["--uitesting", "--reset-test-store", "-language", "en", "-appearance", "dark", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
+        app.launchArguments = ["--uitesting", "--reset-test-store", "-language", "en", "-appearance", "dark", "-homeLayout", "list", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         app.launch()
         create(app, name: "A daily goal with a long name", daily: true)
+        app.tabBars.buttons["Goals"].tap()
         button(app, "tracker.", "A daily goal").tap()
         XCTAssertTrue(app.buttons["entry.add"].waitForExistence(timeout: 10))
         app.swipeUp()

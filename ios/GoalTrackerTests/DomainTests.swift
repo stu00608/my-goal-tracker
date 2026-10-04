@@ -205,7 +205,7 @@ import ImageIO
         number.put(Entry(occurredAt: now, localDay: number.day(now), value: "18.1234567890123456789"))
         number.put(Entry(occurredAt: now.addingTimeInterval(-86400), localDay: "2024-03-09", value: "20"))
         var hidden = tracker(); hidden.archived = true; hidden.name = "Archived secret"
-        let snapshot = WidgetSnapshot([daily, number, hidden], language: "ja")
+        let snapshot = WidgetSnapshot([daily, number, hidden], language: "ja", now: now)
         let data = try JSONEncoder().encode(snapshot)
         let text = String(decoding: data, as: UTF8.self)
         #expect(!text.contains("private note") && !text.contains("private photo") && !text.contains("photos") && !text.contains("Archived secret"))
@@ -217,9 +217,38 @@ import ImageIO
         #expect(summary.rule(at: now)?.target == "2")
         #expect(summary.rule(at: date("2024-04-01T04:00:00Z"))?.target == "10")
         #expect(snapshot.nextRefresh(after: now) == date("2024-03-10T15:00:00Z"))
-        #expect(WidgetSnapshot([daily], language: "en").nextRefresh(after: now) == date("2024-03-11T04:00:00Z"))
+        #expect(WidgetSnapshot([daily], language: "en", now: now).nextRefresh(after: now) == date("2024-03-11T04:00:00Z"))
         #expect(summary.count(in: summary.interval(date("2024-03-11T04:00:00Z"), period: .weekly)) == 0)
         #expect(WidgetSnapshot([], language: "en").rows.isEmpty)
+    }
+
+    @Test func locationAndCardBackupCompatibilityAndInvalidRestore() throws {
+        var t = tracker(.number)
+        let now = date("2024-06-01T00:00:00Z")
+        t.cardBackground = .map
+        t.put(Entry(occurredAt: now, localDay: t.day(now), value: "18.5000000001", location: RecordedLocation(latitude: 35.68, longitude: 139.76)))
+        let payload = try Backup(trackers: [t]).encoded()
+        #expect(try Backup.decode(payload).trackers == [t])
+        #expect(Backup(trackers: [t]).csv().contains("latitude,longitude"))
+        #expect(Backup(trackers: [t]).csv().contains("\"35.68\",\"139.76\""))
+        var legacy = try #require(JSONSerialization.jsonObject(with: payload) as? [String: Any])
+        var trackers = try #require(legacy["trackers"] as? [[String: Any]])
+        trackers[0].removeValue(forKey: "cardBackground")
+        var entries = try #require(trackers[0]["entries"] as? [[String: Any]])
+        entries[0].removeValue(forKey: "location")
+        trackers[0]["entries"] = entries; legacy["trackers"] = trackers
+        let old = try Backup.decode(JSONSerialization.data(withJSONObject: legacy)).trackers[0]
+        #expect(old.cardBackground == nil && old.resolvedCardBackground == .plot && old.entries[0].location == nil)
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let store = try AppStore(url: directory.appendingPathComponent("store"))
+        try store.save(t)
+        var invalid = t; invalid.entries[0].location?.latitude = 91
+        #expect(throws: (any Error).self) { try store.restore(JSONEncoder().encode(Backup(trackers: [invalid]))) }
+        #expect(store.trackers == [t])
+        #expect(!RecordedLocation(latitude: .nan, longitude: 0).isValid)
+        #expect(!RecordedLocation(latitude: 0, longitude: .infinity).isValid)
     }
 
 }

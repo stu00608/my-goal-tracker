@@ -10,6 +10,10 @@ For implementation, fixes, or repository workflow changes, read
 Use Orca-managed worktrees for app development; keep the primary checkout on `main` for integration.
 Default to one implementation owner. Delegate through Orca only when the user requests delegation or parallel work.
 Use the user's current Orca launcher/model settings.
+Authorized app work defaults to implementation, verification, PR/CI, merge, and installation
+of `GoalTrackerWithWidget` on the user's connected iPhone. Continue without routine approval;
+an explicit review/no-merge gate overrides this default. Coordinate Simulator tests and device
+deployment through one integration owner when the user requests parallel work.
 
 ## Engineering
 
