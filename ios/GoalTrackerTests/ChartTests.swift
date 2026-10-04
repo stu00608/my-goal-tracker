@@ -135,4 +135,68 @@ import Testing
         #expect(dates[10] == date("2024-03-11T04:00:00Z"))
         #expect(dates.allSatisfy { tracker.calendar.startOfDay(for: $0) == $0 })
     }
+
+    @Test func completionProgressKeepsOverachievementAndDistinctRecordedDays() throws {
+        var tracker = tracker(zone: "Asia/Tokyo")
+        tracker.kind = .daily
+        tracker.createdAt = date("2024-01-01T00:00:00Z")
+        tracker.setFrequency(.weekly, target: 2, now: tracker.createdAt)
+        let now = date("2024-01-10T12:00:00Z")
+        tracker.setFrequency(.monthly, target: 10, now: now)
+        tracker.entries = ["2024-01-08T03:00:00Z", "2024-01-09T03:00:00Z", "2024-01-10T03:00:00Z", "2024-01-10T04:00:00Z"].map { entry($0, value: nil, tracker: tracker) }
+        let current = try #require(CompletionProgressData.current(for: tracker, now: now))
+        #expect(current.count == 3 && current.target == 2)
+        #expect(current.fraction == 1)
+        #expect(current.period == .weekly && !current.partial)
+        #expect(current.interval.start == date("2024-01-07T15:00:00Z"))
+        #expect(current.interval.end == date("2024-01-14T15:00:00Z"))
+        let next = try #require(CompletionProgressData.current(for: tracker, now: date("2024-01-14T15:00:00Z")))
+        #expect(next.count == 0 && next.target == 2 && next.fraction == 0)
+    }
+
+    @Test func completionBarsPreserveThenEffectiveGoalsAndPartialPeriods() throws {
+        var tracker = tracker()
+        tracker.kind = .daily
+        tracker.createdAt = date("2024-01-03T12:00:00Z")
+        tracker.setFrequency(.weekly, target: 2, now: tracker.createdAt)
+        tracker.setFrequency(.monthly, target: 3, now: date("2024-01-10T12:00:00Z"))
+        tracker.entries = ["2024-01-29T12:00:00Z", "2024-01-30T12:00:00Z", "2024-02-01T12:00:00Z", "2024-02-02T12:00:00Z", "2024-02-02T13:00:00Z"].map { entry($0, value: nil, tracker: tracker) }
+        let now = date("2024-02-10T12:00:00Z")
+        let periods = CompletionProgressData.history(for: tracker, now: now)
+        #expect(periods.first?.partial == true)
+        #expect(periods.first?.target == 2)
+        let weekly = try #require(periods.first { $0.interval.start == date("2024-01-29T05:00:00Z") })
+        #expect(weekly.interval.end == date("2024-02-01T05:00:00Z"))
+        #expect(weekly.partial && weekly.count == 2 && weekly.target == 2 && weekly.period == .weekly)
+        let monthly = try #require(periods.last)
+        #expect(monthly.interval.start == date("2024-02-01T05:00:00Z"))
+        #expect(monthly.interval.end == date("2024-03-01T05:00:00Z"))
+        #expect(monthly.count == 2 && monthly.target == 3 && monthly.period == .monthly && !monthly.partial)
+        #expect(monthly.fraction == 2.0 / 3.0)
+        #expect(CompletionProgressData.history(for: tracker, now: now, limit: 1).map(\.id) == [monthly.id])
+    }
+
+    @Test func completionWithoutGoalShowsWeeklyRecordsAcrossDSTWithoutInventingTargets() {
+        var tracker = tracker()
+        tracker.kind = .daily
+        tracker.createdAt = date("2024-03-01T12:00:00Z")
+        let now = date("2024-03-10T16:00:00Z")
+        tracker.entries = ["2024-03-04T12:00:00Z", "2024-03-10T12:00:00Z", "2024-03-10T13:00:00Z", "2024-03-11T12:00:00Z"].map { entry($0, value: nil, tracker: tracker) }
+        let periods = CompletionProgressData.history(for: tracker, now: now, limit: 2)
+        #expect(CompletionProgressData.current(for: tracker, now: now) == nil)
+        #expect(periods.map(\.count) == [0, 2])
+        #expect(periods.allSatisfy { $0.target == nil && $0.period == .weekly })
+        #expect(periods.first?.partial == true)
+        #expect(periods.last?.interval.end == date("2024-03-11T04:00:00Z"))
+        // Backfilled recorded days remain visible even when they precede tracker creation.
+        tracker.createdAt = now
+        tracker.entries.append(entry("2024-03-03T12:00:00Z", value: nil, tracker: tracker))
+        let backfilled = CompletionProgressData.history(for: tracker, now: now, limit: 2)
+        #expect(backfilled.map(\.count) == [1, 2])
+        #expect(backfilled.first?.partial == false && backfilled.last?.partial == true)
+        tracker.rules = [GoalRule(period: .weekly, target: "2", effectiveAt: now.addingTimeInterval(3600))]
+        #expect(CompletionProgressData.current(for: tracker, now: now) == nil)
+        #expect(CompletionProgressData.history(for: tracker, now: now).allSatisfy { $0.target == nil })
+        #expect(CompletionProgressData.history(for: tracker, now: now, limit: 0).isEmpty)
+    }
 }

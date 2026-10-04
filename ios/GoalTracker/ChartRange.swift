@@ -82,3 +82,50 @@ nonisolated enum CompletionCalendarCell: Identifiable {
         }
     }
 }
+
+nonisolated struct CompletionPeriodProgress: Identifiable {
+    let interval: DateInterval
+    let count: Int
+    let target: Int?
+    let period: Period
+    let partial: Bool
+    var id: Date { interval.start }
+    var fraction: Double {
+        guard let target, target > 0 else { return 0 }
+        return min(Double(count) / Double(target), 1)
+    }
+}
+
+nonisolated enum CompletionProgressData {
+    static func current(for tracker: Tracker, now: Date) -> CompletionPeriodProgress? {
+        guard tracker.kind == .daily, let rule = tracker.rule(at: now), rule.period != .deadline,
+              let target = Int(rule.target), target > 0 else { return nil }
+        let interval = tracker.interval(now, period: rule.period)
+        return CompletionPeriodProgress(interval: interval, count: tracker.count(in: interval), target: target,
+                                        period: rule.period, partial: tracker.calendar.startOfDay(for: tracker.createdAt) > interval.start || rule.effectiveAt > interval.start)
+    }
+
+    static func history(for tracker: Tracker, now: Date, limit: Int = 12) -> [CompletionPeriodProgress] {
+        guard tracker.kind == .daily, limit > 0 else { return [] }
+        let history = tracker.rule(at: now) == nil ? [] : tracker.frequencyHistory(until: now)
+        if !history.isEmpty {
+            let initial = tracker.rules.map(\.effectiveAt).min() ?? tracker.createdAt
+            return history.suffix(limit).map { interval, count, target, partial in
+                CompletionPeriodProgress(interval: interval, count: count, target: target,
+                                         period: tracker.rule(at: max(interval.start, initial))?.period ?? .weekly, partial: partial)
+            }
+        }
+        let currentWeek = tracker.interval(now, period: .weekly)
+        let calendar = tracker.calendar
+        guard let oldest = calendar.date(byAdding: .weekOfYear, value: -(limit - 1), to: currentWeek.start) else { return [] }
+        var cursor = oldest
+        var result: [CompletionPeriodProgress] = []
+        while cursor <= now {
+            let interval = tracker.interval(cursor, period: .weekly)
+            result.append(CompletionPeriodProgress(interval: interval, count: tracker.count(in: interval), target: nil,
+                                                   period: .weekly, partial: calendar.startOfDay(for: tracker.createdAt) > interval.start && tracker.createdAt < interval.end))
+            cursor = interval.end
+        }
+        return result
+    }
+}
