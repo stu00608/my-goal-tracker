@@ -18,18 +18,24 @@ struct TrackerEditor: View {
     @State private var frequency = 2
     @State private var cardBackground = CardBackground.plot
     @State private var error: String?
+    private enum Field: Hashable { case name, unit, target }
+    @FocusState private var focusedField: Field?
+    @State private var initialized = false
+    @State private var keyboard = EditorKeyboardControl()
     var body: some View {
         NavigationStack {
             Form {
                 Section(L.text("Tracker")) {
-                    TextField(L.text("Name"), text: $name).accessibilityIdentifier("tracker.name")
+                    TextField(L.text("Name"), text: $name).focused($focusedField, equals: .name).accessibilityIdentifier("tracker.name")
+                    VStack(alignment: .leading, spacing: 8) {
                     Picker(L.text("Record type"), selection: $kind) {
                         Text(L.text("Number snapshot")).tag(TrackerKind.number)
                         Text(L.text("Completion record")).tag(TrackerKind.daily)
                     }.accessibilityIdentifier("tracker.kind").disabled(!(existing?.entries.isEmpty ?? true) || !(existing?.rules.isEmpty ?? true))
-                    if !(existing?.entries.isEmpty ?? true) { Text(L.text("Create a new tracker to change its type or unit.")).font(.caption).foregroundStyle(.secondary) }
+                    if !(existing?.entries.isEmpty ?? true) || !(existing?.rules.isEmpty ?? true) { Text(L.text("Create a new tracker to change its type or unit.")).font(.caption).foregroundStyle(TrackerColors.secondaryText) }
+                    }
                     if kind == .number {
-                        TextField(L.text("Unit (optional)"), text: $unit).disabled(!(existing?.entries.isEmpty ?? true) || !(existing?.rules.isEmpty ?? true)).accessibilityIdentifier("tracker.unit")
+                        TextField(L.text("Unit (optional)"), text: $unit).focused($focusedField, equals: .unit).disabled(!(existing?.entries.isEmpty ?? true) || !(existing?.rules.isEmpty ?? true)).accessibilityIdentifier("tracker.unit")
                         Stepper(L.text("Decimal places") + ": \(precision)", value: $precision, in: 0...8)
                         Picker(L.text("Improvement direction"), selection: $direction) {
                             Text(L.text("Higher is better")).tag(Direction.up); Text(L.text("Lower is better")).tag(Direction.down)
@@ -40,15 +46,17 @@ struct TrackerEditor: View {
                     if existing?.rules.isEmpty ?? true { Toggle(L.text("Set a goal"), isOn: $goalEnabled).accessibilityIdentifier("goal.enabled") }
                     if goalEnabled {
                         if kind == .number {
-                            TextField(L.text("Target value"), text: $target).keyboardType(.numbersAndPunctuation).accessibilityIdentifier("goal.target")
+                            TextField(L.text("Target value"), text: $target).focused($focusedField, equals: .target).keyboardType(.numbersAndPunctuation).accessibilityIdentifier("goal.target")
                             DatePicker(L.text("Deadline"), selection: $due, in: Date()..., displayedComponents: [.date])
                         } else {
                             Picker(L.text("Frequency"), selection: $period) {
                                 Text(L.text("Weekly")).tag(Period.weekly); Text(L.text("Monthly")).tag(Period.monthly)
                             }
+                            VStack(alignment: .leading, spacing: 8) {
                             Stepper(L.text("Completions") + ": \(frequency)", value: $frequency, in: 1...(period == .weekly ? 7 : 31))
                                 .accessibilityIdentifier("goal.frequency")
-                            if !(existing?.rules.isEmpty ?? true) { Text(L.text("Changes start with the next full period. Past goals stay unchanged.")).font(.caption).foregroundStyle(.secondary) }
+                            if !(existing?.rules.isEmpty ?? true) { Text(L.text("Changes start with the next full period. Past goals stay unchanged.")).font(.caption).foregroundStyle(TrackerColors.secondaryText) }
+                            }
                         }
                     }
                 }
@@ -59,29 +67,32 @@ struct TrackerEditor: View {
                         Text(L.text("Location map")).tag(CardBackground.map)
                     }.accessibilityIdentifier("tracker.cardBackground")
                 }
-                Section {
-                    if let t = existing { LabeledContent(L.text("Statistics time zone"), value: t.timeZoneID) }
-                    else { LabeledContent(L.text("Statistics time zone"), value: TimeZone.current.identifier) }
-                }
                 if let error { Section { Text(error).foregroundStyle(.red).accessibilityIdentifier("editor.error") } }
             }
+            .scrollDismissesKeyboard(.interactively)
+            .background(EditorKeyboardDismissal(keyboard: keyboard) { focusedField = nil })
             .navigationTitle(L.text(existing == nil ? "New tracker" : "Edit tracker"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button(L.text("Cancel")) { dismiss() } }
+                ToolbarItem(placement: .cancellationAction) { Button(L.text("Cancel")) { endEditing(); dismiss() } }
                 ToolbarItem(placement: .confirmationAction) { Button(L.text("Save"), action: save).disabled(name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty || name.count > 120 || unit.count > 30).accessibilityIdentifier("tracker.save") }
+                ToolbarItemGroup(placement: .keyboard) { Spacer(); Button(L.text("Done"), action: endEditing).accessibilityIdentifier("tracker.keyboard.done") }
             }
             .onAppear {
+                guard !initialized else { return }; initialized = true
                 guard let t = existing else { return }
                 name = t.name; kind = t.kind; unit = t.unit; precision = t.precision; direction = t.direction; cardBackground = t.resolvedCardBackground
                 if let rule = t.rules.max(by: { $0.effectiveAt < $1.effectiveAt }) {
                     goalEnabled = true; target = rule.target; due = rule.deadline ?? due; period = rule.period; frequency = Int(rule.target) ?? 2
                 }
             }
-            .onChange(of: period) { _, _ in frequency = min(frequency, period == .weekly ? 7 : 31) }
+            .onChange(of: kind) { _, _ in endEditing() }
+            .onChange(of: period) { _, _ in endEditing(); frequency = min(frequency, period == .weekly ? 7 : 31) }
         }
     }
+    private func endEditing() { keyboard.dismiss(); focusedField = nil }
     private func save() {
+        endEditing()
         do {
             var t = existing ?? Tracker(name: name, kind: kind)
             t.name = name.trimmingCharacters(in: .whitespacesAndNewlines); t.kind = kind; t.unit = unit; t.precision = precision; t.direction = direction
@@ -106,6 +117,9 @@ struct TrackerEditor: View {
 struct EntryEditor: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.isPresented) private var isPresented
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @AppStorage("recordLocationByDefault", store: L.defaults) private var recordLocationByDefault = false
     let tracker: Tracker
     var existing: Entry?
     @State private var date = Date()
@@ -114,7 +128,7 @@ struct EntryEditor: View {
     @State private var inputMode = NumericEntryMode.direct
     @State private var change = ""
     @State private var note = ""
-    @State private var photos: [Data] = []
+    @State private var photos: [DraftPhoto] = []
     @State private var selections: [PhotosPickerItem] = []
     @State private var loading = false
     @State private var error: String?
@@ -123,141 +137,150 @@ struct EntryEditor: View {
     @State private var initialized = false
     @State private var editorActive = true
     @State private var photoTask: Task<Void, Never>?
+    @State private var saveTask: Task<Void, Never>?
+    @State private var saving = false
+    @State private var keyboard = EditorKeyboardControl()
     @State private var photoPresentation: EditorPhotoPresentation?
+    @State private var photoRemoval: DraftPhoto?
+    @FocusState private var valueFocused: Bool
+    @FocusState private var noteFocused: Bool
+
     var body: some View {
         NavigationStack {
             Form {
                 Section {
-                    if tracker.kind == .number {
-                        if !isPersistedEntry {
-                            Picker(L.text("Value input"), selection: $inputMode) {
-                                Text(L.text("New value")).tag(NumericEntryMode.direct)
-                                Text(L.text("Change amount")).tag(NumericEntryMode.change).disabled(numericBaseline == nil)
-                            }.accessibilityIdentifier("entry.inputMode")
-                            if numericBaseline == nil {
-                                Text(L.text("No earlier value for this date. Enter a new value first."))
-                                    .font(.caption).foregroundStyle(.secondary)
+                    VStack(alignment: .leading, spacing: 16) {
+                        if tracker.kind == .number {
+                            if !isPersistedEntry {
+                                VStack(alignment: .leading, spacing: 8) {
+                                    Picker(L.text("Value input"), selection: $inputMode) {
+                                        Text(L.text("New value")).tag(NumericEntryMode.direct)
+                                        Text(L.text("Change amount")).tag(NumericEntryMode.change).disabled(numericBaseline == nil)
+                                    }.pickerStyle(.menu).buttonStyle(.borderless).accessibilityIdentifier("entry.inputMode")
+                                    if numericBaseline == nil {
+                                        Text(L.text("No earlier value for this date. Enter a new value first."))
+                                            .font(.caption).foregroundStyle(TrackerColors.secondaryText)
+                                    }
+                                }
                             }
-                        }
-                        if inputMode == .direct {
-                            TextField(L.text("Value"), text: $value).keyboardType(.numbersAndPunctuation).accessibilityIdentifier("entry.value")
+                            if comparisonLayout && !dynamicTypeSize.isAccessibilitySize {
+                                HStack(alignment: .top, spacing: 12) {
+                                    numericArea.frame(maxWidth: .infinity)
+                                    photoArea.frame(maxWidth: .infinity)
+                                }
+                            } else {
+                                numericArea
+                                photoArea
+                            }
                         } else {
-                            TextField(L.text("Change amount"), text: $change).keyboardType(.numbersAndPunctuation).accessibilityIdentifier("entry.change")
-                            if let baseline = numericBaseline {
-                                LabeledContent(L.text("Baseline value"), value: localizedValue(baseline.value ?? ""))
-                                LabeledContent(L.text("Baseline date"), value: baseline.occurredAt.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened, locale: L.locale, timeZone: tracker.calendar.timeZone)))
-                            }
-                            switch numericPreview {
-                            case .success(let result):
-                                LabeledContent(L.text("Resulting value"), value: localizedValue(result.value)).accessibilityIdentifier("entry.result")
-                            case .failure(let error):
-                                if !change.isEmpty { Text(numericError(error)).font(.caption).foregroundStyle(.red) }
-                            }
+                            photoArea
                         }
-                    }
-                    if let error { Text(error).foregroundStyle(.red).accessibilityIdentifier("editor.error") }
-                    DatePicker(L.text("Date"), selection: Binding(get: { date }, set: { date = $0; dateEdited = true }), in: ...Date(), displayedComponents: tracker.kind == .number ? [.date, .hourAndMinute] : [.date])
+                        if let error { Text(error).foregroundStyle(.red).accessibilityIdentifier("editor.error") }
+                    }.padding(.vertical, 4)
+                }.disabled(saving)
+                Section {
+                    DatePicker(L.text("Date"), selection: Binding(get: { date }, set: { endEditing(); date = $0; dateEdited = true }), in: ...Date(), displayedComponents: tracker.kind == .number ? [.date, .hourAndMinute] : [.date])
+                        .simultaneousGesture(TapGesture().onEnded { endEditing() })
                         .environment(\.timeZone, tracker.calendar.timeZone).accessibilityIdentifier("entry.date")
-                    TextField(L.text("Notes (optional)"), text: $note, axis: .vertical).lineLimit(3...8).accessibilityIdentifier("entry.note")
-                }
+                    TextField(L.text("Notes (optional)"), text: $note, axis: .vertical).focused($noteFocused)
+                        .lineLimit(3...8).accessibilityIdentifier("entry.note")
+                }.disabled(saving)
                 Section(L.text("Location")) {
-                    Toggle(L.text("Record location"), isOn: Binding(get: { location.draft.enabled }, set: { location.setEnabled($0) }))
-                        .accessibilityIdentifier("entry.location")
-                    if let status = location.draft.status {
-                        Text(L.text(status.key)).font(.caption).foregroundStyle(.secondary)
-                            .accessibilityIdentifier("entry.location.status")
-                    }
-                    Text(L.text("When enabled, use the first photo’s GPS or your current iPhone location. No background tracking."))
-                        .font(.caption).foregroundStyle(.secondary)
-                }
-                Section(L.text("Photos")) {
-                    ForEach(Array(photos.enumerated()), id: \.offset) { index, data in
-                        if let image = UIImage(data: data) {
-                            Button {
-                                photoPresentation = EditorPhotoPresentation(photos: photos, initialIndex: index)
-                            } label: {
-                                Image(uiImage: image).renderingMode(.original).resizable().scaledToFit()
-                            }.buttonStyle(.plain).accessibilityLabel(L.text("Record photo"))
-                                .accessibilityIdentifier("entry.photo.\(index)")
-                            Button(L.text("Remove photo"), role: .destructive) {
-                                photos.remove(at: index)
-                                if index == 0 { location.setFirstPhoto(nil) }
-                            }.disabled(loading)
+                    VStack(alignment: .leading, spacing: 8) {
+                        Toggle(L.text("Record location"), isOn: Binding(get: { location.draft.enabled }, set: { endEditing(); location.setEnabled($0) }))
+                            .accessibilityIdentifier("entry.location").disabled(saving)
+                        if let status = location.draft.status {
+                            Text(L.text(status.key)).font(.caption).foregroundStyle(TrackerColors.secondaryText)
+                                .accessibilityIdentifier("entry.location.status")
+                        }
+                        Text(L.text("When enabled, use the first photo’s GPS or your current iPhone location. No background tracking."))
+                            .font(.caption).foregroundStyle(TrackerColors.secondaryText)
+                        if saving {
+                            ProgressView(L.text("Getting location before saving")).accessibilityIdentifier("entry.location.pending")
+                            Button(L.text("Save without location")) { location.cancel() }
+                                .buttonStyle(.borderless).accessibilityIdentifier("entry.location.saveWithout")
                         }
                     }
-                    if photos.count < Entry.photoLimit {
-                        PhotosPicker(selection: $selections, maxSelectionCount: Entry.photoLimit - photos.count, selectionBehavior: .ordered, matching: .images, preferredItemEncoding: .current) {
-                            Label(L.text("Add photos"), systemImage: "photo.badge.plus")
-                        }.disabled(loading).accessibilityIdentifier("entry.photos")
-                    }
-                    if loading { ProgressView(L.text("Saving photo copies")) }
-                    Text(L.text("Photos are copied into the app. Up to 10 per record, resized to 1600 pixels.")).font(.caption).foregroundStyle(.secondary)
-                    if existing == nil { Text(L.text("New records use the first photo’s date when available. You can still change the date.")).font(.caption).foregroundStyle(.secondary) }
                 }
-                if let existing, tracker.entries.contains(where: { $0.id == existing.id }) {
-                    Section { Button(L.text("Delete record"), role: .destructive) { deleting = true }.accessibilityIdentifier("entry.delete") }
+                if isPersistedEntry {
+                    Section { Button(L.text("Delete record"), role: .destructive) { deleting = true }.accessibilityIdentifier("entry.delete").disabled(saving) }
                 }
             }
-            .navigationTitle(L.text(existing == nil ? "New record" : "Record details"))
+            .scrollDismissesKeyboard(.interactively)
+            .background(EditorKeyboardDismissal(keyboard: keyboard) { valueFocused = false; noteFocused = false })
+            .background(EditorDismissalObserver(onDismiss: stopRequests))
+            .navigationTitle(L.text(isPersistedEntry ? "Record details" : "New record"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button(L.text("Cancel")) { stopRequests(); dismiss() }.accessibilityIdentifier("entry.cancel") }
                 ToolbarItem(placement: .confirmationAction) {
-                    Button(L.text("Save"), action: save).disabled(loading || note.count > 10000 || (tracker.kind == .number && numericInput.isEmpty)).accessibilityIdentifier("entry.save")
+                    Button(L.text("Save"), action: beginSave)
+                        .disabled(saving || loading || note.count > 10000 || (tracker.kind == .number && numericInput.isEmpty))
+                        .accessibilityIdentifier("entry.save")
+                }
+                ToolbarItemGroup(placement: .keyboard) {
+                    if valueFocused {
+                        Button("±") {
+                            do { numericBinding.wrappedValue = try NumericEntry.flipSign(numericInput, locale: L.locale) }
+                            catch { self.error = L.error(error) }
+                        }.accessibilityLabel(L.text("Change sign")).accessibilityIdentifier("entry.sign")
+                    }
+                    Spacer()
+                    Button(L.text("Done"), action: endEditing).accessibilityIdentifier("entry.keyboard.done")
                 }
             }
             .onAppear {
-                location.resumePending()
+                editorActive = true
                 guard !initialized else { return }
                 initialized = true
                 if let e = existing {
-                    date = e.occurredAt; value = e.value ?? ""; note = e.note; photos = e.photos
-                    location.draft = RecordLocationDraft(existing: e.location)
+                    date = e.occurredAt; dateEdited = true
+                    value = (e.value ?? "").replacingOccurrences(of: ".", with: L.locale.decimalSeparator ?? ".")
+                    note = e.note; photos = e.photos.map { DraftPhoto(data: $0) }
                 }
+                location.draft = RecordLocationDraft(existing: existing?.location, defaultEnabled: !isPersistedEntry && recordLocationByDefault)
             }
-            .onDisappear {
-                location.cancel()
-                if photoPresentation == nil { stopRequests() }
-            }
-            .onChange(of: numericBaseline?.id) { _, id in
-                if id == nil { inputMode = .direct }
-            }
+            .onChange(of: isPresented) { _, presented in if !presented { stopRequests() } }
+            .onDisappear { if !isPresented { stopRequests() } }
+            .onChange(of: numericBaseline?.id) { _, id in if id == nil { inputMode = .direct } }
             .onChange(of: inputMode) { _, mode in
+                endEditing()
                 if mode == .change, numericBaseline == nil { inputMode = .direct }
             }
-            .fullScreenCover(item: $photoPresentation, onDismiss: { if editorActive { location.resumePending() } }) { selection in
+            .fullScreenCover(item: $photoPresentation) { selection in
                 PhotoViewer(photos: selection.photos, initialIndex: selection.initialIndex)
             }
-            .onChange(of: selections) { _, items in
-                guard !items.isEmpty, !loading else { return }
-                loading = true
-                photoTask = Task {
-                    defer { if editorActive { loading = false; selections = [] } }
-                    do {
-                        var copies: [Data] = []
-                        var firstDate: Date?
-                        var firstLocation: RecordedLocation?
-                        for (index, item) in items.enumerated() {
-                            guard let data = try await item.loadTransferable(type: Data.self) else { throw DataError.photoFailed }
-                            guard !Task.isCancelled, editorActive else { return }
-                            if index == 0 {
-                                firstDate = photoDate(data, timeZone: tracker.calendar.timeZone)
-                                if photos.isEmpty { firstLocation = photoLocation(data) }
-                            }
-                            copies.append(try photoCopy(data))
+            .sheet(item: $photoRemoval) { photo in
+                NavigationStack {
+                    VStack(spacing: 20) {
+                        if let image = UIImage(data: photo.data) {
+                            Image(uiImage: image).resizable().scaledToFit()
+                                .accessibilityLabel(L.text("Photo to remove")).accessibilityIdentifier("entry.photoRemoval.preview")
                         }
-                        guard photos.count + copies.count <= Entry.photoLimit else { throw DataError.tooManyPhotos }
-                        if existing == nil, photos.isEmpty, !dateEdited, let firstDate { date = firstDate }
-                        if photos.isEmpty { location.setFirstPhoto(firstLocation) }
-                        photos.append(contentsOf: copies)
-                        error = nil
-                    } catch { if !Task.isCancelled, editorActive { self.error = L.error(error) } }
-                }
+                        Text(L.text("This photo is removed only when you save the record."))
+                            .font(.subheadline).foregroundStyle(TrackerColors.secondaryText)
+                    }.padding()
+                        .navigationTitle(L.text("Photos")).navigationBarTitleDisplayMode(.inline)
+                        .toolbar {
+                            ToolbarItem(placement: .cancellationAction) {
+                                Button(L.text("Cancel")) { photoRemoval = nil }.accessibilityIdentifier("entry.photoRemoval.cancel")
+                            }
+                            ToolbarItem(placement: .confirmationAction) {
+                                Button(L.text("Remove photo"), role: .destructive) {
+                                    let wasFirst = photos.first?.id == photo.id
+                                    photos.removeAll { $0.id == photo.id }
+                                    if wasFirst { location.setFirstPhoto(nil) }
+                                    photoRemoval = nil
+                                }.accessibilityIdentifier("entry.photoRemoval.confirm")
+                            }
+                        }
+                }.presentationDetents([.medium, .large])
             }
+            .onChange(of: selections) { _, items in importPhotos(items) }
             .confirmationDialog(L.text("Delete this record and its photos?"), isPresented: $deleting, titleVisibility: .visible) {
                 Button(L.text("Delete record"), role: .destructive) {
                     do {
-                        var t = store.trackers.first { $0.id == tracker.id } ?? tracker
+                        var t = currentTracker
                         t.entries.removeAll { $0.id == existing?.id }
                         try store.save(t); stopRequests(); dismiss()
                     } catch { self.error = L.error(error) }
@@ -265,9 +288,130 @@ struct EntryEditor: View {
             }
         }
     }
+
+    private var numericArea: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            NumericValueEditor(text: numericBinding, precision: tracker.precision, unit: tracker.unit,
+                               isChange: inputMode == .change, focus: $valueFocused)
+            if inputMode == .change, let baseline = numericBaseline {
+                VStack(alignment: .leading, spacing: 6) {
+                    LabeledContent(L.text("Baseline value")) {
+                        Text(localizedValue(baseline.value ?? "")).foregroundStyle(TrackerColors.secondaryText)
+                    }.accessibilityIdentifier("entry.baseline")
+                    Text(baseline.occurredAt.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened, locale: L.locale, timeZone: tracker.calendar.timeZone)))
+                        .font(.caption).foregroundStyle(TrackerColors.secondaryText).accessibilityLabel(L.text("Baseline date"))
+                        .accessibilityValue(baseline.occurredAt.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened, locale: L.locale, timeZone: tracker.calendar.timeZone)))
+                        .accessibilityIdentifier("entry.baselineDate")
+                    switch numericPreview {
+                    case .success(let result):
+                        LabeledContent(L.text("Resulting value")) {
+                            Text(localizedValue(result.value)).foregroundStyle(.primary)
+                        }.font(.headline).accessibilityIdentifier("entry.result")
+                    case .failure(let failure):
+                        if !change.isEmpty { Text(numericError(failure)).font(.caption).foregroundStyle(.red) }
+                    }
+                }.fixedSize(horizontal: false, vertical: true)
+            }
+        }
+    }
+
+    private var photoArea: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if dynamicTypeSize.isAccessibilitySize {
+                VStack(alignment: .leading, spacing: 12) {
+                    photoHeading
+                    addPhotos
+                }
+            } else {
+                HStack(alignment: .firstTextBaseline) {
+                    photoHeading
+                    Spacer(minLength: 4)
+                    addPhotos
+                }
+            }
+            if !photos.isEmpty {
+                if comparisonLayout && !dynamicTypeSize.isAccessibilitySize {
+                    ScrollView(.vertical) {
+                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
+                            ForEach(photos) { photoTile($0) }
+                        }
+                    }.frame(height: 250).accessibilityIdentifier("entry.photoRail")
+                } else {
+                ScrollView(.horizontal) {
+                    HStack(spacing: 10) {
+                        ForEach(photos) { photoTile($0) }
+                    }
+                }.scrollIndicators(.hidden).accessibilityIdentifier("entry.photoRail")
+                }
+            }
+            if loading { ProgressView(L.text("Saving photo copies")) }
+            Text(L.text("Photos are kept in the app. Up to 10 per record."))
+                .font(.caption).foregroundStyle(TrackerColors.secondaryText)
+            if existing == nil {
+                Text(L.text("New records use the first photo’s date when available. You can still change the date."))
+                    .font(.caption).foregroundStyle(TrackerColors.secondaryText)
+            }
+        }
+    }
+
+    private var photoHeading: some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            Text(L.text("Photos")).font(.subheadline.weight(.semibold))
+            Text("\(photos.count)/\(Entry.photoLimit)").font(.caption).foregroundStyle(TrackerColors.secondaryText)
+                .accessibilityLabel(L.text("Photos")).accessibilityValue("\(photos.count)/\(Entry.photoLimit)")
+                .accessibilityIdentifier("entry.photos.count")
+        }
+    }
+    private var addPhotos: some View {
+        PhotosPicker(selection: $selections, maxSelectionCount: max(1, Entry.photoLimit - photos.count), selectionBehavior: .ordered, matching: .images, preferredItemEncoding: .current) {
+            HStack(alignment: .firstTextBaseline, spacing: 8) {
+                Image(systemName: "plus").font(.system(size: 18)).accessibilityHidden(true)
+                Text(L.text("Add photos")).font(.subheadline)
+                    .fixedSize(horizontal: false, vertical: true)
+            }.frame(maxWidth: dynamicTypeSize.isAccessibilitySize ? .infinity : nil, minHeight: 44, alignment: .leading)
+        }.buttonStyle(.borderless).simultaneousGesture(TapGesture().onEnded { endEditing() })
+            .disabled(loading || photos.count == Entry.photoLimit).accessibilityIdentifier("entry.photos")
+    }
+
+    private func photoTile(_ photo: DraftPhoto) -> some View {
+        VStack(spacing: 0) {
+            Button {
+                guard let index = photos.firstIndex(where: { $0.id == photo.id }) else { return }
+                endEditing()
+                photoPresentation = EditorPhotoPresentation(photos: photos.map(\.data), initialIndex: index)
+            } label: {
+                if let image = UIImage(data: photo.data) {
+                    Image(uiImage: image).renderingMode(.original).resizable().scaledToFill()
+                        .frame(width: 80, height: 76).clipped()
+                }
+            }.buttonStyle(.plain).accessibilityLabel(photoLabel("Record photo %lld", photo: photo))
+                .accessibilityIdentifier("entry.photo.\(photo.id.uuidString)")
+            Button {
+                endEditing(); photoRemoval = photo
+            } label: {
+                Image(systemName: "trash").font(.system(size: 18)).frame(width: 80, height: 44)
+            }.buttonStyle(.plain).foregroundStyle(TrackerColors.secondaryText).disabled(loading)
+                .accessibilityLabel(photoLabel("Remove photo %lld", photo: photo))
+                .accessibilityIdentifier("entry.photo.remove.\(photo.id.uuidString)")
+        }.background(.quaternary, in: RoundedRectangle(cornerRadius: 12)).clipShape(RoundedRectangle(cornerRadius: 12))
+    }
+
+    private var comparisonLayout: Bool {
+#if DEBUG && targetEnvironment(simulator)
+        ProcessInfo.processInfo.arguments.contains("--uitesting") && ProcessInfo.processInfo.arguments.contains("--ux-input-alternative")
+#else
+        false
+#endif
+    }
+    private func photoLabel(_ key: String, photo: DraftPhoto) -> String {
+        String(format: L.text(key), locale: L.locale, (photos.firstIndex { $0.id == photo.id } ?? 0) + 1)
+    }
     private var currentTracker: Tracker { store.trackers.first { $0.id == tracker.id } ?? tracker }
     private var isPersistedEntry: Bool { existing.map { entry in currentTracker.entries.contains { $0.id == entry.id } } ?? false }
     private var numericInput: String { inputMode == .direct ? value : change }
+    private var numericBinding: Binding<String> {
+        inputMode == .direct ? $value : $change
+    }
     private var numericBaseline: Entry? { NumericEntry.baseline(in: currentTracker, at: date, excluding: existing?.id) }
     private var numericPreview: Result<NumericEntryResult, Error> {
         Result { try NumericEntry.calculate(numericInput, mode: inputMode, tracker: currentTracker, at: date, excluding: existing?.id, locale: L.locale) }
@@ -279,28 +423,76 @@ struct EntryEditor: View {
         error is NumericEntryError ? L.text("No earlier value for this date. Enter a new value first.") : L.error(error)
     }
     private func stopRequests() {
-        editorActive = false
-        photoTask?.cancel()
-        location.cancel()
+        endEditing()
+        editorActive = false; saveTask?.cancel(); photoTask?.cancel(); location.cancel()
     }
-    private func save() {
+    private func endEditing() { keyboard.dismiss(); valueFocused = false; noteFocused = false }
+    private func importPhotos(_ items: [PhotosPickerItem]) {
+        guard !items.isEmpty, !loading else { return }
+        loading = true
+        photoTask = Task {
+            defer { if editorActive { loading = false; selections = [] } }
+            do {
+                var copies: [DraftPhoto] = []
+                var firstDate: Date?
+                var firstLocation: RecordedLocation?
+                for (index, item) in items.enumerated() {
+                    guard !Task.isCancelled, editorActive else { return }
+                    guard let data = try await item.loadTransferable(type: Data.self) else { throw DataError.photoFailed }
+                    guard !Task.isCancelled, editorActive else { return }
+                    if index == 0 {
+                        firstDate = photoDate(data, timeZone: tracker.calendar.timeZone)
+                        if photos.isEmpty { firstLocation = photoLocation(data) }
+                    }
+                    copies.append(DraftPhoto(data: try photoCopy(data)))
+                }
+                guard photos.count + copies.count <= Entry.photoLimit else { throw DataError.tooManyPhotos }
+                if existing == nil, photos.isEmpty, !dateEdited, let firstDate { date = firstDate }
+                if photos.isEmpty { location.setFirstPhoto(firstLocation) }
+                photos.append(contentsOf: copies); error = nil
+            } catch { if !Task.isCancelled, editorActive { self.error = L.error(error) } }
+        }
+    }
+
+    /// Validate before asking for location, then reconstruct against the latest tracker on commit.
+    private func preparedEntry(in t: Tracker) throws -> Entry {
+        var e = existing ?? Entry(occurredAt: date, localDay: t.day(date))
+        e.occurredAt = date
+        e.localDay = existing?.occurredAt == date ? (existing?.localDay ?? t.day(date)) : t.day(date)
+        e.note = note; e.photos = photos.map(\.data); e.updatedAt = Date()
+        e.value = t.kind == .number ? try NumericEntry.calculate(numericInput, mode: inputMode, tracker: t, at: date, excluding: existing?.id, locale: L.locale).value : nil
+        var priorLocation = e.location
+        if t.kind == .daily, let conflict = t.entries.first(where: { $0.localDay == e.localDay && $0.id != e.id }) {
+            if existing != nil { throw DataError.duplicateDay }
+            e.id = conflict.id; e.createdAt = conflict.createdAt; priorLocation = conflict.location
+            e.photos = conflict.photos + photos.map(\.data); e.note = note.isEmpty ? conflict.note : note
+        }
+        e.location = location.draft.applying(to: priorLocation)
+        guard e.photos.count <= Entry.photoLimit else { throw DataError.tooManyPhotos }
+        return e
+    }
+    private func beginSave() {
+        guard !saving else { return }
         do {
-            var t = store.trackers.first { $0.id == tracker.id } ?? tracker
-            var e = existing ?? Entry(occurredAt: date, localDay: t.day(date))
-            e.occurredAt = date; e.localDay = existing?.occurredAt == date ? (existing?.localDay ?? t.day(date)) : t.day(date); e.note = note; e.photos = photos; e.updatedAt = Date()
-            e.value = t.kind == .number ? try NumericEntry.calculate(numericInput, mode: inputMode, tracker: t, at: date, excluding: existing?.id, locale: L.locale).value : nil
-            var priorLocation = e.location
-            if t.kind == .daily, let conflict = t.entries.first(where: { $0.localDay == e.localDay && $0.id != e.id }) {
-                if existing != nil { throw DataError.duplicateDay }
-                // Preserve the original creation time when updating an already completed date.
-                e.id = conflict.id; e.createdAt = conflict.createdAt
-                priorLocation = conflict.location
-                if existing == nil { e.photos = conflict.photos + photos; e.note = note.isEmpty ? conflict.note : note }
-            }
-            e.location = location.draft.applying(to: priorLocation)
-            guard e.photos.count <= Entry.photoLimit else { throw DataError.tooManyPhotos }
-            t.put(e); try store.save(t); stopRequests(); dismiss()
+            _ = try preparedEntry(in: currentTracker)
+            error = nil; endEditing()
+            if location.draft.canResolve {
+                saving = true
+                saveTask = Task {
+                    guard !Task.isCancelled, editorActive else { return }
+                    await location.resolveForSave()
+                    guard !Task.isCancelled, editorActive else { return }
+                    saving = false; commit()
+                }
+            } else { commit() }
         } catch { self.error = numericError(error) }
+    }
+    private func commit() {
+        do {
+            var t = currentTracker
+            t.put(try preparedEntry(in: t))
+            try store.save(t); stopRequests(); dismiss()
+        } catch { saving = false; self.error = numericError(error) }
     }
 }
 

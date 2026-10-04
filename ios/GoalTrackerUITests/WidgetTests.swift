@@ -1,6 +1,13 @@
 import XCTest
 
 nonisolated final class WidgetTests: XCTestCase {
+    @MainActor func numericField(_ app: XCUIApplication) -> XCUIElement {
+        let display = app.descendants(matching: .any).matching(identifier: "entry.value.scrubber").firstMatch
+        if display.waitForExistence(timeout: 10) { display.tap() }
+        let field = app.textFields["entry.value"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        return field
+    }
     @MainActor func testWidgetSharingAndTodayLink() {
         continueAfterFailure = false
         let app = XCUIApplication()
@@ -18,7 +25,7 @@ nonisolated final class WidgetTests: XCTestCase {
         app.buttons["tracker.save"].tap()
         let snapshot = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "snapshot.")).firstMatch
         XCTAssertTrue(snapshot.waitForExistence(timeout: 10)); snapshot.tap()
-        let value = app.textFields["entry.value"]
+        let value = numericField(app)
         XCTAssertTrue(value.waitForExistence(timeout: 10)); value.tap(); value.typeText("18.500")
         app.buttons["entry.save"].tap()
         XCTAssertTrue(app.staticTexts["18.500"].waitForExistence(timeout: 10))
@@ -47,14 +54,13 @@ nonisolated final class WidgetTests: XCTestCase {
         XCTAssertTrue(app.staticTexts["1 / 2 · This week"].exists)
         let trackerID = String(snapshot.identifier.dropFirst("snapshot.".count))
         app.open(URL(string: "goaltracker://record/" + trackerID)!)
-        XCTAssertTrue(app.textFields["entry.value"].waitForExistence(timeout: 10))
-        XCTAssertEqual(app.textFields["entry.value"].value as? String, "Value")
+        XCTAssertEqual(numericField(app).value as? String, "Value")
         attach(app, "Widget record link opens new snapshot sheet")
         app.buttons["entry.cancel"].tap()
         app.buttons["settings.open"].tap()
         XCTAssertTrue(app.buttons["settings.done"].waitForExistence(timeout: 10))
         app.open(URL(string: "goaltracker://record/" + trackerID)!)
-        XCTAssertTrue(app.textFields["entry.value"].waitForExistence(timeout: 10))
+        _ = numericField(app)
         app.buttons["entry.cancel"].tap()
         app.open(URL(string: "goaltracker://record/00000000-0000-0000-0000-000000000000")!)
         XCTAssertTrue(app.navigationBars["Today"].waitForExistence(timeout: 10))

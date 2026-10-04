@@ -41,15 +41,25 @@ struct RecordLocationDraft {
     private var original: RecordedLocation?
     private var firstPhoto: RecordedLocation?
     private var changed = false
+    private var inheritedDefault = false
 
-    init(existing: RecordedLocation? = nil) {
+    init(existing: RecordedLocation? = nil, defaultEnabled: Bool = false) {
         original = existing?.isValid == true ? existing : nil
         location = original
-        enabled = original != nil
-        status = enabled ? .saved : nil
+        inheritedDefault = original == nil && defaultEnabled
+        enabled = original != nil || inheritedDefault
+        status = original != nil ? .saved : nil
     }
 
     var needsCurrentLocation: Bool { enabled && location == nil }
+    var explicitlyEnabled: Bool { changed && enabled }
+    var canResolve: Bool {
+        guard needsCurrentLocation else { return false }
+        switch status {
+        case .denied, .unavailable, .failed: return false
+        default: return true
+        }
+    }
 
     mutating func setEnabled(_ enabled: Bool) {
         self.enabled = enabled
@@ -85,7 +95,7 @@ struct RecordLocationDraft {
     }
 
     func applying(to prior: RecordedLocation?) -> RecordedLocation? {
-        guard changed else { return prior }
+        guard changed else { return prior ?? (inheritedDefault && enabled ? location : nil) }
         return enabled ? location ?? prior : nil
     }
 }
@@ -95,6 +105,17 @@ struct RecordLocationDraft {
     var draft = RecordLocationDraft()
     @ObservationIgnored private var manager: CLLocationManager?
     @ObservationIgnored private var requestedFix = false
+    @ObservationIgnored private var timeout: Task<Void, Never>?
+    @ObservationIgnored private var saveContinuation: CheckedContinuation<Void, Never>?
+
+    // An inherited preference is intent only. Resolve after valid Save, or an explicit per-entry ON.
+    func resolveForSave() async {
+        guard !Task.isCancelled, draft.canResolve, saveContinuation == nil else { return }
+        await withCheckedContinuation { continuation in
+            saveContinuation = continuation
+            requestIfNeeded()
+        }
+    }
 
     func setEnabled(_ enabled: Bool) {
         cancel()
@@ -105,14 +126,19 @@ struct RecordLocationDraft {
     func setFirstPhoto(_ location: RecordedLocation?) {
         draft.setFirstPhoto(location)
         if !draft.needsCurrentLocation { cancel() }
-        requestIfNeeded()
+        if draft.explicitlyEnabled { requestIfNeeded() }
     }
 
     func cancel() {
+        timeout?.cancel()
+        timeout = nil
         manager?.stopUpdatingLocation()
         manager?.delegate = nil
         manager = nil
         requestedFix = false
+        let continuation = saveContinuation
+        saveContinuation = nil
+        continuation?.resume()
     }
 
     func resumePending() {
@@ -121,7 +147,7 @@ struct RecordLocationDraft {
 
     private func requestIfNeeded() {
         guard draft.needsCurrentLocation, manager == nil else { return }
-        guard CLLocationManager.locationServicesEnabled() else { draft.fail(.unavailable); return }
+        guard CLLocationManager.locationServicesEnabled() else { draft.fail(.unavailable); cancel(); return }
         let manager = CLLocationManager()
         self.manager = manager
         manager.delegate = self
@@ -138,6 +164,13 @@ struct RecordLocationDraft {
             guard !requestedFix else { return }
             requestedFix = true
             manager.requestLocation()
+            // The timeout covers the fix, never the person's time in the permission prompt.
+            timeout = Task { [weak self, weak manager] in
+                do { try await Task.sleep(for: .seconds(8)) } catch { return }
+                guard let self, let manager, self.manager === manager else { return }
+                self.draft.fail(.failed)
+                self.cancel()
+            }
         case .denied, .restricted: draft.fail(.denied); cancel()
         @unknown default: draft.fail(.failed); cancel()
         }

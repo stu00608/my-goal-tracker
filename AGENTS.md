@@ -15,6 +15,12 @@ of `GoalTrackerWithWidget` on the user's connected iPhone. Continue without rout
 an explicit review/no-merge gate overrides this default. Coordinate Simulator tests and device
 deployment through one integration owner when the user requests parallel work.
 
+## Design quality
+
+For UI, interaction, navigation or user-facing copy changes, read and apply
+[Native UX quality](docs/UX-QUALITY.md). Use its render, critique and fix loop before delivery;
+keep one primary route per action and resolve every known visual or interaction issue.
+
 ## Engineering
 
 - Trace the affected behavior and all callers before editing. Reuse native frameworks and existing code.

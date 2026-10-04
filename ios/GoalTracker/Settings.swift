@@ -16,6 +16,7 @@ struct SettingsView: View {
     @AppStorage("appearance") private var appearance = "system"
     @AppStorage("language") private var language = "system"
     @AppStorage("homeLayout") private var homeLayout = "grid"
+    @AppStorage("recordLocationByDefault", store: L.defaults) private var recordLocationByDefault = false
     @State private var export: ExportDocument?
     @State private var exporting = false
     @State private var csv = false
@@ -37,19 +38,27 @@ struct SettingsView: View {
                     Picker(L.text("Language"), selection: $language) {
                         Text(L.text("System")).tag("system"); Text("繁體中文").tag("zh-Hant"); Text("日本語").tag("ja"); Text("English").tag("en")
                     }.accessibilityIdentifier("settings.language")
+                    VStack(alignment: .leading, spacing: 8) {
+                        Toggle(L.text("Record location by default"), isOn: $recordLocationByDefault)
+                            .accessibilityIdentifier("settings.recordLocationDefault")
+                        Text(L.text("Applies to new records only. You can change it for each record. Location is requested when you save."))
+                            .font(.caption).foregroundStyle(TrackerColors.secondaryText)
+                    }
                 }
-                Section(L.text("Reminders")) {
+                Section {
                     ForEach(store.trackers.filter { !$0.archived }) { t in NavigationLink(t.name) { ReminderEditor(tracker: t) } }
-                    Text(L.text("Enable a reminder to request notification permission. Delivery follows your iPhone settings.")).font(.caption).foregroundStyle(.secondary)
+                } header: { Text(L.text("Reminders")) } footer: {
+                    Text(L.text("Enable a reminder to request notification permission. Delivery follows your iPhone settings.")).font(.caption).foregroundStyle(TrackerColors.secondaryText)
                 }
-                Section(L.text("Your data")) {
+                Section {
                     LabeledContent(L.text("Trackers"), value: "\(store.trackers.count)")
                     LabeledContent(L.text("Records"), value: "\(store.trackers.flatMap(\.entries).count)")
                     LabeledContent(L.text("Photo storage"), value: ByteCountFormatter.string(fromByteCount: Int64(store.trackers.flatMap(\.entries).flatMap(\.photos).reduce(0) { $0 + $1.count }), countStyle: .file))
                     Button(L.text("Export full backup")) { prepare(csv: false) }.accessibilityIdentifier("backup.export")
                     Button(L.text("Export CSV")) { prepare(csv: true) }.accessibilityIdentifier("csv.export")
                     Button(L.text("Restore backup")) { importing = true }.accessibilityIdentifier("backup.import")
-                    Text(L.text("A full backup includes records, goal history and photos. Keep a copy somewhere safe. Backups are not encrypted.")).font(.caption).foregroundStyle(.secondary)
+                } header: { Text(L.text("Your data")) } footer: {
+                    Text(L.text("A full backup includes records, goal history and photos. Keep a copy somewhere safe. Backups are not encrypted.")).font(.caption).foregroundStyle(TrackerColors.secondaryText)
                 }
                 if let b = pending {
                     Section(L.text("Backup preview")) {
@@ -66,7 +75,7 @@ struct SettingsView: View {
                     }
                 }
                 if let error { Section { Text(error).foregroundStyle(.red) } }
-                Section { Text(L.text("Private by default. Stored on this iPhone. No account or server.")).font(.footnote).foregroundStyle(.secondary) }
+                Section { Text(L.text("Private by default. Stored on this iPhone. No account or server.")).font(.footnote).foregroundStyle(TrackerColors.secondaryText) }
             }
             .navigationTitle(L.text("Settings"))
             .toolbar { ToolbarItem(placement: .confirmationAction) { Button(L.text("Done")) { dismiss() }.accessibilityIdentifier("settings.done") } }
@@ -118,11 +127,14 @@ struct ReminderEditor: View {
         Form {
             Toggle(L.text("Enable reminders"), isOn: $enabled)
             if enabled {
+                Section {
                 DatePicker(L.text("Time"), selection: $time, displayedComponents: .hourAndMinute)
                 ForEach(1...7, id: \.self) { day in
                     Toggle(L.locale.calendar.weekdaySymbols[day - 1], isOn: Binding(get: { weekdays.contains(day) }, set: { if $0 { weekdays.insert(day) } else { weekdays.remove(day) } }))
                 }
-                Text(L.text("Times use this tracker's statistics time zone. Deadline goals also get a reminder on their due date.")).font(.caption).foregroundStyle(.secondary)
+                } footer: {
+                    Text(L.text("Deadline goals also get a reminder on their due date.")).font(.caption).foregroundStyle(TrackerColors.secondaryText)
+                }
             }
             if let error { Text(error).foregroundStyle(.red) }
         }.navigationTitle(tracker.name)

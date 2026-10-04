@@ -3,6 +3,46 @@ import Testing
 @testable import GoalTracker
 
 struct NumericEntryTests {
+    @Test func scrubQuantumCoversEveryDisplayPrecisionWithoutRoundingStoredDigits() throws {
+        for precision in 0...8 {
+            let expected = precision == 0 ? "1" : "0." + String(repeating: "0", count: precision - 1) + "1"
+            #expect(try NumericEntry.adjust("", precision: precision, steps: 1, locale: locale) == expected)
+            #expect(try NumericEntry.adjust("", precision: precision, steps: -1, locale: locale) == "-" + expected)
+        }
+        #expect(try NumericEntry.adjust("1.123456789012345678901234567", precision: 3, steps: 1, locale: locale) == "1.124456789012345678901234567")
+        #expect(try NumericEntry.adjust("1,123456789", precision: 8, steps: -2, locale: Locale(identifier: "fr_FR")) == "1,123456769")
+        #expect(try NumericEntry.adjust("-0.01", precision: 2, steps: 2, locale: locale) == "0.01")
+        #expect(throws: DataError.invalidNumber) { try NumericEntry.adjust("9999999999999999999999999999", precision: 0, steps: 1, locale: locale) }
+        #expect(throws: DataError.invalidNumber) { try NumericEntry.quantum(precision: 9) }
+    }
+
+    @Test func scrubUsesFrozenOriginAndTwelvePointTicksIncludingReturnToRawOrigin() throws {
+        #expect(NumericEntry.scrubSteps(translation: -11.99) == 0)
+        #expect(NumericEntry.scrubSteps(translation: -12) == 1)
+        #expect(NumericEntry.scrubSteps(translation: -35.99) == 2)
+        #expect(NumericEntry.scrubSteps(translation: 24) == -2)
+        #expect(NumericEntry.scrubSteps(translation: .infinity) == nil)
+        #expect(NumericEntry.scrubSteps(translation: .nan) == nil)
+        let origin = "01.2300"
+        #expect(try NumericEntry.adjust(origin, precision: 2, steps: 3, locale: locale) == "1.26")
+        #expect(try NumericEntry.adjust(origin, precision: 2, steps: -1, locale: locale) == "1.22")
+        #expect(try NumericEntry.adjust(origin, precision: 2, steps: 0, locale: locale) == origin)
+        #expect(try NumericEntry.adjust("", precision: 8, steps: 0, locale: locale) == "")
+    }
+
+    @Test func signAccessorySupportsLargeNegativeChangesAndLocalizedDrafts() throws {
+        let raw = "12345678901234567890.12345678"
+        #expect(try NumericEntry.flipSign(raw, locale: locale) == "-" + raw)
+        #expect(try NumericEntry.flipSign("-" + raw, locale: locale) == raw)
+        #expect(try NumericEntry.flipSign("+2,125", locale: Locale(identifier: "fr_FR")) == "-2,125")
+        #expect(try NumericEntry.flipSign("2,1200", locale: Locale(identifier: "fr_FR")) == "-2,1200")
+        #expect(try NumericEntry.flipSign("1.", locale: locale) == "-1.")
+        #expect(try NumericEntry.flipSign("", locale: locale) == "-")
+        #expect(try NumericEntry.flipSign("-", locale: locale) == "")
+        #expect(try NumericEntry.flipSign("-0", locale: locale) == "0")
+        #expect(throws: DataError.invalidNumber) { try NumericEntry.flipSign("+-1", locale: locale) }
+    }
+
     private let locale = Locale(identifier: "en_US_POSIX")
     private func entry(_ seconds: TimeInterval, value: String, created: TimeInterval = 0) -> Entry {
         Entry(occurredAt: Date(timeIntervalSince1970: seconds), localDay: "2024-01-01", value: value,
