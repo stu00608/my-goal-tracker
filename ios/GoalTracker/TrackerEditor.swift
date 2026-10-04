@@ -286,13 +286,10 @@ struct TrackerEditor: View {
                 if dynamicTypeSize.isAccessibilitySize {
                     VStack(alignment: .leading, spacing: 12) { photoHeading; addPhotos }
                 } else {
-                    ViewThatFits(in: .horizontal) {
-                        HStack(alignment: .firstTextBaseline) {
-                            photoHeading.fixedSize(horizontal: true, vertical: false)
-                            Spacer(minLength: 4)
-                            addPhotos.fixedSize(horizontal: true, vertical: false)
-                        }
-                        VStack(alignment: .leading, spacing: 8) { photoHeading; addPhotos }
+                    HStack(alignment: .firstTextBaseline) {
+                        photoHeading
+                        Spacer(minLength: 4)
+                        addPhotos
                     }
                 }
                 if !photos.isEmpty {
@@ -316,7 +313,8 @@ struct TrackerEditor: View {
     private var addPhotos: some View {
         PhotosPicker(selection: $selections, maxSelectionCount: max(1, Entry.photoLimit - photos.count),
                      selectionBehavior: .ordered, matching: .images, preferredItemEncoding: .current) {
-            Label(L.text("Add photos"), systemImage: "plus").frame(minHeight: 44)
+            Label(L.text("Add photos"), systemImage: "plus")
+                .labelStyle(.titleAndIcon).frame(minHeight: 44)
         }.buttonStyle(.borderless).disabled(loadingPhotos || photos.count == Entry.photoLimit)
             .simultaneousGesture(TapGesture().onEnded { endEditing() }).accessibilityIdentifier("tracker.photos")
     }
