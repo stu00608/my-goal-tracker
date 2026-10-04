@@ -87,8 +87,8 @@ struct TrackerCardLabel: View {
     private var completed: Bool { row.completedDays.contains(row.tracker.day(now)) }
     private var backgroundDescription: String {
         switch row.resolvedBackground {
-        case .plot: row.plot?.isEmpty == false ? "Recent records" : "No records yet"
-        case .photo: row.thumbnail != nil ? "Photos" : "No photos yet"
+        case .plot, .progress: row.plot?.isEmpty == false ? "Recent records" : "No records yet"
+        case .photo, .trackerPhoto: row.thumbnail != nil ? "Photos" : "No photos yet"
         case .map: row.locations?.isEmpty == false ? "Recorded locations" : "No locations yet"
         }
     }
@@ -138,7 +138,7 @@ struct TrackerCardBackdrop: View {
     var monochrome = false
     var body: some View {
         switch row.resolvedBackground {
-        case .plot:
+        case .plot, .progress:
             if let points = row.plot, !points.isEmpty {
                 Chart(Array(points.enumerated()), id: \.offset) { _, point in
                     if let value = point.plottedValue {
@@ -155,7 +155,7 @@ struct TrackerCardBackdrop: View {
                 Image(systemName: "chart.xyaxis.line").font(.title2).foregroundStyle(TrackerColors.secondaryText)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).padding(16).accessibilityHidden(true)
             }
-        case .photo:
+        case .photo, .trackerPhoto:
             if let data = row.thumbnail, let image = UIImage(data: data) {
                 GeometryReader { geometry in
                     Image(uiImage: image).renderingMode(.original).resizable().scaledToFill().frame(width: geometry.size.width, height: geometry.size.height).clipped()

@@ -5,7 +5,7 @@ nonisolated enum TrackerKind: String, Codable, CaseIterable { case number, daily
 nonisolated enum Direction: String, Codable, CaseIterable { case up, down }
 nonisolated enum Period: String, Codable, CaseIterable { case weekly, monthly, deadline }
 
-nonisolated enum CardBackground: String, Codable, CaseIterable { case plot, photo, map }
+nonisolated enum CardBackground: String, Codable, CaseIterable { case plot, photo, trackerPhoto, map, progress }
 nonisolated struct RecordedLocation: Codable, Equatable {
     var latitude: Double
     var longitude: Double
@@ -18,6 +18,7 @@ nonisolated struct Entry: Codable, Identifiable, Equatable {
     var occurredAt: Date
     var localDay: String
     var value: String?
+    var change: String?
     var note = ""
     var photos: [Data] = []
     var location: RecordedLocation?
@@ -40,6 +41,16 @@ nonisolated struct Reminder: Codable, Equatable {
     var weekdays: [Int] // Calendar weekdays: Sunday = 1
 }
 
+nonisolated enum ConditionCombination: String, Codable, CaseIterable { case any, all }
+nonisolated enum PlaceRelation: String, Codable, CaseIterable { case inside, outside }
+nonisolated struct PlaceCondition: Codable, Identifiable, Equatable {
+    static let radius = 200.0
+    var id = UUID()
+    var name: String
+    var location: RecordedLocation
+    var relation = PlaceRelation.inside
+}
+
 nonisolated struct Tracker: Codable, Identifiable, Equatable {
     var id = UUID()
     var name: String
@@ -54,6 +65,19 @@ nonisolated struct Tracker: Codable, Identifiable, Equatable {
     var rules: [GoalRule] = []
     var reminder: Reminder?
     var cardBackground: CardBackground?
+    // Optional keys preserve synthesized decoding of existing version-1 Ledger payloads.
+    var description: String?
+    var website: String?
+    var photos: [Data]?
+    var axisLower: String?
+    var axisUpper: String?
+    var conditions: [PlaceCondition]?
+    var conditionCombination: ConditionCombination?
+    var gateSave: Bool?
+    var remindWhenMet: Bool?
+    var resolvedConditions: [PlaceCondition] { conditions ?? [] }
+    var resolvedCombination: ConditionCombination { conditionCombination ?? .any }
+    var requiresLocationGate: Bool { gateSave == true && !resolvedConditions.isEmpty }
     var resolvedCardBackground: CardBackground { cardBackground ?? .plot }
 
     var calendar: Calendar {
