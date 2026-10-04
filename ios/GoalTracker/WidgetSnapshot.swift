@@ -9,9 +9,7 @@ nonisolated struct CardPlotPoint: Codable, Equatable {
     // Source precision stays intact; Double is used only to draw the chart.
     var value: String
     var plottedValue: Double? {
-        guard let decimal = Numbers.decimal(value) else { return nil }
-        let number = NSDecimalNumber(decimal: decimal).doubleValue
-        return number.isFinite ? number : nil
+        Numbers.plottedValue(value)
     }
 }
 
@@ -105,9 +103,7 @@ nonisolated enum CardPlotScale {
         let midpoint = low / 2 + high / 2
         let automatic = values.isEmpty ? 0...1 : (midpoint - span * 0.75)...(midpoint + span * 0.75)
         func bound(_ string: String?) -> Double? {
-            guard let value = string.flatMap(Numbers.decimal), !value.isNaN else { return nil }
-            let number = NSDecimalNumber(decimal: value).doubleValue
-            return number.isFinite ? number : nil
+            string.flatMap(Numbers.plottedValue)
         }
         let lowerDecimal = lower.flatMap(Numbers.decimal), upperDecimal = upper.flatMap(Numbers.decimal)
         let lower = bound(lower), upper = bound(upper)

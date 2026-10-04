@@ -414,7 +414,7 @@ import SwiftData
         let copy = try photoCopy(source)
         #expect(copy.count <= 2_000_000 && Backup.validPhoto(copy))
         let result = try #require(UIImage(data: copy)?.cgImage)
-        #expect(result.width == side && result.height == side)
+        #expect((1280...side).contains(result.width) && (1280...side).contains(result.height))
     }
     @Test func newPhotoCopyIsJPEGWithinLimitsAndStripsGPSAndEXIFButRejectsAnimatedSources() throws {
         let raw = try metadataPhoto([

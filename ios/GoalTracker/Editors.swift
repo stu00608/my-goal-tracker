@@ -487,18 +487,21 @@ private struct EditorPhotoPresentation: Identifiable {
 
 @MainActor func photoCopy(_ data: Data) throws -> Data {
     guard let source = CGImageSourceCreateWithData(data as CFData, [kCGImageSourceShouldCache: false] as CFDictionary),
-          CGImageSourceGetCount(source) == 1,
-          let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
+          CGImageSourceGetCount(source) == 1 else { throw DataError.photoFailed }
+    // Extreme detail can exceed 2 MB even at quality .65. Reduce dimensions before degrading further.
+    for edge in [1600, 1440, 1280] {
+        guard let image = CGImageSourceCreateThumbnailAtIndex(source, 0, [
             kCGImageSourceCreateThumbnailFromImageAlways: true,
             kCGImageSourceCreateThumbnailWithTransform: true,
-            kCGImageSourceThumbnailMaxPixelSize: 1600
+            kCGImageSourceThumbnailMaxPixelSize: edge
           ] as CFDictionary) else { throw DataError.photoFailed }
-    let still = UIImage(cgImage: image)
-    for quality in [0.8, 0.75, 0.7, 0.65] {
-        guard let copy = still.jpegData(compressionQuality: quality) else { throw DataError.photoFailed }
-        if copy.count <= 2_000_000 {
-            guard Backup.validPhoto(copy) else { throw DataError.photoFailed }
-            return copy
+        let still = UIImage(cgImage: image)
+        for quality in [0.8, 0.75, 0.7, 0.65] {
+            guard let copy = still.jpegData(compressionQuality: quality) else { throw DataError.photoFailed }
+            if copy.count <= 2_000_000 {
+                guard Backup.validPhoto(copy) else { throw DataError.photoFailed }
+                return copy
+            }
         }
     }
     throw DataError.photoFailed

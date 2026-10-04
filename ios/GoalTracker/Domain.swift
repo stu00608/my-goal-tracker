@@ -186,6 +186,11 @@ nonisolated enum Numbers {
         guard NSDecimalAdd(&result, &lhs, &rhs, .plain) == .noError, !result.isNaN else { throw DataError.invalidNumber }
         return try parse(NSDecimalNumber(decimal: result).stringValue, locale: Locale(identifier: "en_US_POSIX"))
     }
+    // Only drawing uses binary floating point; parse the original decimal text once.
+    static func plottedValue(_ text: String) -> Double? {
+        guard let decimal = decimal(text), !decimal.isNaN, let value = Double(text), value.isFinite else { return nil }
+        return value
+    }
     static func display(_ value: Decimal, precision: Int, locale: Locale) -> String {
         let f = NumberFormatter()
         f.locale = locale; f.numberStyle = .decimal

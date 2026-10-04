@@ -1,38 +1,47 @@
-# Goalooker - 過路客: design proposal for independent review
+# Goalooker - 過路客：實作設計
 
-User authorized full implementation/PR/CI/merge, parallel Orca workspaces, Master-only Simulator; skip physical installation until morning. Preserve bundle ID, URL scheme, SwiftData Ledger, app icon, old private data and backups. Three languages zh-Hant/ja/en and native light/dark/AX UI. No cloud.
+產品規則以 [SPEC.md](SPEC.md) 為準。此方案已由 Orca Claude Opus 5.5 做設計檢查，納入資料相容性、快速完成不能繞過條件、背景提醒生命週期、條件狀態校準及照片容量的建議。使用者已授權實作、驗證、PR、CI 及合併；本次不安裝到未連接的 iPhone。
 
-## Numeric events (proposed judgment)
-Store new Change amounts as raw Decimal deltas, new values as absolute anchors. Legacy values remain absolute anchors; do not reinterpret old snapshots. Sort by occurredAt/createdAt/UUID. Example 100,+5,+2; insert +3 before +5 =>100,103,108,110. Later absolute200 resets accumulation. Edits/deletion recalculate descendants up to next anchor; refuse missing-baseline/overflow rather than silently convert or corrupt. Raw entry.value holds absolute only; add optional entry.change for delta only. Exactly one is present for number records. Provide tracker.resolvedEntries (absolute display copies with IDs/date/notes/photos intact), sortedEntries stays raw; latest/best/achieved, numeric timeline/chart/widget use resolved values. Entry editing fetches raw entry ID and preserves original mode. Backup version2 exports raw events, accepts legacyversion1; CSV exports resolved value plus input_kind and change columns. A new delta without previous anchor cannot be saved. Clearly communicate propagation beside editing delta; never pretend a re-evaluated value was measured.
+## 數值資料
 
-## Charts
-Optional lower/upper Y-axis bounds in tracker numeric settings, Decimal strings, empty means auto; either may be omitted, if both require lower<upper. Applies Grid and Widget overview (detail chart can use same preference if appropriate); out-of-bounds values not rewritten. Include target/precision context in automatic domain.
-Line plots extend last known actual value horizontally to min(now, chosen interval end) using a presentation-only carried segment; no fake Entry, no selectable synthetic point, no effects on stats/achieved/export. Range with a prior baseline but no new entries may show carried value and explicit 'Last recorded ...'; no prior data => empty. Historical custom ends stop at range end; future records excluded for current carried value.
-Numeric additional progress ring/pie only with meaningful active target. Use baseline-to-target signed direction progress (up/down, negative/zero targets valid), clamp visual0...1 and preserve actual values/overflow text. No goal/no baseline/degenerate range => explicit unavailable, never arbitrary pie of unrelated history. Daily card pie uses current frequency count/target. Card selector only permits progress with configured valid goal. Native Chart Segmented line/progress detail; minimal control.
+新數值是絕對基準，變化值是原始 Decimal 增量。舊紀錄仍是絕對基準，不推測它們原本的輸入方式。按發生時間、建立時間及 UUID 穩定排序，從基準累加至下一個絕對基準。例如 `100, +5, +2` 中間插入 `+3` 後得到 `100, 103, 108, 110`；後面的 `200` 重新起算。
 
-## Tracker content
-Optional multiline description(max10000), http/https website(max2048) with explicit openURL, 0...10 own compressed JPEG photos. Tracker detail displays description/site and photo gallery. Card backgrounds Chart, latest record photo, tracker photo(first), Map, Goal progress (eligible only). No additional card wrappers or duplicate primary routes. Photos rail reuses104pt tiles, outward red circle44pt target and precise confirmation.
-Compression already1600px/quality.8 JPEG: retain still-only/noLivePhoto; use imageIO thumbnail without loading original decoded fullsize, high-quality .85 with adaptive quality to fit2MB (minimum .70), only new imports; existing bytes never rewritten. metadata read before compression.
+`sortedEntries` 保存原始事件；`resolvedEntries` 是供畫面讀取的副本，同時保留增量來源，不得保存回資料庫。編輯透過 ID 取得原始事件，預覽及保存使用同一精確運算。刪除或移動基準造成增量失去基準時，明確詢問是否把第一筆受影響增量轉成原先算出的絕對值；取消不改資料。溢位或資料不合法時整筆操作拒絕。
 
-## Navigation/settings/branding
-Three native tabs Today, Goals, Settings (rightmost). Remove gear entry and Settings dismiss toolbar. Settings contains global reminder enabled(default true to retain existing reminders), input/location default, language/theme/grid, export/restore; no tracker reminder list and no redundant 'data on this iPhone' panel. Keep useful photo storage measurement. Export JSON/CSV names Goalooker-backup-yyyyMMdd-HHmmss-SSS (UTC stable timestamp). DisplayName Goalooker - 過路客 (localize shorter Goalooker on en/ja if necessary); preserve icon/bundle/storage identifiers. Short brand thought in settings About: tiny daily steps leave a visible trace; cosmic exploration inspiration is subdued, no splash blocking daily entry.
+新增欄位使用 Optional 保持既有 SwiftData Ledger JSON 可讀。備份版本 2 保存原始事件，接受版本 1 的絕對值資料。載入不立即改寫；下一次明確保存才寫版本 2。CSV 在既有欄位後加入 `input_kind` 與 `change`，數值欄提供推算後的結果。保存、載入與還原共用驗證，失敗不取代既有資料。
 
-## Reminders + location conditions
-Tracker-level time/day and deadline reminders; global switch disables ALL owned pending and future condition notifications without erasing tracker choices. Turned back on requests notification permission only when necessary.
-Location conditions optional list, each named place + coordinate + inside/outside; aggregate ALL/ANY default ANY. Native sheet with search/local MapKit results, map selected pin + fixed region overlay, confirm. Compare three candidates: (A) native search-results/map sheet, (B) full map longpress, (C) address form. Choose A with longpress/reposition fallback; no current/car actions, no radius field. Inspect built-in Reminders in Simulator before implementing UI and retain screenshots.
-Apple exposes radius but NO guaranteed hardware minimum. Fixed150m initial product default, not an Apple accuracy promise. Point-in-condition gate uses FRESH live iPhone location at Save, not EXIF/history. Geodesic distance and accuracy uncertainty: inside if distance+horizontalAccuracy<=radius; outside if distance-horizontalAccuracy>radius; overlap =>unknown. Fresh<=60s, nonnegative accuracy. Request best one-shot with8sec timeout, permissions denied/error/uncertain blocks save and shows localized inline notice, preserves full draft. Successful gate silent. Existing edit-only notes/photos/date isn't a new completion: proposal gate only creating new record or numerical value change; deleting/undo never gated. Need reviewer judgment on bypass.
-No coordinates saved in entry unless independent Record location toggle on. Condition center stored by intent. No location requests merely for settings edits/global on.
-Condition-met reminders require boolean false/unknown->true transition of WHOLE aggregate, not one region for AND. Use native CoreLocation region monitoring (max20 UNIQUE centers shared app-wide; cap actionable, no silent eviction), Always authorization needed for reliable background callback; no continuous tracking/enable background GPS. Register enter+exit; maintain per-region tri-state, initial requestState primes WITHOUT notifying. ALL unknown conservative; ANY known matching passes. Boundary events recompute aggregate; notify once transition, debounce cooldown, tap routes goaltracker://record/UUID. Persist state carefully so relaunch doesn't duplicate; reset priming if conditions/global toggle changes. Stop monitored regions & clear matching pending on global off, archive/delete/configdisable. Authorization reduced/denied show availability, do not claim reminder active. App starts manager via UIApplicationDelegate to receive relaunch location callbacks. If callback states don't provide accuracy, region event can prompt notification but Save still fresh-checks gate. No automatic record creation. Future condition types model can be extension enum without premature generic engine.
+## 圖表與進度
 
-## Acceptance
-Unit: delta insert/edit/delete/anchors/precision/orphan/legacyv1v2/rollback, CSV raw+derived, axis invalid/partial bounds, carried point range/no future/stats invariance, ring up/down/zero/no goal, metadata/photo cap/backups, location ALL/ANY/unknown/boundary/accuracy/transition/global cap and cancellation.
-Master native UI: create/edit description/link/photos; gate fail retains draft/success silent using deterministic DEBUG test fixes plus actual Simulator supplied location; native place search/map and built-in Reminders reference; reminders global and pertracker; tab/export timestamp; ring/configaxis and photo widgets. All3languages/lightdark/maxAX, Widget native light/dark/tinted/clear actual screenshots. Physical background geo reliability, real permissions delivery left explicitly unverified until phone reconnects.
+項目可選填圖軸下界及上界，空白側使用預設；兩側都有值時必須下界小於上界。Grid、Widget 與詳情共用尺度，裁切資料時明確說明，原始數值及精度不變。
 
-## Proposed ownership after approved review
-Master owns shared schema additions first, Xcode membership/plists/localization/spec, integration/masterSimulator, PR/CI/merge and tests UI. Then workers from one shared contract commit:
-1 Numeric ledger owner: Domain numeric resolution/backupv2/CSV, NumericEntry, Entry Editors, Store validation, NumericEntryTests/DomainTests, photoCopy compression. Must NOT edit tracker metadata fields defined by master.
-2 Tracker/location owner: extracted TrackerEditor.swift, new ConditionEditor/Conditions/Reminders.swift, Location extension if needed, LocationTests; no Domain.swift changes without request. Actual Simulator only master; provide deterministic unit tests and manual steps.
-3 Charts/navigation owner: Views.swift, Settings.swift, ChartRange, TrackerCard, WidgetSnapshot, Widget extension, ChartTests/WidgetPresentationTests, metadata detail UI; no Editors/Domain changes. Own Root fast checkbox hook gate (coordinate API) and root condition reminder runtime. No localization catalog: submit3language strings in .artifacts report.
+用獨立虛線將最後已知值延伸到現在與區間末端的較早者；區間開始前有基準時可沿用。這是顯示座標，不建立假紀錄、不能選取，不影響統計、達標或匯出。沒有基準就保留空狀態。
 
-## Accepted decisions after Claude Opus5.5 review
-Optional new Codable fields; Backupv2 with v1load; unified validation. Update SPEC is authorized by current user, no extra confirmation. Preserve requested ALL/ANY and omit Current Location row. Fixed200m. Gate all newly created records including backfill; edits changing numeric input or date also gate; metadata-only edits/deletes/undo exempt. Separate gateSave and remindWhenMet toggles, shared named conditions. CLMonitor on iOS17+, Always for background, no continuous GPS; temporary full accuracy requested only on gate save. Single RecordConditions.verify(tracker:) API throws localized condition error; caller editor owned numeric. ConditionReminders runtime owned location worker; Reminders.sync integrates globalenabled and sync condition manager. Initial state prime silent, ALL stale conservative, cooldown2h. Ring baseline at goal effective date; achieved=>full follows existing deadline rule. Carry dashed leading/trailing presentation only; clipped custom axis with excluded-value explanation. JPEG newimportsquality.8 adaptive downward if necessary; never raise quality or alter existingcopies. Orphandelta deletion/edit asks explicit conversion of first orphan to prior resolved anchor, no silent rewrite.
+數值詳情以原生 Chart／Goal progress 分段控制切換。圓環採有效目標起始值到門檻的有向進度，支援負數、零及向下目標，比例限制在 0...1。依既有期限達標語意，曾達標後的回落仍顯示完成。完成型卡片使用本期實際次數／頻率。只有設定有效目標才可選進度卡片背景，缺乏紀錄時明示無資料。
+
+## 項目內容與照片
+
+項目說明上限 10000 字，網站只接受完整 HTTP／HTTPS 位址；使用者明確點按才開啟。項目與紀錄各有獨立的最多 10 張照片副本，項目照片背景取第一張，與最新紀錄照片分開。
+
+共用上方照片列、全螢幕放大及略微凸出的紅色移除按鈕，完整命中區至少 44pt。移除先顯示指定照片的預覽，保存前只改草稿。新照片保存靜態 JPEG，不保存 Live Photo 影片；第一張原始照片的日期及 GPS 在壓縮前讀取，以 1600px、品質 0.8 起算，必要時降至 0.65，極高細節再縮小尺寸以符合每張 2MB；既有副本不重新壓縮。
+
+## 導覽與呈現
+
+原生三分頁為今天、目標、設定，設定在最右側；移除原本齒輪 sheet 與 Done 動線。設定保留全 App 提醒、輸入／位置預設、語言／外觀／首頁布局、儲存量與匯出還原。時間／星期、期限及條件提醒放在個別項目內。匯出檔名使用 UTC 毫秒時間戳記，Exporter 開啟期間不改名。
+
+Grid／最小 Widget 以整個表面呈現內容，標題與數值在右下方同一透明文字群組，沒有內層卡片或新增加號。照片以整面半透明漸層保護文字；依原色、深色、調色及透明模式調整。Widget 保持原 UUID 選取與紀錄深連結。保留 icon、bundle ID、資料庫與 URL scheme，顯示名稱改為 Goalooker／過路客；About 用簡短文字表達微小足跡與探索的理念。
+
+## 位置條件及提醒
+
+條件為具名地點、範圍內／外與任一／全部組合；保存條件與符合提醒是分開的開關。地點方案比較搜尋優先、地圖優先及地址表單，選擇可搜尋且能在地圖確認／移動的方案，保留 DEBUG-only 地圖優先供實際比較。參考內建提醒事項的真實 Simulator 畫面，不加入目前／上車／下車，也不開放自訂半徑。
+
+固定 200m 是產品預設，並非 Apple 保證的精度。保存時使用即時手機位置，與 EXIF 及附帶位置開關分離。距離加精度仍在界內才算範圍內，距離減精度仍在界外才算範圍外；交界、不確定或過期位置保守拒絕。新建紀錄（含補登）、數值或日期變更需檢查；只改說明／照片／附帶位置、刪除或取消完成不檢查。成功靜默，失敗畫面內說明並保留草稿，可取消等待，禁止遲到回應覆蓋資料。
+
+符合提醒使用 CLMonitor 的最多 20 個不同中心，共用重複地點。需要通知、Always 及精確定位；不持續使用 GPS。iOS 18 以上還原已授權的 CLServiceSession，早期 App delegate 啟動恢復監測。新設定等待初始狀態校準且不提醒；已知未符合轉為符合才提醒，冷卻 2 小時，不把不確定狀態當成離開。暖啟動保留歷史轉換狀態，通知點按回該項目的紀錄頁。
+
+全 App 提醒關閉時停止監測並移除本 App 擁有的通知，保留項目選擇，不影響其他通知來源。封存、刪除或關閉項目提醒也移除對應監測。只有明確啟用相關功能才請求權限；拒絕時顯示不可用原因，不宣稱已生效。
+
+## 分工及驗收
+
+Master 擁有共用 schema、Xcode／plist／在地化、整合、所有 Simulator 操作、PR／CI／合併。三個 Orca 實作 workspace 分別擁有數值資料、項目與位置、圖表與導覽；獨立 review workspace 只檢查並提交報告，修正由 Master 完成。
+
+先執行 repo checks、原生 Swift Testing 及受影響 UI，再操作、截圖、批評與修正；比較複雜新模式的替代布局。實際看三語、亮暗及最大無障礙字級；Widget 用原生主畫面檢查四種呈現模式與選取目標，並驗證深連結。repo checks、編譯、執行測試、畫面檢查及真機行為分開記錄。早上接上 iPhone 後另驗證 Always／精確權限、實際背景進出、通知／Focus、重新啟動與真機 Widget；Simulator 不證明這些真機行為。

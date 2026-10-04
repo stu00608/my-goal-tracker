@@ -349,11 +349,11 @@ struct TrackerSummary: View {
         return VStack(alignment: .leading, spacing: 8) {
         Chart {
         ForEach(entries) { entry in
-            if let value = entry.value.flatMap(Numbers.decimal) {
+            if let value = entry.value.flatMap(Numbers.plottedValue) {
                 if entries.count > 1 {
-                    LineMark(x: .value(L.text("Date"), entry.occurredAt), y: .value(L.text("Value"), NSDecimalNumber(decimal: value).doubleValue), series: .value("Series", "actual"))
+                    LineMark(x: .value(L.text("Date"), entry.occurredAt), y: .value(L.text("Value"), value), series: .value("Series", "actual"))
                 }
-                PointMark(x: .value(L.text("Date"), entry.occurredAt), y: .value(L.text("Value"), NSDecimalNumber(decimal: value).doubleValue)).symbolSize(45)
+                PointMark(x: .value(L.text("Date"), entry.occurredAt), y: .value(L.text("Value"), value)).symbolSize(45)
             }
         }
         ForEach(snapshot.carries) { segment in
@@ -381,8 +381,8 @@ struct TrackerSummary: View {
                     guard let frame = proxy.plotFrame, geometry[frame].contains(location) else { return }
                     let point = CGPoint(x: location.x - geometry[frame].origin.x, y: location.y - geometry[frame].origin.y)
                     let hits = entries.compactMap { entry -> (Entry, Double)? in
-                        guard let value = entry.value.flatMap(Numbers.decimal), domain.contains(NSDecimalNumber(decimal: value).doubleValue),
-                              let x = proxy.position(forX: entry.occurredAt), let y = proxy.position(forY: NSDecimalNumber(decimal: value).doubleValue) else { return nil }
+                        guard let value = entry.value.flatMap(Numbers.plottedValue), domain.contains(value),
+                              let x = proxy.position(forX: entry.occurredAt), let y = proxy.position(forY: value) else { return nil }
                         return (entry, hypot(point.x - x, point.y - y))
                     }
                     if let hit = hits.min(by: { $0.1 < $1.1 }), hit.1 <= 26 { selectedEntry = hit.0 }
