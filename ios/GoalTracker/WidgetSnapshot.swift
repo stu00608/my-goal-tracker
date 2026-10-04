@@ -93,6 +93,18 @@ nonisolated struct GoalProgress: Codable, Equatable {
 /// Overview charts keep context: at least 10% of the value magnitude and ten precision ticks.
 /// Extrema still fit with 25% range padding; near-flat growth is never enlarged corner-to-corner.
 nonisolated enum CardPlotScale {
+    /// Only explicit decimal bounds exclude data; automatic drawing limits do not.
+    static func excludes(_ value: String, lower: String?, upper: String?) -> Bool {
+        guard let value = Numbers.decimal(value), !value.isNaN else { return false }
+        func bound(_ text: String?) -> Decimal? {
+            guard let text, Numbers.isCanonical(text) else { return nil }
+            return Numbers.decimal(text)
+        }
+        let lower = bound(lower), upper = bound(upper)
+        if let lower, let upper, lower >= upper { return false }
+        return lower.map { value < $0 } == true || upper.map { value > $0 } == true
+    }
+
     static func domain(points: [CardPlotPoint], precision: Int, completion: Bool = false,
                        lower: String? = nil, upper: String? = nil) -> ClosedRange<Double> {
         if completion { return 0...2 }
@@ -118,6 +130,11 @@ nonisolated enum CardPlotScale {
     }
 }
 
+nonisolated struct WidgetRuleProgress: Codable, Equatable {
+    var ruleID: UUID
+    var progress: GoalProgress?
+}
+
 // Bounded presentation data only; original photos, notes and the database stay in the app.
 nonisolated struct WidgetRow: Codable, Identifiable {
     var id: UUID
@@ -135,6 +152,7 @@ nonisolated struct WidgetRow: Codable, Identifiable {
     var thumbnail: Data?
     var locations: [RecordedLocation]?
     var progress: GoalProgress?
+    var ruleProgress: [WidgetRuleProgress]?
     var axisLower: String?
     var axisUpper: String?
     var lastRecordedAt: Date?
@@ -155,6 +173,16 @@ nonisolated struct WidgetRow: Codable, Identifiable {
             return entry.localDay
         })).sorted() : []
         rules = [t.rule(at: now), t.rules.filter { $0.effectiveAt > now }.min { $0.effectiveAt < $1.effectiveAt }].compactMap { $0 }
+        if t.kind == .number {
+            // Reuse the shared calculation without publishing the raw ledger or future records.
+            var published = t
+            published.entries.removeAll { $0.occurredAt > now }
+            ruleProgress = rules.map { rule in
+                published.rules = [rule]
+                return WidgetRuleProgress(ruleID: rule.id,
+                                          progress: GoalProgress.current(for: published, now: max(now, rule.effectiveAt)))
+            }
+        }
         let entries = sorted
         if t.resolvedCardBackground == .plot {
             if t.kind == .number {
@@ -181,15 +209,26 @@ nonisolated struct WidgetRow: Codable, Identifiable {
     }
     var resolvedBackground: CardBackground { background ?? .plot }
     func currentProgress(at date: Date) -> GoalProgress? {
-        kind == .daily ? GoalProgress.current(for: tracker, now: date) : progress
+        if kind == .daily { return GoalProgress.current(for: tracker, now: date) }
+        guard let rule = tracker.rule(at: date) else { return nil }
+        if let ruleProgress { return ruleProgress.first { $0.ruleID == rule.id }?.progress }
+        // Legacy summaries have only the first rule's cached progress; never carry its target forward.
+        guard rule.id == rules.first?.id, let progress, progress.target == rule.target else { return nil }
+        return progress
     }
     var hasPhoto: Bool { (resolvedBackground == .photo || resolvedBackground == .trackerPhoto) && thumbnail != nil }
-    var plotDomain: ClosedRange<Double> {
+    var plotDomain: ClosedRange<Double> { plotDomain(progress: progress) }
+    func plotDomain(at date: Date) -> ClosedRange<Double> {
+        plotDomain(progress: currentProgress(at: date))
+    }
+    private func plotDomain(progress: GoalProgress?) -> ClosedRange<Double> {
         let target = progress.map { CardPlotPoint(date: .distantPast, value: $0.target) }
         return CardPlotScale.domain(points: (plot ?? []) + [target].compactMap { $0 }, precision: precision,
                                     completion: kind == .daily, lower: axisLower, upper: axisUpper)
     }
-    var clippedPointCount: Int { (plot ?? []).compactMap(\.plottedValue).filter { !plotDomain.contains($0) }.count }
+    var clippedPointCount: Int {
+        (plot ?? []).filter { CardPlotScale.excludes($0.value, lower: axisLower, upper: axisUpper) }.count
+    }
     func carries(at now: Date) -> [CardCarrySegment] {
         guard kind == .number, let points = plot, let start = points.first?.date else { return [] }
         // A half-open display window includes an actual sample exactly at the timeline instant.

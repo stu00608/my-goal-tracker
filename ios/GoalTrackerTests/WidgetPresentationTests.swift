@@ -70,13 +70,13 @@ import ImageIO
         let data = try JSONEncoder().encode(WidgetSnapshot([tracker], language: "en", now: now))
         var object = try #require(JSONSerialization.jsonObject(with: data) as? [String: Any])
         var rows = try #require(object["rows"] as? [[String: Any]])
-        for key in ["background", "plot", "thumbnail", "locations", "progress", "axisLower", "axisUpper", "lastRecordedAt"] { rows[0].removeValue(forKey: key) }
+        for key in ["background", "plot", "thumbnail", "locations", "progress", "ruleProgress", "axisLower", "axisUpper", "lastRecordedAt"] { rows[0].removeValue(forKey: key) }
         object["rows"] = rows
         let decoded = try JSONDecoder().decode(WidgetSnapshot.self, from: JSONSerialization.data(withJSONObject: object))
         #expect(decoded.rows[0].id == tracker.id)
         #expect(decoded.rows[0].resolvedBackground == .plot)
         #expect(decoded.rows[0].plot == nil && decoded.rows[0].thumbnail == nil && decoded.rows[0].locations == nil)
-        #expect(decoded.rows[0].progress == nil && decoded.rows[0].axisLower == nil && decoded.rows[0].axisUpper == nil && decoded.rows[0].lastRecordedAt == nil)
+        #expect(decoded.rows[0].progress == nil && decoded.rows[0].ruleProgress == nil && decoded.rows[0].axisLower == nil && decoded.rows[0].axisUpper == nil && decoded.rows[0].lastRecordedAt == nil)
     }
 
     @Test func dailyProjectionKeepsRecordedDaysAndCalendarProgressBounded() {
@@ -195,6 +195,92 @@ import ImageIO
         t.entries = points.map { Entry(occurredAt: $0.date, localDay: t.day($0.date), value: $0.value) }
         let original = t.entries, row = WidgetRow(t, now: now)
         #expect(row.clippedPointCount == 1 && t.entries == original)
+    }
+
+    @Test func exactBoundsExcludeCollapsedDrawingValuesAndKeepMissingSidesOpen() throws {
+        let values = ["12345678901234567890.1", "12345678901234567890.2", "12345678901234567890.3"]
+        #expect(Set(values.compactMap(Numbers.plottedValue)).count == 1)
+        #expect(!CardPlotScale.excludes(values[0], lower: values[0], upper: values[1]))
+        #expect(!CardPlotScale.excludes(values[1], lower: values[0], upper: values[1]))
+        #expect(CardPlotScale.excludes(values[2], lower: values[0], upper: values[1]))
+        #expect(CardPlotScale.excludes(values[0], lower: values[1], upper: nil))
+        #expect(CardPlotScale.excludes(values[2], lower: nil, upper: values[1]))
+        #expect(!CardPlotScale.excludes(values[2], lower: values[1], upper: nil))
+        #expect(!CardPlotScale.excludes(values[0], lower: nil, upper: values[1]))
+        #expect(!CardPlotScale.excludes(values[2], lower: nil, upper: nil))
+        #expect(!CardPlotScale.excludes(values[2], lower: "invalid", upper: "NaN"))
+        #expect(!CardPlotScale.excludes(values[2], lower: values[1], upper: values[0]))
+        var t = Tracker(name: "Exact bounds", kind: .number, axisLower: values[0], axisUpper: values[1])
+        t.entries = values.enumerated().map { index, value in
+            let date = now.addingTimeInterval(Double(index - 2))
+            return Entry(occurredAt: date, localDay: t.day(date), value: value)
+        }
+        let original = t, row = WidgetRow(t, now: now)
+        #expect(row.plot?.compactMap(\.plottedValue).allSatisfy { row.plotDomain.contains($0) } == true)
+        #expect(row.clippedPointCount == 1 && t == original)
+        let decoded = try JSONDecoder().decode(WidgetRow.self, from: JSONEncoder().encode(row))
+        #expect(decoded.plot?.map(\.value) == values && decoded.value == values[2])
+    }
+
+    @Test func numericWidgetSelectsNextRuleAtExactBoundaryWithoutSharingLedger() throws {
+        let effective = now.addingTimeInterval(-86400), next = now.addingTimeInterval(100)
+        var t = Tracker(name: "Rule change", kind: .number, cardBackground: .progress)
+        t.rules = [GoalRule(period: .deadline, target: "20", effectiveAt: effective, deadline: next),
+                   GoalRule(period: .deadline, target: "30", effectiveAt: next, deadline: next.addingTimeInterval(100)),
+                   GoalRule(period: .deadline, target: "40", effectiveAt: next.addingTimeInterval(200), deadline: next.addingTimeInterval(300))]
+        t.entries = [Entry(occurredAt: effective, localDay: t.day(effective), value: "10", note: "private baseline"),
+                     Entry(occurredAt: now, localDay: t.day(now), change: "5", note: "private delta"),
+                     Entry(occurredAt: next, localDay: t.day(next), value: "30")]
+        let original = t, row = WidgetRow(t, now: now)
+        let before = try #require(row.currentProgress(at: next.addingTimeInterval(-1)))
+        #expect(before.baseline == "10" && before.current == "15" && before.target == "20" && before.fraction == 0.5)
+        let after = try #require(row.currentProgress(at: next))
+        #expect(after.baseline == "15" && after.current == "15" && after.target == "30" && after.fraction == 0 && !after.achieved)
+        #expect(row.currentProgress(at: next.addingTimeInterval(1)) == after)
+        #expect(row.plotDomain(at: next.addingTimeInterval(-1)) == row.plotDomain)
+        #expect(row.plotDomain(at: next).contains(30) && !row.plotDomain.contains(30))
+        var bounded = row; bounded.axisLower = "0"; bounded.axisUpper = "10"
+        #expect(bounded.plotDomain(at: next) == 0...10)
+        #expect(row.rules.count == 2 && row.ruleProgress?.count == 2 && t == original)
+        let data = try JSONEncoder().encode(row)
+        let encoded = String(decoding: data, as: UTF8.self)
+        #expect(!encoded.contains("private baseline") && !encoded.contains("private delta") && !encoded.contains("\"entries\"") && !encoded.contains("\"change\""))
+        let decoded = try JSONDecoder().decode(WidgetRow.self, from: data)
+        #expect(decoded.currentProgress(at: next) == after && decoded.plot == nil)
+    }
+
+    @Test func numericWidgetProjectionsRespectDeadlineAndHistoricalAchievement() throws {
+        let effective = now.addingTimeInterval(-86400), deadline = now.addingTimeInterval(-10), next = now.addingTimeInterval(100)
+        var t = Tracker(name: "Deadline", kind: .number, cardBackground: .progress)
+        t.rules = [GoalRule(period: .deadline, target: "20", effectiveAt: effective, deadline: deadline),
+                   GoalRule(period: .deadline, target: "100", effectiveAt: next, deadline: next.addingTimeInterval(100))]
+        t.entries = [Entry(occurredAt: effective, localDay: t.day(effective), value: "10"),
+                     Entry(occurredAt: deadline, localDay: t.day(deadline), value: "15"),
+                     Entry(occurredAt: now, localDay: t.day(now), value: "99"),
+                     Entry(occurredAt: next.addingTimeInterval(100), localDay: t.day(next), value: "100")]
+        let row = WidgetRow(t, now: now)
+        #expect(row.currentProgress(at: now)?.current == "15" && row.currentProgress(at: now)?.fraction == 0.5)
+        let future = try #require(row.currentProgress(at: next.addingTimeInterval(100)))
+        #expect(future.target == "100" && future.baseline == "99" && future.current == "99" && future.fraction == 0 && !future.achieved)
+        t.entries.append(Entry(occurredAt: deadline.addingTimeInterval(-1), localDay: t.day(deadline), value: "100"))
+        let achieved = WidgetRow(t, now: now)
+        #expect(achieved.currentProgress(at: now)?.current == "15" && achieved.currentProgress(at: now)?.fraction == 1)
+        #expect(achieved.currentProgress(at: next)?.current == "99" && achieved.currentProgress(at: next)?.fraction == 1)
+    }
+
+    @Test func legacyNumericProgressDecodesAndStopsAtRuleBoundary() throws {
+        let next = now.addingTimeInterval(100)
+        var t = Tracker(name: "Legacy progress", kind: .number, cardBackground: .progress)
+        t.rules = [GoalRule(period: .deadline, target: "20", effectiveAt: now, deadline: next),
+                   GoalRule(period: .deadline, target: "30", effectiveAt: next, deadline: next.addingTimeInterval(100))]
+        t.entries = [Entry(occurredAt: now, localDay: t.day(now), value: "10")]
+        let row = WidgetRow(t, now: now)
+        var object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(row)) as? [String: Any])
+        object.removeValue(forKey: "ruleProgress")
+        let decoded = try JSONDecoder().decode(WidgetRow.self, from: JSONSerialization.data(withJSONObject: object))
+        #expect(decoded.ruleProgress == nil && decoded.currentProgress(at: now) == row.progress)
+        #expect(decoded.currentProgress(at: next.addingTimeInterval(-1))?.target == "20")
+        #expect(decoded.currentProgress(at: next) == nil && decoded.currentProgress(at: next.addingTimeInterval(1)) == nil)
     }
 
     @Test func widgetCarriesArePresentationOnlyAndUseTimelineTime() throws {
