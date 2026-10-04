@@ -172,15 +172,22 @@ struct TrackerCardBackdrop: View {
                 Chart {
                 ForEach(Array(points.enumerated()), id: \.offset) { _, point in
                     if let value = point.plottedValue {
-                        if row.kind == .number && points.count > 1 {
-                            LineMark(x: .value(text("Date"), point.date), y: .value(text("Value"), value), series: .value("Series", "actual")).lineStyle(StrokeStyle(lineWidth: 2))
-                        }
                         if !CardPlotScale.excludes(point.value, lower: row.axisLower, upper: row.axisUpper) {
                             PointMark(x: .value(text("Date"), point.date), y: .value(text("Value"), value)).symbolSize(22)
                         }
                     }
                 }
-                ForEach(row.carries(at: now)) { segment in
+                if row.kind == .number {
+                    ForEach(CardPlotScale.clippedSegments(points, lower: row.axisLower, upper: row.axisUpper)) { segment in
+                        ForEach(Array([segment.start, segment.end].enumerated()), id: \.offset) { _, point in
+                            if let value = point.plottedValue {
+                                LineMark(x: .value(text("Date"), point.date), y: .value(text("Value"), value), series: .value("Series", "actual-\(segment.id)"))
+                                    .lineStyle(StrokeStyle(lineWidth: 2))
+                            }
+                        }
+                    }
+                }
+                ForEach(row.carries(at: now).filter { !CardPlotScale.excludes($0.start.value, lower: row.axisLower, upper: row.axisUpper) }) { segment in
                     ForEach([segment.start, segment.end], id: \.date) { point in
                         if let value = point.plottedValue {
                             LineMark(x: .value(text("Date"), point.date), y: .value(text("Value"), value), series: .value("Series", segment.id))

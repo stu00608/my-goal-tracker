@@ -422,19 +422,25 @@ struct TrackerSummary: View {
         let domain = CardPlotScale.domain(points: points + carried + [target].compactMap { $0 }, precision: tracker.precision,
                                           lower: tracker.axisLower, upper: tracker.axisUpper)
         let clipped = points.filter { CardPlotScale.excludes($0.value, lower: tracker.axisLower, upper: tracker.axisUpper) }.count
+        let segments = CardPlotScale.clippedSegments(points, lower: tracker.axisLower, upper: tracker.axisUpper)
+        let visibleCarries = snapshot.carries.filter { !CardPlotScale.excludes($0.start.value, lower: tracker.axisLower, upper: tracker.axisUpper) }
         return VStack(alignment: .leading, spacing: 8) {
         Chart {
         ForEach(entries) { entry in
             if let value = entry.value.flatMap(Numbers.plottedValue) {
-                if entries.count > 1 {
-                    LineMark(x: .value(L.text("Date"), entry.occurredAt), y: .value(L.text("Value"), value), series: .value("Series", "actual"))
-                }
                 if let raw = entry.value, !CardPlotScale.excludes(raw, lower: tracker.axisLower, upper: tracker.axisUpper) {
                     PointMark(x: .value(L.text("Date"), entry.occurredAt), y: .value(L.text("Value"), value)).symbolSize(45)
                 }
             }
         }
-        ForEach(snapshot.carries) { segment in
+        ForEach(segments) { segment in
+            ForEach(Array([segment.start, segment.end].enumerated()), id: \.offset) { _, point in
+                if let value = point.plottedValue {
+                    LineMark(x: .value(L.text("Date"), point.date), y: .value(L.text("Value"), value), series: .value("Series", "actual-\(segment.id)"))
+                }
+            }
+        }
+        ForEach(visibleCarries) { segment in
             ForEach([segment.start, segment.end], id: \.date) { point in
                 if let value = point.plottedValue {
                     LineMark(x: .value(L.text("Date"), point.date), y: .value(L.text("Value"), value), series: .value("Series", segment.id))

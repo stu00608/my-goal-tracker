@@ -118,9 +118,9 @@ nonisolated final class ExpansionTests: XCTestCase {
         let lower = app.textFields["tracker.axisLower"], upper = app.textFields["tracker.axisUpper"]
         for _ in 0..<12 { if lower.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(lower.waitForExistence(timeout: 10)); XCTAssertEqual(lower.value as? String, "0")
-        lower.tap(); lower.typeText(XCUIKeyboardKey.delete.rawValue + "10")
+        lower.coordinate(withNormalizedOffset: CGVector(dx: 0.999, dy: 0.5)).tap(); lower.typeText(XCUIKeyboardKey.delete.rawValue + "10")
         app.buttons["tracker.keyboard.done"].tap()
-        upper.tap(); upper.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 2) + "30")
+        upper.coordinate(withNormalizedOffset: CGVector(dx: 0.999, dy: 0.5)).tap(); upper.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 2) + "30")
         app.buttons["tracker.keyboard.done"].tap()
         screenshot(app, "Optional chart bounds grouped with explanation")
         app.buttons["tracker.save"].tap()
