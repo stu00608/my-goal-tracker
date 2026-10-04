@@ -4,6 +4,7 @@ nonisolated final class ExpansionTests: XCTestCase {
     @MainActor private func launch(extra: [String] = [], reset: Bool = true, language: String = "en", appearance: String = "light", large: Bool = false) -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["--uitesting", "--feature-test-fixture", "--goalooker-test-fixture", "-language", language, "-appearance", appearance, "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        if !extra.contains("-homeLayout") { app.launchArguments += ["-homeLayout", "grid"] }
         if reset { app.launchArguments.append("--reset-test-store") }
         if large { app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] }
         app.launchArguments += extra
