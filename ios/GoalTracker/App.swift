@@ -106,6 +106,22 @@ nonisolated enum L {
                     duplicate.put(Entry(occurredAt: now, localDay: duplicate.day(now), value: "22"))
                     fixture.append(duplicate)
                 }
+                if args.contains("--goalooker-test-fixture") {
+                    score.description = "Small steps leave a visible trace."
+                    score.website = "https://example.com"
+                    score.photos = photos
+                    score.axisLower = "0"; score.axisUpper = "25"
+                    score.rules = [GoalRule(period: .deadline, target: "20", effectiveAt: now.addingTimeInterval(-90 * 86400), deadline: now.addingTimeInterval(30 * 86400))]
+                    score.put(Entry(occurredAt: now.addingTimeInterval(-86400), localDay: score.day(now.addingTimeInterval(-86400)), change: "0.25", note: "Derived change"))
+                    cook.photos = photos; cook.cardBackground = .trackerPhoto
+                    var office = Tracker(name: "OFFICE", kind: .daily)
+                    office.description = "Record only when either office condition is satisfied."
+                    office.setFrequency(.weekly, target: 2, now: now)
+                    office.conditions = [PlaceCondition(name: "Office A", location: RecordedLocation(latitude: 35.68, longitude: 139.76)), PlaceCondition(name: "Office B", location: RecordedLocation(latitude: 34.69, longitude: 135.5))]
+                    office.conditionCombination = .any; office.gateSave = true
+                    fixture = [score, cook, travel, fourth, office]
+                    if args.contains("--goalooker-progress-fixture") { score.cardBackground = .progress; fixture[0] = score }
+                }
                 try loaded.replace(fixture)
             }
             #endif
