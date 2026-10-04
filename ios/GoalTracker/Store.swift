@@ -31,11 +31,11 @@ import UIKit
         }
     }
     func replace(_ candidate: [Tracker]) throws {
+        // Validate raw events, derived overflow and metadata before touching the persisted document.
+        let data = try Backup(trackers: candidate).encoded()
         // Validate the whole active configuration on every entry path, including unarchive and restore.
         // This is pure preflight: no permission request or monitor mutation, even when reminders are OFF.
         try Reminders.validate(candidate)
-        // Validate raw events, derived overflow and metadata before touching the persisted document.
-        let data = try Backup(trackers: candidate).encoded()
         // ponytail: one atomic SwiftData document, 100 MB backup ceiling; split into rows if measured saves become slow.
         row.payload = data
         do { try context.save() } catch { context.rollback(); throw error }
