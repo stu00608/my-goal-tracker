@@ -3053,13 +3053,8 @@
       }
     },
     "Chart": {
+      "extractionState": "manual",
       "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Chart"
-          }
-        },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
@@ -3070,6 +3065,12 @@
           "stringUnit": {
             "state": "translated",
             "value": "グラフ"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Chart"
           }
         }
       }
@@ -4720,6 +4721,535 @@
           "stringUnit": {
             "state": "translated",
             "value": "利用できない目標"
+          }
+        }
+      }
+    },
+    "Checking record conditions": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "正在確認紀錄條件"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "記録条件を確認中"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Checking record conditions"
+          }
+        }
+      }
+    },
+    "Keep later change records?": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保留後續變化值紀錄？"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "後続の変化量の記録を保持しますか？"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep later change records?"
+          }
+        }
+      }
+    },
+    "Convert first change to a value": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "將首筆變化值轉成新數值"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最初の変化量を数値に変換"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Convert first change to a value"
+          }
+        }
+      }
+    },
+    "This change would leave later records without a baseline. Convert the first affected record to its previous value %@ and recalculate following changes?": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此操作會讓後續紀錄失去基準。是否將首筆受影響的紀錄轉成操作前的數值 %@，並重新計算後續變化值？"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この操作により後続の記録の基準が失われます。最初の対象記録を操作前の値 %@ に変換し、後続の変化量を再計算しますか？"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "This change would leave later records without a baseline. Convert the first affected record to its previous value %@ and recalculate following changes?"
+          }
+        }
+      }
+    },
+    "Editing this change recalculates later values until the next new value record.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "編輯此變化值會重新計算後續數值，直到下一筆新數值紀錄。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この変化量を編集すると、次の数値の記録まで後続の値が再計算されます。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Editing this change recalculates later values until the next new value record."
+          }
+        }
+      }
+    },
+    "Records changed while saving. Review your draft and save again.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "儲存期間紀錄已變更。請確認草稿後再次儲存。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "保存中に記録が変更されました。下書きを確認して再度保存してください。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Records changed while saving. Review your draft and save again."
+          }
+        }
+      }
+    },
+    "No earlier value at this position. Saving requires confirming conversion to the previous value.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此位置沒有較早的基準數值。儲存前須確認轉成操作前的數值。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この位置より前に基準値がありません。保存には操作前の数値への変換の確認が必要です。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "No earlier value at this position. Saving requires confirming conversion to the previous value."
+          }
+        }
+      }
+    },
+    "Calculated value after this change": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "此變化後的計算值"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "この変化後の計算値"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Calculated value after this change"
+          }
+        }
+      }
+    },
+    "Website": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "網站"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "ウェブサイト"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Website"
+          }
+        }
+      }
+    },
+    "Tracker photos": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "項目照片"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "項目の写真"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Tracker photos"
+          }
+        }
+      }
+    },
+    "Numeric view": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "數值檢視"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "数値の表示"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Numeric view"
+          }
+        }
+      }
+    },
+    "Goal progress": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目標進度"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目標の進捗"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Goal progress"
+          }
+        }
+      }
+    },
+    "Goal progress unavailable": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "尚無目標進度"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "目標の進捗を表示できません"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Goal progress unavailable"
+          }
+        }
+      }
+    },
+    "Baseline to target": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "基準值至目標值"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "基準値から目標値"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Baseline to target"
+          }
+        }
+      }
+    },
+    "Set a deadline goal and record a baseline to see goal progress.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "設定期限目標並記錄基準值，即可查看目標進度。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "期限付きの目標を設定し、基準値を記録すると進捗を確認できます。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Set a deadline goal and record a baseline to see goal progress."
+          }
+        }
+      }
+    },
+    "Last recorded": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最後記錄"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最終記録"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last recorded"
+          }
+        }
+      }
+    },
+    "Last recorded value is outside chart bounds.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最後記錄的數值超出圖表範圍。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "最終記録の値がグラフの範囲外です。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Last recorded value is outside chart bounds."
+          }
+        }
+      }
+    },
+    "Some records are outside chart bounds": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "部分紀錄超出圖表範圍"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "グラフの範囲外に記録があります"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Some records are outside chart bounds"
+          }
+        }
+      }
+    },
+    "%lld records outside the chart bounds. Values are preserved in the timeline.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 筆紀錄超出圖表範圍，數值完整保留在時間軸。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld 件の記録がグラフの範囲外です。数値はタイムラインに保存されています。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%lld records outside the chart bounds. Values are preserved in the timeline."
+          }
+        }
+      }
+    },
+    "Controls time and location reminders for all goals. Configure each reminder in its goal. Delivery follows your iPhone settings.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "控制所有目標的時間與位置提醒，個別提醒可在目標中設定。通知依 iPhone 設定傳送。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "すべての目標の時刻と場所のリマインダーを切り替えます。個別の設定は各目標で行えます。通知は iPhone の設定に従います。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Controls time and location reminders for all goals. Configure each reminder in its goal. Delivery follows your iPhone settings."
+          }
+        }
+      }
+    },
+    "About": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "關於"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "このアプリについて"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "About"
+          }
+        }
+      }
+    },
+    "Goalooker - 過路客": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Goalooker - 過路客"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Goalooker"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Goalooker"
+          }
+        }
+      }
+    },
+    "Small daily steps leave a visible trace. Explore your own orbit, one record at a time.": {
+      "extractionState": "manual",
+      "localizations": {
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每天的一小步，留下看得見的軌跡。用每一次記錄，探索自己的軌道。"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "日々の小さな一歩が、見える軌跡になります。一つずつ記録して、自分の軌道を探索しましょう。"
+          }
+        },
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Small daily steps leave a visible trace. Explore your own orbit, one record at a time."
           }
         }
       }

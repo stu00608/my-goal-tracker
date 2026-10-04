@@ -288,7 +288,7 @@ struct EntryEditor: View {
         }
     }
     private var addPhotos: some View {
-        PhotosPicker(selection: $selections, maxSelectionCount: max(1, Entry.photoLimit - photos.count), selectionBehavior: .ordered, matching: .all(of: [.images, .not(.livePhotos)]), preferredItemEncoding: .current) {
+        PhotosPicker(selection: $selections, maxSelectionCount: max(1, Entry.photoLimit - photos.count), selectionBehavior: .ordered, matching: .images, preferredItemEncoding: .current) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
                 Image(systemName: "plus").font(.system(size: 18)).accessibilityHidden(true)
                 Text(L.text("Add photos")).font(.subheadline)
