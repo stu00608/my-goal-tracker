@@ -19,6 +19,7 @@ nonisolated enum L {
     }
     static func error(_ error: Error) -> String {
         switch error {
+        case let condition as ConditionError: text(condition.key)
         case DataError.invalidNumber: text("Enter a number with at most 28 digits, without grouping separators.")
         case DataError.invalidBackup, DataError.unsupportedVersion: text("This backup is damaged or uses an unsupported format. Your data was kept.")
         case DataError.duplicateDay: text("This date already has a record. Edit that record instead.")
@@ -32,6 +33,7 @@ nonisolated enum L {
 }
 
 @main struct GoalTrackerApp: App {
+    @UIApplicationDelegateAdaptor(GoalookerAppDelegate.self) private var appDelegate
     @AppStorage("appearance") private var appearance = "system"
     @AppStorage("language") private var language = "system"
     @Environment(\.scenePhase) private var scenePhase
