@@ -1,6 +1,13 @@
 import XCTest
 
 nonisolated final class FlowTests: XCTestCase {
+    @MainActor func numericField(_ app: XCUIApplication) -> XCUIElement {
+        let display = app.descendants(matching: .any).matching(identifier: "entry.value.scrubber").firstMatch
+        if display.waitForExistence(timeout: 10) { display.tap() }
+        let field = app.textFields["entry.value"]
+        XCTAssertTrue(field.waitForExistence(timeout: 10))
+        return field
+    }
     @MainActor func app(reset: Bool = true, language: String = "en") -> XCUIApplication {
         let app = XCUIApplication()
         app.launchArguments = ["--uitesting", "-language", language, "-appearance", "system", "-homeLayout", "list"]
@@ -10,13 +17,21 @@ nonisolated final class FlowTests: XCTestCase {
     @MainActor func button(_ app: XCUIApplication, _ prefix: String, _ name: String) -> XCUIElement {
         app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", prefix, name)).firstMatch
     }
-    @MainActor func type(_ field: XCUIElement, _ text: String) { XCTAssertTrue(field.waitForExistence(timeout: 10)); field.tap(); field.typeText(text) }
+    @MainActor func type(_ app: XCUIApplication, _ field: XCUIElement, _ text: String) {
+        if !field.exists || !field.isHittable {
+            let done = app.buttons.matching(NSPredicate(format: "identifier IN %@", ["entry.keyboard.done", "tracker.keyboard.done"])).firstMatch
+            if done.exists && done.isHittable { done.tap() }
+        }
+        for _ in 0..<8 { if field.exists && field.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(field.waitForExistence(timeout: 10)); XCTAssertTrue(field.isHittable)
+        field.tap(); field.typeText(text)
+    }
     @MainActor func screenshot(_ app: XCUIApplication, _ name: String) {
         let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
     }
     @MainActor func create(_ app: XCUIApplication, name: String, daily: Bool = false) {
         app.buttons["tracker.create"].tap()
-        type(app.textFields["tracker.name"], name)
+        type(app, app.textFields["tracker.name"], name)
         app.textFields["tracker.name"].typeText("\n")
         if daily {
             app.buttons["tracker.kind"].tap(); app.buttons["Completion record"].tap()
@@ -38,8 +53,8 @@ nonisolated final class FlowTests: XCTestCase {
         let app = app()
         create(app, name: "VOLFORCE")
         button(app, "snapshot.", "VOLFORCE").tap()
-        type(app.textFields["entry.value"], "18.500")
-        type(app.textFields["entry.note"], "snapshot note")
+        type(app, numericField(app), "18.500")
+        type(app, app.textFields["entry.note"], "snapshot note")
         app.buttons["entry.save"].tap()
         XCTAssertTrue(app.staticTexts["18.500"].waitForExistence(timeout: 10))
         app.tabBars.buttons["Goals"].tap()
@@ -48,7 +63,7 @@ nonisolated final class FlowTests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "snapshot.point.")).firstMatch.waitForExistence(timeout: 10))
         screenshot(app, "Single snapshot detail")
         app.buttons["entry.add"].tap()
-        type(app.textFields["entry.value"], "19.25")
+        type(app, numericField(app), "19.25")
         let save = app.buttons["entry.save"]
         XCTAssertEqual(app.textFields["entry.value"].value as? String, "19.25")
         save.tap()
@@ -76,7 +91,7 @@ nonisolated final class FlowTests: XCTestCase {
     }
     @MainActor func testInvalidValueIsNotSaved() {
         let app = app(); create(app, name: "SCORE")
-        button(app, "snapshot.", "SCORE").tap(); type(app.textFields["entry.value"], "invalid")
+        button(app, "snapshot.", "SCORE").tap(); type(app, numericField(app), "invalid")
         app.buttons["entry.save"].tap()
         XCTAssertTrue(app.staticTexts["editor.error"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["entry.save"].exists)
@@ -93,7 +108,7 @@ nonisolated final class FlowTests: XCTestCase {
         app.swipeUp()
         screenshot(app, "Dark calendar at accessibility XXXL")
         app.buttons["entry.add"].tap()
-        type(app.textFields["entry.note"], "Checked with large text")
+        type(app, app.textFields["entry.note"], "Checked with large text")
         app.buttons["entry.save"].tap()
         for _ in 0..<8 {
             if app.staticTexts["Checked with large text"].exists { break }
@@ -105,11 +120,12 @@ nonisolated final class FlowTests: XCTestCase {
     @MainActor func testLocalizedInputAndScreens() {
         for (language, name) in [("zh-Hant", "煮飯"), ("ja", "入浴"), ("en", "Read")] {
             let app = app(language: language)
-            app.buttons["tracker.create"].tap(); type(app.textFields["tracker.name"], name)
+            app.buttons["tracker.create"].tap(); type(app, app.textFields["tracker.name"], name)
             app.buttons["tracker.save"].tap()
             XCTAssertTrue(button(app, "tracker.", name).waitForExistence(timeout: 10))
             screenshot(app, "Today " + language)
             app.buttons["settings.open"].tap()
+            for _ in 0..<8 { if app.buttons["backup.export"].exists { break }; app.swipeUp() }
             XCTAssertTrue(app.buttons["backup.export"].waitForExistence(timeout: 10))
             screenshot(app, "Settings " + language)
             app.terminate()

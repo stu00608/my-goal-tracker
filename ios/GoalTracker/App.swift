@@ -46,6 +46,9 @@ nonisolated enum L {
                 for key in ["language", "appearance", "homeLayout"] {
                     if let index = args.firstIndex(of: "-" + key), args.indices.contains(index + 1) { L.defaults.set(args[index + 1], forKey: key) }
                 }
+                if args.contains("--reset-test-store") {
+                    L.defaults.removeObject(forKey: "recordLocationByDefault")
+                }
                 let directory = URL.applicationSupportDirectory.appendingPathComponent("UITests", isDirectory: true)
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
                 url = directory.appendingPathComponent("test.store")
@@ -56,8 +59,12 @@ nonisolated enum L {
             if ProcessInfo.processInfo.arguments.contains("--reset-test-store") && url != nil { try loaded.replace([]) }
             #if targetEnvironment(simulator)
             if url != nil, ProcessInfo.processInfo.arguments.contains("--feature-test-fixture"), loaded.trackers.isEmpty {
+                let args = ProcessInfo.processInfo.arguments
                 let format = UIGraphicsImageRendererFormat(); format.scale = 1
-                let photos = [UIColor.systemTeal, UIColor.systemOrange].map { color in
+                let colors: [UIColor] = args.contains("--ux-many-photos")
+                    ? [.systemTeal, .systemOrange, .white, .black, .systemBlue, .systemPink, .systemPurple, .systemYellow, .systemGreen, .systemRed]
+                    : args.contains("--ux-bright-photo") ? [.white, .black] : [.systemTeal, .systemOrange]
+                let photos = colors.map { color in
                     UIGraphicsImageRenderer(size: CGSize(width: 320, height: 240), format: format).image { context in
                         color.setFill(); context.fill(CGRect(x: 0, y: 0, width: 320, height: 240))
                         UIColor.white.setStroke(); context.cgContext.setLineWidth(4)
@@ -68,7 +75,14 @@ nonisolated enum L {
                 var score = Tracker(name: "SCORE", kind: .number)
                 for days in [365, 60, 7] {
                     let date = score.calendar.date(byAdding: .day, value: -days, to: now)!
-                    score.put(Entry(occurredAt: date, localDay: score.day(date), value: days == 365 ? "16.5" : days == 60 ? "17.25" : "18.5", note: "Synthetic snapshot", photos: photos, location: RecordedLocation(latitude: 35.68, longitude: 139.76)))
+                    let value = args.contains("--ux-extreme-fixture") && days == 7
+                        ? "12345678901234567890.12345678" : days == 365 ? "16.5" : days == 60 ? "17.25" : "18.5"
+                    score.put(Entry(occurredAt: date, localDay: score.day(date), value: value, note: "Synthetic snapshot", photos: photos, location: RecordedLocation(latitude: 35.68, longitude: 139.76)))
+                }
+                if args.contains("--ux-extreme-fixture") {
+                    score.name = "SCORE — 長い目標名稱與精確數值"
+                    score.unit = "points · 測定した数値の単位"
+                    score.precision = 8
                 }
                 var cook = Tracker(name: "COOK", kind: .daily); cook.cardBackground = .photo
                 cook.setFrequency(.weekly, target: 2, now: now)
@@ -92,7 +106,7 @@ nonisolated enum L {
             .defaultAppStorage(L.defaults)
             .environment(\.locale, L.locale)
             .preferredColorScheme(appearance == "light" ? .light : appearance == "dark" ? .dark : nil)
-            .tint(.teal)
+            .tint(TrackerColors.accent)
             .onChange(of: language) { store?.refreshWidget() }
             .onChange(of: scenePhase) { if scenePhase == .active { store?.refreshWidget() } }
         }

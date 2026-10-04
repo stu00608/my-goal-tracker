@@ -5,6 +5,49 @@ import UIKit
 @testable import GoalTracker
 
 @MainActor struct LocationTests {
+    @Test func inheritedDefaultIsIntentUntilSaveAndFirstPhotoWinsWithoutCurrentFix() throws {
+        var draft = RecordLocationDraft(defaultEnabled: true)
+        #expect(draft.enabled && draft.canResolve && !draft.explicitlyEnabled)
+        #expect(draft.status == nil && draft.applying(to: nil) == nil)
+        let gps = try #require(photoLocation(gpsPhoto()))
+        draft.setFirstPhoto(gps)
+        #expect(draft.status == .photo && !draft.canResolve)
+        #expect(draft.applying(to: nil) == gps)
+        #expect(draft.applying(to: saved) == saved)
+        draft.setEnabled(false)
+        #expect(!draft.enabled && !draft.canResolve && draft.applying(to: saved) == nil)
+    }
+
+    @Test func inheritedDefaultCanSaveResolvedFixAndFailureDoesNotBlockSave() {
+        var draft = RecordLocationDraft(defaultEnabled: true)
+        draft.receiveCurrent(fix(), now: now)
+        #expect(draft.applying(to: nil) == RecordedLocation(latitude: 34.69, longitude: 135.5))
+        #expect(!draft.canResolve)
+        for failure in [RecordLocationStatus.denied, .unavailable, .failed] {
+            var unavailable = RecordLocationDraft(defaultEnabled: true)
+            unavailable.fail(failure)
+            #expect(!unavailable.canResolve && unavailable.applying(to: nil) == nil)
+            #expect(unavailable.applying(to: saved) == saved)
+            unavailable.setEnabled(false); unavailable.setEnabled(true)
+            #expect(unavailable.explicitlyEnabled && unavailable.canResolve)
+        }
+    }
+
+    @Test func existingRecordsDoNotInheritPreferenceAndRecorderDoesNotRequestForInheritedPhotoSelection() async throws {
+        let noLocation = RecordLocationDraft(existing: nil, defaultEnabled: false)
+        #expect(!noLocation.enabled && !noLocation.canResolve)
+        let withLocation = RecordLocationDraft(existing: saved, defaultEnabled: false)
+        #expect(withLocation.enabled && withLocation.status == .saved && !withLocation.canResolve)
+        let recorder = RecordLocationRecorder()
+        recorder.draft = RecordLocationDraft(defaultEnabled: true)
+        recorder.setFirstPhoto(nil)
+        #expect(recorder.draft.status == nil)
+        recorder.setFirstPhoto(photoLocation(try gpsPhoto()))
+        await recorder.resolveForSave()
+        #expect(recorder.draft.status == .photo && recorder.draft.location != nil)
+        recorder.cancel()
+    }
+
     private let saved = RecordedLocation(latitude: 35.68, longitude: 139.76)
     private let now = Date(timeIntervalSince1970: 1_700_000_000)
 

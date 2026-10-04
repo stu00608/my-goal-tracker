@@ -5,6 +5,7 @@ import MapKit
 struct RootView: View {
     @Environment(AppStore.self) private var store
     @AppStorage("homeLayout") private var homeLayout = "grid"
+    @AppStorage("recordLocationByDefault", store: L.defaults) private var recordLocationByDefault = false
     @State private var selected = 0
     @State private var todayNavigationID = UUID()
     @State private var editMode = EditMode.inactive
@@ -44,7 +45,7 @@ struct RootView: View {
         let active = store.trackers.filter { !$0.archived }
         return Group {
             if today && homeLayout != "list" && !active.isEmpty {
-                DashboardView(trackers: store.trackers, now: date, editing: editMode.isEditing,
+                DashboardView(trackers: store.trackers, now: date,
                               onRecord: { entryTracker = $0 }, onReorder: reorder)
             } else {
                 List {
@@ -57,6 +58,14 @@ struct RootView: View {
                     }
                     ForEach(active) { tracker in
                         HStack(spacing: 14) {
+                            if today {
+                                Button { entryTracker = tracker } label: {
+                                    TrackerSummary(tracker: tracker, now: date).frame(maxWidth: .infinity, alignment: .leading)
+                                }.buttonStyle(.borderless).accessibilityIdentifier("tracker." + tracker.id.uuidString)
+                            } else {
+                                NavigationLink { TrackerDetail(id: tracker.id) } label: { TrackerSummary(tracker: tracker, now: date) }
+                                    .accessibilityIdentifier("tracker." + tracker.id.uuidString)
+                            }
                             if today && tracker.kind == .daily {
                                 let done = tracker.entries.contains { $0.localDay == tracker.day(date) }
                                 Button {
@@ -66,7 +75,10 @@ struct RootView: View {
                                         if let entry = copy.entries.first(where: { $0.localDay == day }) {
                                             if !entry.note.isEmpty || !entry.photos.isEmpty || entry.location != nil { entryTracker = copy; return }
                                             copy.entries.removeAll { $0.localDay == day }
-                                        } else { copy.put(Entry(occurredAt: now, localDay: day)) }
+                                        } else {
+                                            if recordLocationByDefault { entryTracker = copy; return }
+                                            copy.put(Entry(occurredAt: now, localDay: day))
+                                        }
                                         try store.save(copy)
                                     }
                                 } label: { Image(systemName: done ? "checkmark.circle.fill" : "circle").font(.title2).frame(minWidth: 44, minHeight: 44) }
@@ -74,23 +86,13 @@ struct RootView: View {
                                 .accessibilityLabel(L.text(done ? "Undo completion" : "Mark complete") + ": " + tracker.name)
                                 .accessibilityIdentifier("complete." + tracker.id.uuidString)
                             }
-                            if today {
-                                Button { entryTracker = tracker } label: {
-                                    TrackerSummary(tracker: tracker, now: date).frame(maxWidth: .infinity, alignment: .leading)
-                                }.buttonStyle(.borderless).accessibilityIdentifier("tracker." + tracker.id.uuidString)
-                                .contextMenu {
-                                    NavigationLink { TrackerDetail(id: tracker.id) } label: { Label(L.text("Details"), systemImage: "chart.xyaxis.line") }
-                                }
-                            } else {
-                                NavigationLink { TrackerDetail(id: tracker.id) } label: { TrackerSummary(tracker: tracker, now: date) }
-                                    .accessibilityIdentifier("tracker." + tracker.id.uuidString)
-                            }
                             if today && tracker.kind == .number {
                                 Button { entryTracker = tracker } label: { Image(systemName: "plus.circle").font(.title2).frame(minWidth: 44, minHeight: 44) }
                                     .buttonStyle(.borderless).accessibilityLabel(L.text("Add a snapshot") + ": " + tracker.name)
                                     .accessibilityIdentifier("snapshot." + tracker.id.uuidString)
                             }
                         }.padding(.vertical, 6)
+                        .modifier(TrackerReorderInteraction(enabled: today, id: tracker.id, active: active, onReorder: reorder))
                     }.onMove { indices, destination in
                         store.perform {
                             var reordered = active
@@ -101,14 +103,14 @@ struct RootView: View {
                 }
             }
         }
-        .environment(\.editMode, $editMode)
+        .environment(\.editMode, today ? .constant(.inactive) : $editMode)
         .navigationTitle(L.text(today ? "Today" : "Goals"))
         .toolbar {
             ToolbarItem(placement: .topBarLeading) {
                 Button { settings = true } label: { Image(systemName: "gearshape") }
                     .accessibilityLabel(L.text("Settings")).accessibilityIdentifier("settings.open")
             }
-            if !active.isEmpty { ToolbarItem(placement: .topBarTrailing) {
+            if !today && !active.isEmpty { ToolbarItem(placement: .topBarTrailing) {
                 Button(L.text(editMode.isEditing ? "Done" : "Edit")) {
                     withAnimation { editMode = editMode.isEditing ? .inactive : .active }
                 }.accessibilityIdentifier("home.edit")
@@ -139,11 +141,11 @@ struct TrackerSummary: View {
             if tracker.kind == .number {
                 if let v = tracker.latest?.value.flatMap(Numbers.decimal) {
                     Text(Numbers.display(v, precision: tracker.precision, locale: L.locale) + (tracker.unit.isEmpty ? "" : " " + tracker.unit)).font(.title3.monospacedDigit()).foregroundStyle(.primary)
-                } else { Text(L.text("No snapshots yet")).foregroundStyle(.secondary) }
+                } else { Text(L.text("No snapshots yet")).foregroundStyle(TrackerColors.secondaryText) }
             } else if let rule = tracker.rule(at: now) {
                 Text("\(tracker.count(in: tracker.interval(now, period: rule.period))) / \(rule.target) · " + L.text(rule.period == .weekly ? "This week" : "This month"))
-                    .foregroundStyle(.secondary).monospacedDigit().accessibilityIdentifier("progress." + tracker.id.uuidString)
-            } else { Text(L.text("Completion record")).foregroundStyle(.secondary) }
+                    .foregroundStyle(TrackerColors.secondaryText).monospacedDigit().accessibilityIdentifier("progress." + tracker.id.uuidString)
+            } else { Text(L.text("Completion record")).foregroundStyle(TrackerColors.secondaryText) }
         }.padding(.vertical, 2)
     }
 }
@@ -176,13 +178,13 @@ struct TrackerSummary: View {
                             ForEach(t.rules.sorted { $0.effectiveAt > $1.effectiveAt }) { rule in
                                 VStack(alignment: .leading, spacing: 4) {
                                     Text(L.text(rule.period == .weekly ? "Weekly" : rule.period == .monthly ? "Monthly" : "Deadline goal") + " · " + rule.target)
-                                    Text(rule.effectiveAt, format: .dateTime.year().month().day()).font(.caption).foregroundStyle(.secondary)
+                                    Text(rule.effectiveAt, format: .dateTime.year().month().day()).font(.caption).foregroundStyle(TrackerColors.secondaryText)
                                 }
                             }
                         }
                     }
                     Section(L.text("Timeline")) {
-                        if t.entries.isEmpty { Text(L.text("No records yet")).foregroundStyle(.secondary) }
+                        if t.entries.isEmpty { Text(L.text("No records yet")).foregroundStyle(TrackerColors.secondaryText) }
                         ForEach(t.sortedEntries.reversed()) { e in
                             Button { selectedEntry = e } label: {
                                 VStack(alignment: .leading, spacing: 5) {
@@ -190,9 +192,9 @@ struct TrackerSummary: View {
                                         if let v = e.value.flatMap(Numbers.decimal) { Text(Numbers.display(v, precision: t.precision, locale: L.locale)).font(.headline.monospacedDigit()) }
                                         else { Label(L.text("Completed"), systemImage: "checkmark.circle.fill") }
                                         Spacer()
-                                        Text(t.kind == .daily ? (t.date(for: e.localDay) ?? e.occurredAt) : e.occurredAt, format: .dateTime.year().month().day()).font(.caption).foregroundStyle(.secondary)
+                                        Text(t.kind == .daily ? (t.date(for: e.localDay) ?? e.occurredAt) : e.occurredAt, format: .dateTime.year().month().day()).font(.caption).foregroundStyle(TrackerColors.secondaryText)
                                     }
-                                    if !e.note.isEmpty { Text(e.note).font(.subheadline).foregroundStyle(.secondary).lineLimit(2) }
+                                    if !e.note.isEmpty { Text(e.note).font(.subheadline).foregroundStyle(TrackerColors.secondaryText).lineLimit(2) }
                                     if !e.photos.isEmpty { Label("\(e.photos.count)", systemImage: "photo").font(.caption) }
                                 }.foregroundStyle(.primary)
                             }.accessibilityIdentifier("entry." + e.id.uuidString)
@@ -217,7 +219,6 @@ struct TrackerSummary: View {
                 .toolbar {
                     ToolbarItem(placement: .topBarTrailing) {
                         Menu {
-                            Button(L.text("Add a record")) { addEntry = true }
                             Button(L.text("Edit tracker")) { editing = true }
                         } label: { Image(systemName: "ellipsis.circle") }.accessibilityIdentifier("tracker.menu")
                     }
@@ -267,7 +268,7 @@ struct TrackerSummary: View {
                 metric("Target", Numbers.display(target, precision: t.precision, locale: L.locale))
                 if let latest = t.latest?.value.flatMap(Numbers.decimal) { metric("Distance to target", Numbers.display(abs(target - latest), precision: t.precision, locale: L.locale)) }
                 if let deadline = rule.deadline { LabeledContent(L.text("Deadline")) { Text(deadline, format: .dateTime.year().month().day()) } }
-                Text(L.text(t.achieved(rule) ? "Goal achieved" : "Working toward your goal")).foregroundStyle(t.achieved(rule) ? .teal : .secondary)
+                Text(L.text(t.achieved(rule) ? "Goal achieved" : "Working toward your goal")).foregroundStyle(t.achieved(rule) ? TrackerColors.accent : TrackerColors.secondaryText)
             }
         }
     }
@@ -290,7 +291,7 @@ struct TrackerSummary: View {
         .chartYAxis(entries.isEmpty ? .hidden : .automatic)
         .overlay {
             if entries.isEmpty {
-                Text(L.text("No snapshots in this period")).foregroundStyle(.secondary).multilineTextAlignment(.center).padding()
+                Text(L.text("No snapshots in this period")).foregroundStyle(TrackerColors.secondaryText).multilineTextAlignment(.center).padding()
             }
         }
         .chartOverlay { proxy in
@@ -324,7 +325,7 @@ struct TrackerSummary: View {
                         if let location = entry.location {
                             Annotation(entry.occurredAt.formatted(Date.FormatStyle(date: .abbreviated, time: .omitted, locale: L.locale, calendar: tracker.calendar, timeZone: tracker.calendar.timeZone)), coordinate: CLLocationCoordinate2D(latitude: location.latitude, longitude: location.longitude)) {
                                 Button { selectedEntry = entry } label: {
-                                    Image(systemName: "mappin.circle.fill").font(.title).foregroundStyle(.white, .teal)
+                                    Image(systemName: "mappin.circle.fill").font(.title).foregroundStyle(.white, TrackerColors.accent)
                                         .padding(6).background(.regularMaterial, in: Circle())
                                 }
                                 .buttonStyle(.plain)
@@ -344,6 +345,7 @@ struct TrackerSummary: View {
         let history = t.frequencyHistory(until: Date())
         let full = history.filter { !$0.3 && $0.0.end <= Date() }
         return Section(L.text("Completion calendar")) {
+            VStack(alignment: .leading, spacing: 12) {
             HStack {
                 Button { month = t.calendar.date(byAdding: .month, value: -1, to: month)! } label: { Image(systemName: "chevron.left").frame(width: 44, height: 44) }.buttonStyle(.borderless).accessibilityLabel(L.text("Previous month"))
                 Spacer(); Text(month, format: .dateTime.year().month(.wide)); Spacer()
@@ -353,7 +355,7 @@ struct TrackerSummary: View {
                 ForEach(cells) { cell in
                     switch cell {
                     case .weekday(let index):
-                        Text(L.locale.calendar.veryShortStandaloneWeekdaySymbols[(index + 1) % 7]).font(.caption).foregroundStyle(.secondary)
+                        Text(L.locale.calendar.veryShortStandaloneWeekdaySymbols[(index + 1) % 7]).font(.caption).foregroundStyle(TrackerColors.secondaryText)
                     case .padding:
                         Color.clear.frame(height: 32).accessibilityHidden(true)
                     case .day(let date, let localDay):
@@ -362,8 +364,9 @@ struct TrackerSummary: View {
                             if let entry = t.entries.first(where: { $0.localDay == localDay }) { selectedEntry = entry }
                             else { selectedEntry = Entry(occurredAt: date, localDay: localDay) }
                         } label: {
-                            Text("\(t.calendar.component(.day, from: date))").font(.body.monospacedDigit()).lineLimit(1).minimumScaleFactor(0.5).frame(maxWidth: .infinity, minHeight: 44)
-                                .background(done ? Color.teal.opacity(0.18) : Color.clear, in: Circle()).foregroundStyle(done ? .teal : .primary)
+                            Text("\(t.calendar.component(.day, from: date))").font(.body.monospacedDigit())
+                                .dynamicTypeSize(...DynamicTypeSize.accessibility1).lineLimit(1).minimumScaleFactor(0.5).frame(maxWidth: .infinity, minHeight: 44)
+                                .background(done ? TrackerColors.accent.opacity(0.18) : Color.clear, in: Circle()).foregroundStyle(done ? TrackerColors.accent : .primary)
                         }
                         .buttonStyle(.borderless)
                         .disabled(date > t.calendar.startOfDay(for: Date()))
@@ -372,22 +375,25 @@ struct TrackerSummary: View {
                     }
                 }
             }
+            Text(L.text("An unmarked date means there is no completion record.")).font(.caption).foregroundStyle(TrackerColors.secondaryText)
+            }
             if let rule = t.rule(at: Date()) {
+                VStack(alignment: .leading, spacing: 8) {
                 let interval = t.interval(Date(), period: rule.period)
                 metric(rule.period == .weekly ? "This week" : "This month", "\(t.count(in: interval)) / \(rule.target)")
-                if history.last?.3 == true { Text(L.text("Partial period · excluded from success rate")).font(.caption).foregroundStyle(.secondary) }
+                if history.last?.3 == true { Text(L.text("Partial period · excluded from success rate")).font(.caption).foregroundStyle(TrackerColors.secondaryText) }
+                }
             }
             if !full.isEmpty {
                 metric("Full-period success rate", (Double(full.filter { $0.1 >= $0.2 }.count) / Double(full.count)).formatted(.percent.precision(.fractionLength(0)).locale(L.locale)))
             }
             ForEach(Array(history.suffix(12).enumerated()), id: \.offset) { _, record in
                 HStack {
-                    Text(record.0.start, format: .dateTime.month().day()).foregroundStyle(.secondary)
+                    Text(record.0.start, format: .dateTime.month().day()).foregroundStyle(TrackerColors.secondaryText)
                     Spacer(); Text("\(record.1) / \(record.2)").monospacedDigit()
                     if record.3 { Image(systemName: "circle.lefthalf.filled").accessibilityLabel(L.text("Partial period")) }
                 }
             }
-            Text(L.text("An unmarked date means there is no completion record.")).font(.caption).foregroundStyle(.secondary)
         }
     }
 }

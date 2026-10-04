@@ -39,7 +39,7 @@ nonisolated struct Provider: TimelineProvider {
     }
     @MainActor private func mapImage(_ locations: [RecordedLocation], dark: Bool) async -> Data? {
         let options = MKMapSnapshotter.Options()
-        options.size = CGSize(width: 320, height: 140)
+        options.size = CGSize(width: 320, height: 320)
         options.traitCollection = UITraitCollection(userInterfaceStyle: dark ? .dark : .light)
         options.pointOfInterestFilter = .excludingAll
         var rect = MKMapRect.null
@@ -83,25 +83,27 @@ struct GoalWidgetView: View {
         return bundle.localizedString(forKey: key, value: key, table: "Localizable")
     }
     var body: some View {
-        ViewThatFits(in: .vertical) {
-            content(limit: family == .systemSmall || dynamicTypeSize.isAccessibilitySize ? 1 : 3, compact: family != .systemSmall)
-            if family == .systemMedium { content(limit: 2, compact: true) }
-            content(limit: 1, compact: true, showGap: family != .systemSmall)
+        GeometryReader { geometry in
+            ViewThatFits(in: .vertical) {
+                content(limit: family == .systemSmall || dynamicTypeSize.isAccessibilitySize ? 1 : 3, compact: family != .systemSmall)
+                if family == .systemMedium { content(limit: 2, compact: true) }
+                content(limit: 1, compact: true, showGap: false, essential: true, minimumHeight: geometry.size.height)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         }
-        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
         .containerBackground(.fill.tertiary, for: .widget)
         .widgetURL(family == .systemSmall ? entry.snapshot?.rows.first?.recordURL : URL(string: "goaltracker://today"))
     }
-    private func content(limit: Int, compact: Bool, showGap: Bool = true) -> some View {
+    private func content(limit: Int, compact: Bool, showGap: Bool = true, essential: Bool = false, minimumHeight: CGFloat? = nil) -> some View {
         VStack(alignment: .leading, spacing: 6) {
-            if family == .systemSmall {
-                Label(text("Your progress"), systemImage: "chart.xyaxis.line").font(.caption.weight(.semibold)).foregroundStyle(.teal).lineLimit(1)
+            if family == .systemSmall && !compact {
+                Label(text("Your progress"), systemImage: "chart.xyaxis.line").font(.caption.weight(.semibold)).foregroundStyle(TrackerColors.accent).lineLimit(1)
             }
             if let rows = entry.snapshot?.rows, !rows.isEmpty {
                 HStack(alignment: .top, spacing: 6) {
                     ForEach(Array(rows.prefix(limit))) { row in
                         Link(destination: row.recordURL) {
-                            TrackerCardSurface(row: row, now: entry.date, locale: locale, text: text, compact: compact, showGap: showGap) {
+                            TrackerCardSurface(row: row, now: entry.date, locale: locale, text: text, compact: compact, showGap: showGap, essential: essential, minimumHeight: minimumHeight ?? (compact ? 100 : 120)) {
                                 let images = entry.mapImages[row.id]
                                 let data = colorScheme == .dark ? images?.dark : images?.light
                                 TrackerCardBackdrop(row: row, text: text, mapImage: data.flatMap(UIImage.init(data:)))
@@ -109,7 +111,7 @@ struct GoalWidgetView: View {
                         }.buttonStyle(.plain).privacySensitive()
                     }
                 }
-            } else { Text(text("Open the app to add your first tracker.")).font(.caption).foregroundStyle(.secondary) }
+            } else { Text(text("Open the app to add your first tracker.")).font(.caption).foregroundStyle(TrackerColors.secondaryText) }
         }.fixedSize(horizontal: false, vertical: true)
     }
 }
