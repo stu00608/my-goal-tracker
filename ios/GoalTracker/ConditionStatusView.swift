@@ -11,8 +11,9 @@ struct ConditionStatusView: View {
 
     var body: some View {
         if tracker.requiresConditionGate {
-            TimelineView(.everyMinute) { context in
-                let snapshot = RecordConditions.status(tracker: tracker, now: context.date, facts: facts)
+            TimelineView(.everyMinute) { _ in
+                // Async facts can arrive after the scheduled tick; evaluate at render time.
+                let snapshot = RecordConditions.status(tracker: tracker, now: Date(), facts: facts)
                 VStack(alignment: .leading, spacing: 14) {
                     statusRow(title: L.text("Overall result"), state: snapshot.state, loading: snapshot.loading)
                         .font(.headline).accessibilityIdentifier("conditions.overall")

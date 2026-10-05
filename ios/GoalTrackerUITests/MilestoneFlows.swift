@@ -72,10 +72,17 @@ nonisolated final class MilestoneFlows: XCTestCase {
         XCTAssertFalse(met.buttons["entry.save"].exists); XCTAssertFalse(met.alerts.firstMatch.exists)
     }
     @MainActor func testHealthUnknownIsVisibleBeforeInput() {
-        let app = launch(extra: ["--condition-gate=unknown"])
+        let app = launch()
         let card = button(app, prefix: "card.", name: "HEALTH"); reveal(app, card); card.tap()
         XCTAssertTrue(element(app, "conditions.overall").waitForExistence(timeout: 10))
         XCTAssertTrue(element(app, "conditions.overall").label.contains("Cannot determine yet"))
+        // Exercise the actual asynchronous HealthKit read/status result, with no gate override.
+        // A completed read must appear immediately, before the next minute-clock tick.
+        let readResult = app.descendants(matching: .any).matching(NSPredicate(
+            format: "identifier BEGINSWITH %@ AND (label CONTAINS %@ OR label CONTAINS %@ OR label CONTAINS %@ OR label CONTAINS %@)",
+            "conditions.leaf.", "Connect Apple Health to read", "No readable data for this period",
+            "Could not read Apple Health data", "Apple Health is unavailable" )).firstMatch
+        XCTAssertTrue(readResult.waitForExistence(timeout: 10), "Fresh async Health results must not wait for a minute tick")
         reveal(app, app.buttons["conditions.connectHealth"])
         XCTAssertTrue(app.buttons["conditions.connectHealth"].exists)
         capture(app, "Readable Health unknown and explicit connection")
