@@ -469,7 +469,7 @@ struct TrackerSummary: View {
                         Label(L.text(t.rule(at: now) == nil ? "No completion goal" : "No records yet"), systemImage: "chart.xyaxis.line")
                     } actions: {
                         if t.rule(at: now) == nil { Button(L.text("Set a goal")) { editing = true }.accessibilityIdentifier("detail.setGoal") }
-                        else { Button(L.text("Add a snapshot")) { addEntry = true } }
+                        else { Button(L.text("Add a snapshot")) { addEntry = true }.accessibilityIdentifier("detail.addRecord") }
                     }.frame(minHeight: DetailStyle.chartHeight)
                 }
             } else {
