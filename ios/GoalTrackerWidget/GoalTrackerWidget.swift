@@ -148,11 +148,18 @@ struct GoalWidgetView: View {
                 if let row = entry.row {
                     backdrop(row).frame(width: geometry.size.width, height: geometry.size.height).clipped()
                         .allowsHitTesting(false).accessibilityHidden(true)
-                    TrackerCardLabel(row: row, now: entry.date, locale: locale, text: text, compact: true, monochrome: monochrome)
-                        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-                        .padding(CardLayout.textInset)
-                        .padding(.bottom, row.resolvedBackground == .map && !monochrome && !row.resolvedTextPosition.isTop ? 18 : 0)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: row.resolvedTextPosition.alignment)
+                    if row.resolvedBackground == .progress {
+                        TrackerCardLabel(row: row, now: entry.date, locale: locale, text: text, compact: true, monochrome: monochrome)
+                            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+                            .frame(width: CardLayout.ringTextWidth(in: geometry.size))
+                            .frame(width: geometry.size.width, height: geometry.size.height)
+                    } else {
+                        TrackerCardLabel(row: row, now: entry.date, locale: locale, text: text, compact: true, monochrome: monochrome)
+                            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+                            .padding(CardLayout.textInset)
+                            .padding(.bottom, row.resolvedBackground == .map && !monochrome && !row.resolvedTextPosition.isTop ? 18 : 0)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: row.resolvedTextPosition.alignment)
+                    }
                 } else {
                     Text(text(entry.selectedID == nil ? "Open the app to add your first tracker." : "This tracker is unavailable. Edit the widget to choose another."))
                         .font(.caption).foregroundStyle(.primary).padding(16)

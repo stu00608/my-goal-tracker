@@ -38,6 +38,38 @@ nonisolated final class MilestoneFlows: XCTestCase {
         let goal = button(app, prefix: "tracker.", name: name); reveal(app, goal); goal.tap()
         XCTAssertTrue(app.buttons["tracker.menu"].waitForExistence(timeout: 10))
     }
+    @MainActor func testRingCenterIgnoresHiddenCornerAndKeepsDatePreference() {
+        for (language, dark, large) in [("en", false, false), ("ja", true, false), ("zh-Hant", true, true)] {
+            let app = launch(extra: ["--milestone-corner=hidden", "--milestone-fraction"], language: language, dark: dark, large: large)
+            let score = button(app, prefix: "card.", name: "SCORE")
+            XCTAssertTrue(score.waitForExistence(timeout: 10))
+            capture(app, "Centered ring with hidden corner preference " + language)
+            if language == "en" {
+                openGoal(app, "SCORE")
+                app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
+                let date = app.switches["card.showLastRecorded"]
+                reveal(app, date)
+                XCTAssertFalse(element(app, "card.textPosition").exists)
+                XCTAssertTrue(element(app, "card.ringStyle").exists)
+                capture(app, "Ring editor has value style and date without a position picker")
+                date.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
+                XCTAssertEqual(date.value as? String, "0")
+                app.buttons["tracker.save"].tap()
+                app.tabBars.buttons.element(boundBy: 0).tap()
+                XCTAssertTrue(score.waitForExistence(timeout: 10))
+                capture(app, "Centered ring with date hidden")
+                // Each tab retains its navigation stack; Goals resumes the open SCORE detail.
+                app.tabBars.buttons.element(boundBy: 1).tap()
+                XCTAssertTrue(app.buttons["tracker.menu"].waitForExistence(timeout: 10))
+                app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
+                reveal(app, app.switches["card.showLastRecorded"])
+                XCTAssertEqual(app.switches["card.showLastRecorded"].value as? String, "0")
+                app.buttons["tracker.cancel"].tap()
+            }
+            app.terminate()
+        }
+    }
+
     @MainActor func testGridCompletionHasIndependentDirectToggle() {
         let app = launch(extra: ["--milestone-long-checkbox"])
         let toggle = button(app, prefix: "complete.", name: "CHECK")

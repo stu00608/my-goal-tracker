@@ -78,9 +78,15 @@ import UIKit
                     // Compact Widget-sized fixture; the real Widget still owns its native container.
                     let compact = ZStack {
                         TrackerCardBackdrop(row: row, text: { $0 }, now: now, locale: locale, mapImage: source, monochrome: monochrome)
-                        TrackerCardLabel(row: row, now: now, locale: locale, text: { $0 }, compact: true, monochrome: monochrome)
-                            .padding(CardLayout.textInset)
-                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: position.alignment)
+                        if background == .progress {
+                            TrackerCardLabel(row: row, now: now, locale: locale, text: { $0 }, compact: true, monochrome: monochrome)
+                                .frame(width: CardLayout.ringTextWidth(in: CGSize(width: 172, height: 172)))
+                                .frame(width: 172, height: 172)
+                        } else {
+                            TrackerCardLabel(row: row, now: now, locale: locale, text: { $0 }, compact: true, monochrome: monochrome)
+                                .padding(CardLayout.textInset)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: position.alignment)
+                        }
                     }.frame(width: 172, height: 172)
                         .background(Color(uiColor: .secondarySystemGroupedBackground))
                         .environment(\.colorScheme, monochrome ? .dark : .light)

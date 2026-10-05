@@ -17,16 +17,19 @@ struct DashboardView: View {
     private var grid: Bool { homeLayout != "list" && !dynamicTypeSize.isAccessibilitySize }
 
     var body: some View {
-        ScrollView {
-            LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: grid ? 2 : 1), spacing: 12) {
-                ForEach(active) { tracker in card(tracker) }
-            }.padding(16)
+        GeometryReader { geometry in
+            let edge = max(0, (geometry.size.width - 32 - 12) / 2)
+            ScrollView {
+                LazyVGrid(columns: grid ? Array(repeating: GridItem(.fixed(edge), spacing: 12), count: 2) : [GridItem(.flexible())], spacing: 12) {
+                    ForEach(active) { tracker in card(tracker, edge: grid ? edge : nil) }
+                }.padding(16)
+            }
         }
         .background(Color(uiColor: .systemGroupedBackground))
         .accessibilityIdentifier(grid ? "dashboard.grid" : "dashboard.list")
         .navigationTitle(L.text("Today"))
     }
-    private func card(_ tracker: Tracker) -> some View {
+    private func card(_ tracker: Tracker, edge: CGFloat?) -> some View {
         let row = WidgetRow(tracker, now: now)
         return Button { onRecord(tracker) } label: {
             TrackerCardSurface(row: row, now: now, locale: L.locale, text: L.text, minimumHeight: grid ? 0 : 164, fillsHeight: grid, showsDailyStatus: false) {
@@ -38,7 +41,7 @@ struct DashboardView: View {
                     }.mapStyle(.standard(elevation: .flat, pointsOfInterest: .excludingAll))
                 } else { TrackerCardBackdrop(row: row, text: L.text, now: now, locale: L.locale) }
             }
-            .modifier(DashboardTileSize(square: grid))
+            .modifier(DashboardTileSize(edge: edge))
             .contentShape(RoundedRectangle(cornerRadius: 20))
         }
         .buttonStyle(.plain)
@@ -91,9 +94,9 @@ struct TrackerReorderInteraction: ViewModifier {
 }
 
 private struct DashboardTileSize: ViewModifier {
-    let square: Bool
+    let edge: CGFloat?
     @ViewBuilder func body(content: Content) -> some View {
-        if square { content.aspectRatio(1, contentMode: .fit) }
+        if let edge { content.frame(width: edge, height: edge) }
         else { content.fixedSize(horizontal: false, vertical: true) }
     }
 }

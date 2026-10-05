@@ -48,6 +48,7 @@ enum CardLayout {
     static let plotInset: CGFloat = 14
     static let textInset: CGFloat = 14
     static let dailyControlInset: CGFloat = 6
+    static func ringTextWidth(in size: CGSize) -> CGFloat { max(0, min(size.width, size.height) - plotInset * 2) * 0.70 }
 }
 
 /// Only the app adds a tile boundary. This surface contains no interactive controls.
@@ -65,14 +66,24 @@ struct TrackerCardSurface<Backdrop: View>: View {
     @ScaledMetric(relativeTo: .title2) private var accessibleRingHeight = 220
 
     var body: some View {
-        TrackerCardLabel(row: row, now: now, locale: locale, text: text, showsDailyStatus: showsDailyStatus)
-            .padding(CardLayout.textInset)
-            .padding(.bottom, row.resolvedBackground == .map && !row.resolvedTextPosition.isTop ? 18 : 0)
-            .padding(.trailing, row.kind == .daily && !showsDailyStatus && !row.resolvedTextPosition.isTop ? 44 : 0)
-            .frame(maxWidth: .infinity, maxHeight: fillsHeight ? .infinity : nil, alignment: row.resolvedTextPosition.alignment)
-            .fixedSize(horizontal: false, vertical: !fillsHeight)
-            .frame(minHeight: row.resolvedBackground == .progress && dynamicTypeSize.isAccessibilitySize && !fillsHeight ? max(minimumHeight, accessibleRingHeight) : minimumHeight,
-                   alignment: row.resolvedTextPosition.alignment)
+        Group {
+            if row.resolvedBackground == .progress {
+                GeometryReader { geometry in
+                    TrackerCardLabel(row: row, now: now, locale: locale, text: text, showsDailyStatus: showsDailyStatus)
+                        .frame(width: CardLayout.ringTextWidth(in: geometry.size))
+                        .frame(width: geometry.size.width, height: geometry.size.height)
+                }
+                .frame(minHeight: dynamicTypeSize.isAccessibilitySize && !fillsHeight ? max(minimumHeight, accessibleRingHeight) : minimumHeight)
+            } else {
+                TrackerCardLabel(row: row, now: now, locale: locale, text: text, showsDailyStatus: showsDailyStatus)
+                    .padding(CardLayout.textInset)
+                    .padding(.bottom, row.resolvedBackground == .map && !row.resolvedTextPosition.isTop ? 18 : 0)
+                    .padding(.trailing, row.kind == .daily && !showsDailyStatus && !row.resolvedTextPosition.isTop ? 44 : 0)
+                    .frame(maxWidth: .infinity, maxHeight: fillsHeight ? .infinity : nil, alignment: row.resolvedTextPosition.alignment)
+                    .fixedSize(horizontal: false, vertical: !fillsHeight)
+                    .frame(minHeight: minimumHeight, alignment: row.resolvedTextPosition.alignment)
+            }
+        }
             .background {
                 GeometryReader { geometry in
                     backdrop().frame(width: geometry.size.width, height: geometry.size.height).clipped()
@@ -84,7 +95,7 @@ struct TrackerCardSurface<Backdrop: View>: View {
     }
 }
 
-/// Transparent corner text; a hidden group retains its semantic summary.
+/// Transparent corner text, or a centered progress/title/date group inside the ring.
 struct TrackerCardLabel: View {
     let row: WidgetRow
     let now: Date
@@ -100,7 +111,7 @@ struct TrackerCardLabel: View {
 
     var body: some View {
         Group {
-            if position == .hidden { Color.clear.frame(width: 1, height: 1) }
+            if position == .hidden && row.resolvedBackground != .progress { Color.clear.frame(width: 1, height: 1) }
             else { visibleGroup }
         }
             .accessibilityElement(children: .ignore)
@@ -109,12 +120,18 @@ struct TrackerCardLabel: View {
             .accessibilityIdentifier("card.summary." + row.id.uuidString)
     }
     private var visibleGroup: some View {
-        VStack(alignment: position.horizontalAlignment, spacing: 4) {
+        VStack(alignment: row.resolvedBackground == .progress ? .center : position.horizontalAlignment, spacing: 4) {
+            if row.resolvedBackground == .progress {
+                Text(row.ringText(at: now, locale: locale) ?? "—")
+                    .font(.title2.weight(.semibold).monospacedDigit())
+                    .lineLimit(1).minimumScaleFactor(0.35)
+                    .accessibilityIdentifier("progress." + row.id.uuidString)
+            }
             Text(row.name).font(compact ? .subheadline.weight(.semibold) : .headline)
                 .lineLimit(row.resolvedBackground == .progress ? compact ? 1 : 2 : dynamicTypeSize.isAccessibilitySize && !compact ? nil : compact ? 2 : 3)
                 .minimumScaleFactor(0.8)
                 .fixedSize(horizontal: false, vertical: true)
-            // A ring owns its centered number; corners retain only title/date and daily state.
+            // Progress has one centered number; other backgrounds keep the raw value.
             if row.resolvedBackground != .progress {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
                     Text(row.valueText(at: now, locale: locale, text: text)).font((compact ? Font.subheadline : .title3).monospacedDigit())
@@ -124,15 +141,12 @@ struct TrackerCardLabel: View {
                     if row.kind == .daily && showsDailyStatus { dailyStatus }
                 }
             } else if row.kind == .daily && showsDailyStatus { dailyStatus }
-            if row.resolvedBackground == .plot && row.clippedPointCount > 0 {
-                Text(text("Some records are outside chart bounds")).font(.caption2).lineLimit(compact ? 1 : 2)
-            }
             if row.resolvedShowLastRecorded, let date = row.lastRecordedDate {
                 Text(date.formatted(Date.FormatStyle(locale: locale, calendar: row.tracker.calendar, timeZone: row.tracker.calendar.timeZone).month().day()))
                     .font(.caption2).lineLimit(compact ? 1 : row.resolvedBackground == .progress ? 2 : nil)
             }
         }
-        .multilineTextAlignment(position.textAlignment)
+        .multilineTextAlignment(row.resolvedBackground == .progress ? .center : position.textAlignment)
         .foregroundStyle(foreground)
         .shadow(color: hasImage ? (foregroundIsLight ? Color.black.opacity(0.45) : Color.white.opacity(0.5)) : .clear, radius: 1, y: 1)
         .shadow(color: hasImage || monochrome ? .clear : Color(uiColor: .secondarySystemGroupedBackground), radius: 0, x: -1.5)
@@ -228,15 +242,12 @@ struct TrackerCardBackdrop: View {
     var body: some View {
         switch row.resolvedBackground {
         case .progress:
-            if let progress = row.currentProgress(at: now) {
-                GeometryReader { geometry in
-                    let edge = max(0, min(geometry.size.width, geometry.size.height) - CardLayout.plotInset * 2)
-                    GoalProgressRing(fraction: progress.fraction, monochrome: monochrome,
-                                     value: row.ringText(at: now, locale: locale))
-                        .frame(width: edge, height: edge)
-                        .frame(maxWidth: .infinity, maxHeight: .infinity)
-                }
-            } else { empty("Goal progress unavailable", symbol: "circle.dashed") }
+            GeometryReader { geometry in
+                let edge = max(0, min(geometry.size.width, geometry.size.height) - CardLayout.plotInset * 2)
+                GoalProgressRing(fraction: row.currentProgress(at: now)?.fraction ?? 0, monochrome: monochrome)
+                    .frame(width: edge, height: edge)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
         case .plot:
             if let points = row.plot, !points.isEmpty {
                 Chart {

@@ -8,12 +8,14 @@ struct CardPresentationEditor: View {
     let showsRing: Bool
 
     var body: some View {
-        Picker(L.text("Card text position"), selection: $textPosition) {
-            ForEach(CardTextPosition.allCases, id: \.self) { position in
-                Text(L.text(position.labelKey)).tag(position)
+        if !showsRing {
+            Picker(L.text("Card text position"), selection: $textPosition) {
+                ForEach(CardTextPosition.allCases, id: \.self) { position in
+                    Text(L.text(position.labelKey)).tag(position)
+                }
             }
+            .accessibilityIdentifier("card.textPosition")
         }
-        .accessibilityIdentifier("card.textPosition")
         Toggle(L.text("Show last recorded date"), isOn: $showLastRecorded)
             .accessibilityIdentifier("card.showLastRecorded")
         if showsRing {

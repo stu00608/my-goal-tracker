@@ -123,14 +123,16 @@ import ImageIO
         #expect(GoalProgress.current(for: tracker, now: now)?.achieved == true)
     }
 
-    @Test func finiteAchievementRemainsSelectableAndClippingKeepsAccessibleValue() {
+    @Test func finiteAchievementRemainsSelectableWithoutOverviewClippingNotice() {
         var tracker = Tracker(name: "Finite", kind: .number, axisLower: "0", axisUpper: "10")
         tracker.lifecycle = .finite; tracker.cardTextPosition = .hidden; tracker.showLastRecorded = false
         tracker.rules = [GoalRule(period: .deadline, target: "15", effectiveAt: now.addingTimeInterval(-10), deadline: now.addingTimeInterval(10))]
         tracker.entries = [Entry(occurredAt: now, localDay: tracker.day(now), value: "15")]
         let snapshot = WidgetSnapshot([tracker], language: "en", now: now)
         #expect(snapshot.row(selectedID: tracker.id)?.id == tracker.id)
-        #expect(snapshot.rows[0].accessibilityValue(at: now, locale: Locale(identifier: "en"), text: { $0 }).contains("1 records outside the chart bounds"))
+        #expect(snapshot.rows[0].clippedPointCount == 1)
+        #expect(snapshot.rows[0].value == "15")
+        #expect(!snapshot.rows[0].accessibilityValue(at: now, locale: Locale(identifier: "en"), text: { $0 }).contains("outside the chart bounds"))
         #expect(snapshot.rows[0].accessibilitySummary(at: now, locale: Locale(identifier: "en"), text: { $0 }).contains("Finite"))
     }
 

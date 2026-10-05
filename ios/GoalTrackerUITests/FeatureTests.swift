@@ -114,6 +114,31 @@ nonisolated final class FeatureTests: XCTestCase {
         XCTAssertTrue(app.datePickers["snapshot.custom.end"].exists)
         attach(app, "Empty chart remains visible in custom range")
     }
+    @MainActor func testGridTileDimensionsIgnoreLongContent() {
+        continueAfterFailure = false
+        for extra in [[], ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryXXXL"]] {
+            let app = app(extraArguments: ["--ux-extreme-fixture", "--goalooker-test-fixture", "--goalooker-clipping-fixture"] + extra)
+            let score = element(app, prefix: "card.", name: "SCORE")
+            XCTAssertTrue(score.waitForExistence(timeout: 10))
+            attach(app, "Grid with long title large value and clipped data")
+            let cook = element(app, prefix: "card.", name: "COOK")
+            let travel = element(app, prefix: "card.", name: "TRAVEL")
+            let empty = element(app, prefix: "card.", name: "EMPTY")
+            for tile in [score, cook, travel, empty] {
+                XCTAssertEqual(tile.frame.width, tile.frame.height, accuracy: 1, "Every grid tile must stay square")
+                XCTAssertEqual(tile.frame.width, score.frame.width, accuracy: 1)
+            }
+            XCTAssertEqual(score.frame.minY, cook.frame.minY, accuracy: 1)
+            XCTAssertEqual(travel.frame.minY, empty.frame.minY, accuracy: 1)
+            XCTAssertEqual(cook.frame.minX - score.frame.maxX, 12, accuracy: 1)
+            XCTAssertEqual(travel.frame.minY - score.frame.maxY, 12, accuracy: 1)
+            XCTAssertEqual(score.frame.minX, 16, accuracy: 1)
+            XCTAssertEqual(cook.frame.maxX, app.frame.maxX - 16, accuracy: 1)
+            XCTAssertFalse((score.value as? String)?.contains("outside the chart bounds") == true)
+            app.terminate()
+        }
+    }
+
     @MainActor func testGridLocalizedAndAccessible() {
         continueAfterFailure = false
         for (language, appearance, large) in [("zh-Hant", "light", false), ("zh-Hant", "dark", true), ("ja", "light", false), ("ja", "dark", true), ("en", "light", false), ("en", "dark", true)] {

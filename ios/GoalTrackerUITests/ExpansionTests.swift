@@ -261,7 +261,7 @@ nonisolated final class ExpansionTests: XCTestCase {
         let app = launch(extra: ["--goalooker-clipping-fixture"])
         let card = button(app, prefix: "card.", text: "SCORE")
         XCTAssertTrue(card.waitForExistence(timeout: 10))
-        XCTAssertTrue((card.value as? String)?.contains("outside the chart bounds") == true)
+        XCTAssertFalse((card.value as? String)?.contains("outside the chart bounds") == true)
         screenshot(app, "Exact bounds exclude collapsed huge value from overview")
         app.tabBars.buttons.element(boundBy: 1).tap()
         button(app, prefix: "tracker.", text: "SCORE").tap()

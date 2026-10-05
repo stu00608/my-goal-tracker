@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """Small regression check for Simulator selection and false-positive test results."""
 
-from dev import choose_device, test_summary
+from dev import choose_device, test_summary, test_selection
 
 phone = {"name": "iPhone QA", "udid": "owned-device", "isAvailable": True}
 inventory = {
@@ -31,4 +31,14 @@ for summary in ({}, {"passedTests": 2}, {"passedTests": 0}, {"passedTests": 0, "
         pass
     else:
         raise AssertionError("Invalid test result accepted: " + repr(summary))
+assert test_selection("test", "GoalTracker", True) == ["-only-testing:GoalTrackerTests"]
+assert test_selection("test", "GoalTracker", False) == []
+for action, scheme in [("build", "GoalTracker"), ("run", "GoalTracker"), ("check", "GoalTracker"),
+                       ("test", "GoalTrackerWithWidget")]:
+    try:
+        test_selection(action, scheme, True)
+    except ValueError:
+        pass
+    else:
+        raise AssertionError("Invalid unit-only selection silently accepted: " + action + " " + scheme)
 print("Developer tool regression checks passed (no native execution claimed).")

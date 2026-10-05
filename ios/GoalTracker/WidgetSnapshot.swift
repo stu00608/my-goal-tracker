@@ -310,9 +310,6 @@ nonisolated struct WidgetRow: Codable, Identifiable {
         if let date = lastRecordedDate {
             parts.append(text("Last recorded") + " " + date.formatted(Date.FormatStyle(locale: locale, calendar: tracker.calendar, timeZone: tracker.calendar.timeZone).year().month().day()))
         }
-        if resolvedBackground == .plot, clippedPointCount > 0 {
-            parts.append(String(format: text("%lld records outside the chart bounds. Values are preserved in the timeline."), locale: locale, Int64(clippedPointCount)))
-        }
         if resolvedBackground == .progress, let progress = currentProgress(at: now) {
             parts.append(progress.fraction.formatted(.percent.precision(.fractionLength(0)).locale(locale)))
             if kind == .number, let fraction = Numbers.decimal(progress.current), let target = Numbers.decimal(progress.target) {
