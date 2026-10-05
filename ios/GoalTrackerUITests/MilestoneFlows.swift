@@ -81,7 +81,7 @@ nonisolated final class MilestoneFlows: XCTestCase {
         XCTAssertFalse(app.alerts.firstMatch.exists, "Opening a record must not implicitly request permission")
     }
     @MainActor func testManualCompletionExportAndReopen() {
-        let app = launch(extra: ["--milestone-compare-layout"])
+        let app = launch(extra: ["--milestone-compare-layout"], large: true)
         openGoal(app, "MANUAL")
         reveal(app, app.buttons["tracker.complete"]); app.buttons["tracker.complete"].tap()
         XCTAssertTrue(app.buttons["tracker.reopen"].waitForExistence(timeout: 10))
