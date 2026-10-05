@@ -17,14 +17,15 @@ nonisolated final class MilestoneFlows: XCTestCase {
     }
     @MainActor private func reveal(_ app: XCUIApplication, _ item: XCUIElement) {
         var direction = -1.0
-        for _ in 0..<18 {
-            if item.exists {
+        for _ in 0..<50 {
+            let exists = item.exists
+            if exists {
                 let frame = item.frame
-                if item.isHittable && frame.minY >= app.frame.minY + 120 && frame.maxY <= app.frame.maxY - 110 { return }
+                if item.isHittable && frame.height > 0 && frame.midY >= app.frame.minY + 120 && frame.midY <= app.frame.maxY - 110 { return }
                 direction = frame.midY < app.frame.midY ? 1 : -1
             }
             let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55))
-            let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55 + direction * 0.2))
+            let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55 + direction * (exists ? 0.2 : 0.36)))
             start.press(forDuration: 0.05, thenDragTo: end, withVelocity: XCUIGestureVelocity(rawValue: 220), thenHoldForDuration: 0.2)
         }
         XCTAssertTrue(item.exists); XCTAssertTrue(item.isHittable)
@@ -84,6 +85,7 @@ nonisolated final class MilestoneFlows: XCTestCase {
         let app = launch(extra: ["--milestone-compare-layout"], large: true)
         openGoal(app, "MANUAL")
         reveal(app, app.buttons["tracker.complete"]); app.buttons["tracker.complete"].tap()
+        reveal(app, app.buttons["tracker.reopen"])
         XCTAssertTrue(app.buttons["tracker.reopen"].waitForExistence(timeout: 10))
         app.tabBars.buttons.element(boundBy: 2).tap()
         let collection = button(app, prefix: "achievements.tracker.", name: "MANUAL")
@@ -162,7 +164,13 @@ nonisolated final class MilestoneFlows: XCTestCase {
             reveal(app, deletion); deletion.tap()
             XCTAssertTrue(app.sheets.buttons["conditions.editor.confirmDelete"].waitForExistence(timeout: 5))
             capture(app, "Nonempty group deletion confirmation")
-            app.sheets.buttons["conditions.editor.cancelDelete"].tap()
+            let cancelDeletion = app.buttons["conditions.editor.cancelDelete"]
+            if cancelDeletion.exists { cancelDeletion.tap() }
+            else {
+                // iOS 26 presents this native confirmation as a popover: cancel is tapping outside.
+                app.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.6)).tap()
+            }
+            XCTAssertTrue(app.buttons["conditions.editor.confirmDelete"].waitForNonExistence(timeout: 5))
             XCTAssertTrue(deletion.exists)
             app.buttons["tracker.cancel"].tap(); app.terminate()
         }
