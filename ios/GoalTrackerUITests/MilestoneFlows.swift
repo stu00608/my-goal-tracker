@@ -126,6 +126,24 @@ nonisolated final class W3DetailFlows: XCTestCase {
     @MainActor func testJapaneseScreens() { tour(language: "ja") }
     @MainActor func testEnglishScreens() { tour(language: "en") }
 
+    @MainActor func testLocalizedManualCompletionLabels() {
+        for (language, mark, undo) in [("zh-Hant", "標記完成", "取消完成"), ("ja", "完了にする", "完了を取り消す")] {
+            let app = launch(language: language, milestones: true)
+            open(app, "MANUAL")
+            let complete = app.buttons["tracker.complete"]
+            reveal(app, complete); XCTAssertEqual(complete.label, mark)
+            capture(app, "W3 manual completion action " + language)
+            complete.tap()
+            let reopen = app.buttons["tracker.reopen"]
+            reveal(app, reopen); XCTAssertEqual(reopen.label, undo); reopen.tap()
+            let confirm = app.sheets.buttons[undo].firstMatch
+            XCTAssertTrue(confirm.waitForExistence(timeout: 5)); XCTAssertEqual(confirm.label, undo)
+            capture(app, "W3 undo completion confirmation " + language)
+            confirm.tap(); XCTAssertTrue(complete.waitForExistence(timeout: 5))
+            app.terminate()
+        }
+    }
+
     @MainActor func testBackupSummaryStaysInConfirmation() {
         let app = launch(language: "zh-Hant", restorePreview: true)
         app.tabBars.buttons.element(boundBy: 3).tap()
@@ -383,7 +401,7 @@ nonisolated final class MilestoneFlows: XCTestCase {
         let reopened = XCUIApplication(); reopened.launchArguments = ["--uitesting", "-language", "en", "-homeLayout", "list"]; reopened.launch()
         openGoal(reopened, "MANUAL")
         reveal(reopened, reopened.buttons["tracker.reopen"]); reopened.buttons["tracker.reopen"].tap()
-        let reopen = reopened.buttons.matching(NSPredicate(format: "label == %@ AND identifier != %@", "Reopen goal", "tracker.reopen")).firstMatch
+        let reopen = reopened.sheets.buttons["Undo Completion"].firstMatch
         XCTAssertTrue(reopen.waitForExistence(timeout: 5)); reopen.tap()
         XCTAssertTrue(reopened.buttons["tracker.complete"].waitForExistence(timeout: 10))
     }

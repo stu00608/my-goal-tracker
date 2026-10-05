@@ -7740,19 +7740,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Complete goal"
+            "value": "Mark Complete"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "完成目標"
+            "value": "標記完成"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "目標を完了"
+            "value": "完了にする"
           }
         }
       }
@@ -7763,19 +7763,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Completed goal"
+            "value": "Done"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "已完成的目標"
+            "value": "已完成"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "完了した目標"
+            "value": "完了"
           }
         }
       }
@@ -8039,19 +8039,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Reopen goal"
+            "value": "Undo Completion"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "重新開啟目標"
+            "value": "取消完成"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "目標を再開"
+            "value": "完了を取り消す"
           }
         }
       }
@@ -8062,19 +8062,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Reopen this goal?"
+            "value": "Undo this completion?"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "重新開啟這個目標？"
+            "value": "取消這次完成？"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "この目標を再開しますか？"
+            "value": "この完了を取り消しますか？"
           }
         }
       }
