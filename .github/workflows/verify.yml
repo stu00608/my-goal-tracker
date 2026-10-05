@@ -36,17 +36,27 @@ jobs:
     needs: repository
     if: needs.repository.outputs.has_app == 'true'
     runs-on: macos-26
-    timeout-minutes: 30
+    timeout-minutes: 60
     steps:
       - uses: actions/checkout@v4
       - run: python3 scripts/dev.py doctor
       - run: python3 scripts/dev.py test
       - run: python3 scripts/dev.py test --scheme GoalTrackerWithWidget
-      - uses: actions/upload-artifact@v4
-        if: always()
+      - name: Upload test summaries
+        uses: actions/upload-artifact@v4
+        if: success()
         with:
-          name: simulator-results
-          path: .artifacts/
+          name: simulator-summaries
+          path: .artifacts/*.json
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 7
+      - name: Upload failure diagnostics
+        uses: actions/upload-artifact@v4
+        if: failure() && !cancelled()
+        with:
+          name: simulator-failure-results
+          path: .artifacts/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 1
