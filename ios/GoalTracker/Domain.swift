@@ -63,7 +63,7 @@ nonisolated struct AchievementSnapshot: Codable, Identifiable, Equatable {
     var kind: TrackerKind
     var unit: String
     var precision: Int
-    var value: String
+    var value: String?
     var target: String?
     var timeZoneID: String
     var background: CardBackground
@@ -177,6 +177,7 @@ nonisolated struct Tracker: Codable, Identifiable, Equatable {
         return leaves.contains { $0.place != nil } && !leaves.contains { $0.isHealth }
     }
     mutating func migrateConditions() {
+        if conditionGroups == nil, conditions?.isEmpty != false, gateSave == true { gateSave = false }
         if conditionGroups == nil, conditions?.isEmpty == false {
             conditionGroups = resolvedConditionGroups
             outerCombination = resolvedCombination
@@ -329,7 +330,7 @@ nonisolated struct Backup: Codable, Equatable {
             guard !t.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, t.name.count <= 120, t.unit.count <= 30,
                   (0...8).contains(t.precision), TimeZone(identifier: t.timeZoneID) != nil, Self.validDate(t.createdAt),
                   t.entries.count <= 100000, t.rules.count <= 10000 else { throw DataError.invalidBackup }
-            try Self.validateMetadata(t)
+            try Self.validateMetadata(t, version: version)
             var days = Set<String>()
             for e in t.entries {
                 guard entryIDs.insert(e.id).inserted, t.date(for: e.localDay) != nil, e.note.count <= 10000,
@@ -360,7 +361,7 @@ nonisolated struct Backup: Codable, Equatable {
             }
         }
     }
-    private static func validateMetadata(_ t: Tracker) throws {
+    private static func validateMetadata(_ t: Tracker, version: Int) throws {
         guard (t.description?.count ?? 0) <= 10000,
               (t.photos?.count ?? 0) <= Entry.photoLimit,
               t.photos?.allSatisfy(validPhoto) != false else { throw DataError.invalidBackup }
@@ -379,7 +380,8 @@ nonisolated struct Backup: Codable, Equatable {
         let groups = t.resolvedConditionGroups
         guard groups.count <= ConditionGroup.limit, Set(groups.map(\.id)).count == groups.count,
               groups.allSatisfy({ ($0.name?.count ?? 0) <= 120 && (1...ConditionGroup.limit).contains($0.conditions.count) }),
-              !(t.gateSave == true || t.remindWhenMet == true) || !groups.isEmpty,
+              t.gateSave != true || !groups.isEmpty || (version < 3 && t.conditionGroups == nil),
+              t.remindWhenMet != true || !groups.isEmpty,
               t.remindWhenMet != true || t.supportsConditionReminders else { throw DataError.invalidBackup }
         let leaves = groups.flatMap(\.conditions)
         guard Set(leaves.map(\.id)).count == leaves.count else { throw DataError.invalidBackup }
@@ -405,7 +407,7 @@ nonisolated struct Backup: Codable, Equatable {
                   validDate(completion.achievedAt), validDate(completion.startedAt), completion.startedAt <= completion.achievedAt,
                   !completion.name.isEmpty, completion.name.count <= 120, completion.unit.count <= 30,
                   (0...8).contains(completion.precision), TimeZone(identifier: completion.timeZoneID) != nil,
-                  Numbers.isCanonical(completion.value), completion.target.map(Numbers.isCanonical) != false,
+                  completion.value.map(Numbers.isCanonical) != false, completion.target.map(Numbers.isCanonical) != false,
                   completion.thumbnail.map(validPhoto) != false, completion.plot.count <= 50, completion.locations.count <= 50,
                   completion.plot.allSatisfy({ validDate($0.date) && Numbers.isCanonical($0.value) }),
                   completion.locations.allSatisfy(\.isValid) else { throw DataError.invalidBackup }
