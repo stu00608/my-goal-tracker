@@ -121,7 +121,9 @@ struct TrackerEditor: View {
                     if let group = deletingGroup, groups.count > 1 { groups.removeAll { $0.id == group.id } }
                     if groups.allSatisfy({ $0.conditions.isEmpty }) { gateSave = false }
                     deletingGroup = nil
-                }
+                }.accessibilityIdentifier("conditions.editor.confirmDelete")
+                Button(L.text("Cancel"), role: .cancel) { deletingGroup = nil }
+                    .accessibilityIdentifier("conditions.editor.cancelDelete")
             }
             .sheet(item: $photoRemoval) { removalSheet($0) }
             .sheet(item: $editingCondition) { selection in

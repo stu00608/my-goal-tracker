@@ -5559,19 +5559,19 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "條件組合"
+            "value": "條件邏輯"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "条件の組み合わせ"
+            "value": "条件の論理"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Combine conditions"
+            "value": "Condition logic"
           }
         }
       }
@@ -8258,7 +8258,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "所有群組"
+            "value": "全部條件組"
           }
         }
       }
@@ -8281,7 +8281,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "任一群組"
+            "value": "任一條件組"
           }
         }
       }
@@ -8292,19 +8292,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Combine groups"
+            "value": "Group logic"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "グループの組み合わせ"
+            "value": "グループの論理"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "群組組合方式"
+            "value": "條件組邏輯"
           }
         }
       }
@@ -8327,7 +8327,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "新增群組"
+            "value": "新增條件組"
           }
         }
       }
@@ -8350,7 +8350,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "刪除群組"
+            "value": "刪除條件組"
           }
         }
       }
@@ -8373,7 +8373,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "群組名稱（選填）"
+            "value": "條件組名稱（選填）"
           }
         }
       }
@@ -8488,7 +8488,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "最多 10 個群組，每個群組最多 10 個條件。"
+            "value": "最多 10 個條件組，每組最多 10 個條件。"
           }
         }
       }

@@ -160,9 +160,9 @@ nonisolated final class MilestoneFlows: XCTestCase {
             let deletions = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "conditions.editor.deleteGroup."))
             let deletion = deletions.element(boundBy: deletions.count - 1)
             reveal(app, deletion); deletion.tap()
-            XCTAssertTrue(app.sheets.buttons["Delete group"].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.sheets.buttons["conditions.editor.confirmDelete"].waitForExistence(timeout: 5))
             capture(app, "Nonempty group deletion confirmation")
-            app.sheets.buttons["Cancel"].tap()
+            app.sheets.buttons["conditions.editor.cancelDelete"].tap()
             XCTAssertTrue(deletion.exists)
             app.buttons["tracker.cancel"].tap(); app.terminate()
         }
@@ -185,6 +185,70 @@ nonisolated final class MilestoneFlows: XCTestCase {
         let first = element(app, "calendar.weekday.1"); reveal(app, first)
         XCTAssertLessThan(first.frame.minX, element(app, "calendar.weekday.2").frame.minX)
         capture(app, "Sunday-first calendar preference")
+    }
+    @MainActor private func addCondition(_ app: XCUIApplication, kind: String) {
+        let add = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "conditions.editor.addCondition.")).firstMatch
+        reveal(app, add)
+        add.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.5)).tap()
+        let item = app.buttons.matching(identifier: "conditions.editor.add." + kind).firstMatch
+        XCTAssertTrue(item.waitForExistence(timeout: 5)); item.tap()
+        XCTAssertTrue(app.buttons["condition.confirm"].waitForExistence(timeout: 10))
+    }
+    @MainActor func testWeekdayConditionLocalizedAtMaximumType() {
+        for (language, edit) in [("en", "Edit tracker"), ("ja", "項目を編集"), ("zh-Hant", "編輯追蹤項目")] {
+            let app = launch(language: language, dark: true, large: true)
+            openGoal(app, "MANUAL"); app.buttons["tracker.menu"].tap(); app.buttons[edit].tap()
+            addCondition(app, kind: "weekdays")
+            let sunday = element(app, "condition.weekday.1")
+            XCTAssertTrue(sunday.waitForExistence(timeout: 5)); sunday.tap()
+            for day in 1...7 {
+                let item = element(app, "condition.weekday.\(day)")
+                XCTAssertGreaterThanOrEqual(item.frame.width, 44)
+                XCTAssertGreaterThanOrEqual(item.frame.height, 44)
+                XCTAssertEqual(item.frame.midY, sunday.frame.midY, accuracy: 1)
+            }
+            capture(app, "Weekday on and off outlines dark AX maximum " + language)
+            app.buttons["condition.cancel"].tap(); app.buttons["tracker.cancel"].tap(); app.terminate()
+        }
+    }
+    @MainActor func testTypedConditionsPersistAfterEditing() {
+        let app = launch()
+        openGoal(app, "MANUAL"); app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
+        addCondition(app, kind: "time")
+        XCTAssertTrue(element(app, "condition.time.start").exists && element(app, "condition.time.end").exists)
+        capture(app, "Native inclusive time interval condition")
+        app.buttons["condition.confirm"].tap()
+        addCondition(app, kind: "steps")
+        let steps = app.textFields["condition.health.threshold"]
+        steps.tap(); steps.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 4) + "9000")
+        app.buttons["condition.keyboard.done"].tap()
+        element(app, "condition.health.comparison").tap(); app.buttons["Less than"].tap()
+        element(app, "condition.health.window").tap(); app.buttons["This month so far"].tap()
+        capture(app, "Read-only monthly strict steps condition")
+        app.buttons["condition.confirm"].tap()
+        addCondition(app, kind: "sleep")
+        capture(app, "Read-only daily sleep-hours condition")
+        app.buttons["condition.confirm"].tap()
+        addCondition(app, kind: "weekdays")
+        element(app, "condition.weekday.1").tap(); app.buttons["condition.confirm"].tap()
+        let outer = element(app, "tracker.conditions.outerCombination"); reveal(app, outer)
+        XCTAssertFalse(outer.isEnabled, "A sole group disables the outer operator")
+        let inner = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "conditions.editor.combination.")).firstMatch
+        XCTAssertTrue(inner.isEnabled, "Multiple leaves retain an active inner operator")
+        app.buttons["tracker.save"].tap()
+        XCTAssertTrue(app.buttons["tracker.menu"].waitForExistence(timeout: 10))
+        app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
+        let first = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "conditions.editor.leaf.")).firstMatch
+        reveal(app, first)
+        let stepsLeaf = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "conditions.editor.leaf.", "9000")).firstMatch
+        reveal(app, stepsLeaf)
+        XCTAssertTrue(stepsLeaf.label.contains("<") && stepsLeaf.label.contains("This month so far"))
+        XCTAssertTrue(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "conditions.editor.leaf.", "Sleep > 7")).firstMatch.exists)
+        stepsLeaf.tap()
+        XCTAssertEqual(app.textFields["condition.health.threshold"].value as? String, "9000")
+        XCTAssertTrue(element(app, "condition.health.window").label.contains("This month so far"))
+        capture(app, "Typed condition threshold and period restored")
+        app.buttons["condition.cancel"].tap(); app.buttons["tracker.cancel"].tap()
     }
     @MainActor func testConditionPreviewRemainsResponsiveAcrossMinuteUpdates() {
         let app = launch(extra: ["--condition-gate=unmet"])

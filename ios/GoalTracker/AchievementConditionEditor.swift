@@ -174,7 +174,7 @@ struct AchievementLeafEditor: View {
                         Button(L.text("Done"), action: save).disabled(kind == .weekdays && weekdays.isEmpty)
                             .accessibilityIdentifier("condition.confirm")
                     }
-                    ToolbarItemGroup(placement: .keyboard) { Spacer(); Button(L.text("Done")) { keyboard.dismiss(); numberFocused = false } }
+                    ToolbarItemGroup(placement: .keyboard) { Spacer(); Button(L.text("Done")) { keyboard.dismiss(); numberFocused = false }.accessibilityIdentifier("condition.keyboard.done") }
                 }
                 .onAppear(perform: load)
             }
@@ -203,6 +203,7 @@ struct AchievementLeafEditor: View {
                             .frame(maxWidth: .infinity, minHeight: 44)
                             .foregroundStyle(weekdays.contains(day) ? Color(uiColor: .systemBackground) : Color.primary)
                             .background(weekdays.contains(day) ? TrackerColors.accent : .clear, in: Circle())
+                            .overlay { Circle().strokeBorder(weekdays.contains(day) ? .clear : Color.secondary, lineWidth: 1) }
                     }.buttonStyle(.borderless)
                         .accessibilityLabel(L.locale.calendar.weekdaySymbols[day - 1])
                         .accessibilityValue(L.text(weekdays.contains(day) ? "On" : "Off"))
