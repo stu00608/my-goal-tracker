@@ -89,6 +89,7 @@ enum CardLayout {
     static let gridSpacing: CGFloat = 12
     static let listHeight: CGFloat = 164
     static let hiddenControlInset: CGFloat = 28
+    static let dailyControlTextInset: CGFloat = 32
     static func ringTextWidth(in size: CGSize) -> CGFloat { max(0, min(size.width, size.height) - plotInset * 2) * 0.70 }
 }
 
@@ -147,7 +148,7 @@ struct TrackerCardLabel: View {
     var monochrome = false
     var showsDailyStatus = true
     var reservesDailyControl = false
-    @ScaledMetric(relativeTo: .title2) private var dailyControlTextInset = 32
+    @ScaledMetric(relativeTo: .title2) private var dailyControlTextInset = CardLayout.dailyControlTextInset
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.colorScheme) private var colorScheme
     private var hasImage: Bool { !monochrome && (row.hasPhoto || row.resolvedBackground == .map && row.locations?.isEmpty == false) }

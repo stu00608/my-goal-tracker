@@ -17,7 +17,7 @@ struct DashboardView: View {
     @AppStorage("homeLayout") private var homeLayout = "grid"
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @ScaledMetric(relativeTo: .title2) private var dailyControlTextInset = 32
+    @ScaledMetric(relativeTo: .title2) private var dailyControlTextInset = CardLayout.dailyControlTextInset
     private var active: [Tracker] { trackers.filter { !$0.archived } }
     private var grid: Bool { homeLayout != "list" && !dynamicTypeSize.isAccessibilitySize }
 
