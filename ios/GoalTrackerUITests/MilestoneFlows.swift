@@ -108,11 +108,22 @@ nonisolated final class MilestoneFlows: XCTestCase {
         reveal(app, comparison); comparison.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
         for _ in 0..<4 { app.swipeDown() }
         let poster = element(app, "achievement.poster")
-        let initialY = poster.frame.minY
-        poster.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.4)).press(forDuration: 0.1, thenDragTo: poster.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.5)))
-        XCTAssertEqual(poster.frame.minY, initialY, accuracy: 2, "Horizontal relief must not scroll the page")
-        poster.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.7)).press(forDuration: 0.05, thenDragTo: poster.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.25)), withVelocity: XCUIGestureVelocity(rawValue: 220), thenHoldForDuration: 0.2)
-        XCTAssertLessThan(poster.frame.minY, initialY - 20, "Vertical starts must scroll the page")
+        let initialFrame = poster.frame
+        // At maximum Dynamic Type the poster is taller than the screen. Coordinates based
+        // on its full height can hit a tab instead; gesture only within its visible portion.
+        let visible = initialFrame.intersection(app.frame.insetBy(dx: 20, dy: 140))
+        XCTAssertGreaterThan(visible.height, 200)
+        let origin = app.coordinate(withNormalizedOffset: .zero)
+        let horizontalStart = origin.withOffset(CGVector(dx: visible.minX + visible.width * 0.3, dy: visible.minY + visible.height * 0.4))
+        let horizontalEnd = origin.withOffset(CGVector(dx: visible.minX + visible.width * 0.7, dy: visible.minY + visible.height * 0.5))
+        horizontalStart.press(forDuration: 0.1, thenDragTo: horizontalEnd)
+        XCTAssertEqual(poster.frame.minY, initialFrame.minY, accuracy: 2, "Horizontal relief must not scroll the page")
+        let verticalStart = origin.withOffset(CGVector(dx: visible.midX, dy: visible.midY + 75))
+        let verticalEnd = origin.withOffset(CGVector(dx: visible.midX, dy: visible.midY - 75))
+        verticalStart.press(forDuration: 0.05, thenDragTo: verticalEnd, withVelocity: XCUIGestureVelocity(rawValue: 220), thenHoldForDuration: 0.2)
+        XCTAssertTrue(poster.waitForExistence(timeout: 5), "A short scroll within the card must keep its detail open")
+        XCTAssertLessThan(poster.frame.minY, initialFrame.minY - 20, "Vertical starts must scroll the page")
+        capture(app, "Visible poster vertical start scrolls without switching tabs")
         app.swipeDown()
         app.coordinate(withNormalizedOffset: CGVector(dx: 0.01, dy: 0.4)).press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.8, dy: 0.4)))
         XCTAssertTrue(history.waitForExistence(timeout: 5), "The native edge-back gesture must remain available")

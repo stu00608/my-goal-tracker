@@ -155,7 +155,24 @@ nonisolated final class FeatureTests: XCTestCase {
         app.buttons["entry.cancel"].tap()
     }
 
-    @MainActor func testGridReorderPersistsAndLayoutSwitches() {
+    @MainActor private func dragCard(_ source: XCUIElement, to target: XCUIElement) async {
+        let destinationX = target.frame.minX
+        // An explicit interior drop and brief hover allow native lift/transfer on hosted runners.
+        // Keep a real long-press drag; accessible move actions are a separate path.
+        source.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.35)).press(
+            forDuration: 1.2,
+            thenDragTo: target.coordinate(withNormalizedOffset: CGVector(dx: 0.4, dy: 0.35)),
+            withVelocity: XCUIGestureVelocity(rawValue: 220), thenHoldForDuration: 0.75)
+        // Read the Swift CGRect directly; CGRect fields are not reliable predicate key paths.
+        let deadline = Date().addingTimeInterval(10)
+        while abs(source.frame.minX - destinationX) > 1 && Date() < deadline {
+            try? await Task.sleep(for: .milliseconds(200))
+        }
+        XCTAssertEqual(source.frame.minX, destinationX, accuracy: 1,
+                       "The dragged card must reach the target's original column")
+    }
+
+    @MainActor func testGridReorderPersistsAndLayoutSwitches() async {
         continueAfterFailure = false
         let app = app()
         let cook = element(app, prefix: "card.", name: "COOK")
@@ -163,7 +180,7 @@ nonisolated final class FeatureTests: XCTestCase {
         XCTAssertTrue(cook.waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["home.edit"].exists)
         XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "card.detail.")).count, 0)
-        cook.press(forDuration: 1, thenDragTo: score)
+        await dragCard(cook, to: score)
         XCTAssertLessThan(cook.frame.minX, score.frame.minX)
         attach(app, "Grid reordered directly by long press")
         app.terminate()
@@ -172,7 +189,7 @@ nonisolated final class FeatureTests: XCTestCase {
         let second = element(reopened, prefix: "card.", name: "SCORE")
         XCTAssertTrue(first.waitForExistence(timeout: 10))
         XCTAssertLessThan(first.frame.minX, second.frame.minX)
-        second.press(forDuration: 1, thenDragTo: first)
+        await dragCard(second, to: first)
         XCTAssertLessThan(second.frame.minX, first.frame.minX)
         attach(reopened, "Grid reordered by long press drag")
         reopened.tabBars.buttons.element(boundBy: 3).tap()

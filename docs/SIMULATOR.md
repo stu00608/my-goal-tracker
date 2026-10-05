@@ -42,7 +42,8 @@ python3 scripts/dev.py screenshot --device <simulator-udid>
 錯誤輸出與測試結果保存在本 worktree 的 `.artifacts/`；DerivedData 在 `.build/`。
 沒有 app 時 CI 的 iOS job 是 skipped，不是 app 驗證通過。
 
-CI 的 iOS job 最長執行 60 分鐘，完整執行 App 與 Widget 兩個 scheme 的測試。
+CI 的 iOS job 最長執行 90 分鐘，完整執行 App 與 Widget 兩個 scheme 的測試。
+完整 UI 覆蓋在 hosted runner 超過原本 60 分鐘，時間上限保留給整套測試；不省略測試或放寬失敗／跳過判定。
 成功時只上傳 JSON 測試摘要，保留 7 天；失敗時上傳完整 `.xcresult` 與 logs，保留 1 天。
 完整執行 log 可在 Actions 頁查看；本機仍保存完整結果，CI 保留政策不影響本機證據。
 

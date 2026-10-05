@@ -36,7 +36,8 @@ jobs:
     needs: repository
     if: needs.repository.outputs.has_app == 'true'
     runs-on: macos-26
-    timeout-minutes: 60
+    # Full App UI coverage plus Widget tests exceeds 60 minutes on hosted runners.
+    timeout-minutes: 90
     steps:
       - uses: actions/checkout@v7
       - run: python3 scripts/dev.py doctor
