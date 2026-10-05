@@ -135,10 +135,10 @@ struct TrackerCardLabel: View {
         .multilineTextAlignment(position.textAlignment)
         .foregroundStyle(foreground)
         .shadow(color: hasImage ? (foregroundIsLight ? Color.black.opacity(0.45) : Color.white.opacity(0.5)) : .clear, radius: 1, y: 1)
-        .shadow(color: hasImage ? .clear : Color(uiColor: .secondarySystemGroupedBackground), radius: 0, x: -1.5)
-        .shadow(color: hasImage ? .clear : Color(uiColor: .secondarySystemGroupedBackground), radius: 0, x: 1.5)
-        .shadow(color: hasImage ? .clear : Color(uiColor: .secondarySystemGroupedBackground), radius: 0, y: -1.5)
-        .shadow(color: hasImage ? .clear : Color(uiColor: .secondarySystemGroupedBackground), radius: 0, y: 1.5)
+        .shadow(color: hasImage || monochrome ? .clear : Color(uiColor: .secondarySystemGroupedBackground), radius: 0, x: -1.5)
+        .shadow(color: hasImage || monochrome ? .clear : Color(uiColor: .secondarySystemGroupedBackground), radius: 0, x: 1.5)
+        .shadow(color: hasImage || monochrome ? .clear : Color(uiColor: .secondarySystemGroupedBackground), radius: 0, y: -1.5)
+        .shadow(color: hasImage || monochrome ? .clear : Color(uiColor: .secondarySystemGroupedBackground), radius: 0, y: 1.5)
     }
     private var dailyStatus: some View {
         Image(systemName: completed ? "checkmark.circle.fill" : "circle")
@@ -266,7 +266,7 @@ struct TrackerCardBackdrop: View {
                     }
                 }
                 }
-                .foregroundStyle(monochrome ? Color.primary : TrackerColors.accent).chartXAxis(.hidden).chartYAxis(.hidden).chartLegend(.hidden)
+                .foregroundStyle(monochrome ? Color.primary.opacity(0.45) : TrackerColors.accent).chartXAxis(.hidden).chartYAxis(.hidden).chartLegend(.hidden)
                 .chartYScale(domain: row.plotDomain(at: now)).chartPlotStyle { $0.clipped() }
                 .padding(CardLayout.plotInset)
             } else {
