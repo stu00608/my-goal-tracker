@@ -315,7 +315,7 @@ struct GoalProgressRing: View {
                     Text(value).font(.title2.weight(.semibold).monospacedDigit())
                         .foregroundStyle(.primary).multilineTextAlignment(.center)
                         .lineLimit(1).minimumScaleFactor(0.35)
-                        .frame(width: geometry.size.width * 0.82, height: geometry.size.height * 0.28)
+                        .frame(width: geometry.size.width * 0.70, height: geometry.size.height * 0.28)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }
