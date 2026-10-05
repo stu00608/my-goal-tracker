@@ -236,11 +236,11 @@ struct TrackerSummary: View {
             if tracker.kind == .number {
                 if let v = tracker.resolvedEntries.last(where: { $0.occurredAt <= now })?.value.flatMap(Numbers.decimal) {
                     Text(Numbers.display(v, precision: tracker.precision, locale: L.locale) + (tracker.unit.isEmpty ? "" : " " + tracker.unit)).font(.title3.monospacedDigit()).foregroundStyle(.primary)
-                } else { Text(L.text("No snapshots yet")).foregroundStyle(TrackerColors.secondaryText) }
+                } else { Text(L.text("No records yet")).foregroundStyle(TrackerColors.secondaryText) }
             } else if let rule = tracker.rule(at: now) {
                 Text("\(tracker.count(in: tracker.interval(now, period: rule.period))) / \(rule.target) · " + L.text(rule.period == .weekly ? "This week" : "This month"))
                     .foregroundStyle(TrackerColors.secondaryText).monospacedDigit().accessibilityIdentifier("progress." + tracker.id.uuidString)
-            } else { Text(L.text("Completion record")).foregroundStyle(TrackerColors.secondaryText) }
+            } else { Text(L.text(tracker.entries.contains { $0.localDay == tracker.day(now) && $0.occurredAt <= now } ? "Today is recorded" : "No record today")).foregroundStyle(TrackerColors.secondaryText) }
         }.padding(.vertical, 2)
     }
 }

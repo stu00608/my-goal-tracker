@@ -96,9 +96,10 @@ nonisolated final class MilestoneFlows: XCTestCase {
         capture(app, "Manual completion relief card with no fabricated number")
         let comparison = app.switches["achievement.debug.flat"]
         reveal(app, comparison); comparison.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        for _ in 0..<4 { app.swipeDown() }
         capture(app, "Completion alternative static left-aligned poster")
-        comparison.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
-        app.swipeDown()
+        reveal(app, comparison); comparison.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        for _ in 0..<4 { app.swipeDown() }
         let poster = element(app, "achievement.poster")
         let initialY = poster.frame.minY
         poster.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.4)).press(forDuration: 0.1, thenDragTo: poster.coordinate(withNormalizedOffset: CGVector(dx: 0.7, dy: 0.5)))
@@ -132,13 +133,16 @@ nonisolated final class MilestoneFlows: XCTestCase {
             openGoal(app, "GROUPED"); app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
             let outer = element(app, "tracker.conditions.outerCombination"); reveal(app, outer)
             XCTAssertTrue(outer.isEnabled)
+            let firstLeaf = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "conditions.editor.leaf.")).firstMatch
+            reveal(app, firstLeaf)
             capture(app, alternative ? "Condition groups alternative expanded form" : "Condition groups chosen disclosure form")
             let add = app.buttons["conditions.editor.addGroup"]; reveal(app, add); add.tap()
             let additions = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "conditions.editor.addCondition."))
             reveal(app, additions.firstMatch)
-            let count = additions.count
-            XCTAssertGreaterThan(count, 0)
-            let addCondition = additions.element(boundBy: count - 1)
+            // The visible button belongs to the newly inserted group. Preserve its identity:
+            // lazy Form rows can reorder/disappear in the accessibility query during scrolling.
+            let newGroupButtonID = additions.firstMatch.identifier
+            let addCondition = app.buttons[newGroupButtonID]
             reveal(app, addCondition)
             let metadata = XCTAttachment(string: "app frame: \(app.frame); add-condition frame: \(addCondition.frame)")
             metadata.name = "New group add-condition hit area"; metadata.lifetime = .keepAlways; self.add(metadata)

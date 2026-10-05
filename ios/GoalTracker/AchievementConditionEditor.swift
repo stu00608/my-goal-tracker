@@ -71,7 +71,7 @@ struct AchievementConditionEditor: View {
         ForEach(group.conditions) { condition in
             Button { editing = ConditionEditorSelection(groupID: group.id, condition: condition, kind: ConditionLeafKind(condition.payload)) } label: {
                 HStack(alignment: .firstTextBaseline) {
-                    Text(ConditionLabels.leaf(condition)).foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true)
+                    Text(ConditionLabels.leaf(condition)).foregroundStyle(Color.primary).multilineTextAlignment(.leading).fixedSize(horizontal: false, vertical: true)
                     Spacer(minLength: 8)
                     Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
                 }.frame(minHeight: 44)
@@ -199,8 +199,9 @@ struct AchievementLeafEditor: View {
                         if weekdays.contains(day) { weekdays.remove(day) } else { weekdays.insert(day) }
                     } label: {
                         Text(L.locale.calendar.veryShortStandaloneWeekdaySymbols[day - 1])
-                            .font(.body.weight(.medium)).lineLimit(1).minimumScaleFactor(0.5)
-                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .font(.body.weight(.medium)).dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+                            .lineLimit(1).minimumScaleFactor(0.75)
+                            .frame(maxWidth: .infinity).frame(height: 44)
                             .foregroundStyle(weekdays.contains(day) ? Color(uiColor: .systemBackground) : Color.primary)
                             .background(weekdays.contains(day) ? TrackerColors.accent : .clear, in: Circle())
                             .overlay { Circle().strokeBorder(weekdays.contains(day) ? .clear : Color.secondary, lineWidth: 1) }

@@ -273,11 +273,11 @@ nonisolated struct WidgetRow: Codable, Identifiable {
     }
     func valueText(at now: Date, locale: Locale, text: (String) -> String) -> String {
         if kind == .number {
-            guard let value = value.flatMap(Numbers.decimal) else { return text("No snapshots yet") }
+            guard let value = value.flatMap(Numbers.decimal) else { return text("No records yet") }
             return Numbers.display(value, precision: precision, locale: locale) + (unit.isEmpty ? "" : " " + unit)
         }
         let t = tracker
-        guard let rule = t.rule(at: now) else { return text("Completion record") }
+        guard let rule = t.rule(at: now) else { return text(completedDays.contains(t.day(now)) ? "Today is recorded" : "No record today") }
         return "\(t.count(in: t.interval(now, period: rule.period))) / \(rule.target)"
     }
     func ringText(at now: Date, locale: Locale) -> String? {
