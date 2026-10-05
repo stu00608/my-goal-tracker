@@ -7,6 +7,10 @@ struct DashboardView: View {
     let onRecord: (Tracker) -> Void
     // Move the source to the target's original index; adjacent targets implement move up/down.
     let onReorder: (UUID, UUID) -> Void
+    var cancelForPresentation = false
+    var onBegin: () -> Void = {}
+    var onFailure: (String) -> Void = { _ in }
+    @AppStorage("recordLocationByDefault", store: L.defaults) private var recordLocationByDefault = false
     @AppStorage("homeLayout") private var homeLayout = "grid"
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     private var active: [Tracker] { trackers.filter { !$0.archived } }
@@ -25,14 +29,14 @@ struct DashboardView: View {
     private func card(_ tracker: Tracker) -> some View {
         let row = WidgetRow(tracker, now: now)
         return Button { onRecord(tracker) } label: {
-            TrackerCardSurface(row: row, now: now, locale: L.locale, text: L.text, minimumHeight: grid ? 0 : 164, fillsHeight: grid) {
+            TrackerCardSurface(row: row, now: now, locale: L.locale, text: L.text, minimumHeight: grid ? 0 : 164, fillsHeight: grid, showsDailyStatus: false) {
                 if row.resolvedBackground == .map, let locations = row.locations, !locations.isEmpty {
                     Map(interactionModes: []) {
                         ForEach(Array(locations.enumerated()), id: \.offset) { _, location in
                             Marker(tracker.name, coordinate: CLLocationCoordinate2D(latitude: location.latitude, longitude: location.longitude)).annotationTitles(.hidden)
                         }
                     }.mapStyle(.standard(elevation: .flat, pointsOfInterest: .excludingAll))
-                } else { TrackerCardBackdrop(row: row, text: L.text) }
+                } else { TrackerCardBackdrop(row: row, text: L.text, now: now, locale: L.locale) }
             }
             .modifier(DashboardTileSize(square: grid))
             .contentShape(RoundedRectangle(cornerRadius: 20))
@@ -40,6 +44,15 @@ struct DashboardView: View {
         .buttonStyle(.plain)
         .accessibilityHint(L.text("Record progress"))
         .accessibilityIdentifier("card." + tracker.id.uuidString)
+        .overlay(alignment: .bottomTrailing) {
+            if tracker.kind == .daily {
+                DailyCompletionButton(tracker: tracker, now: now,
+                    recordLocationByDefault: recordLocationByDefault,
+                    cancelForPresentation: cancelForPresentation,
+                    onEditor: onRecord, onBegin: onBegin, onFailure: onFailure)
+                    .padding(6)
+            }
+        }
         .modifier(TrackerReorderInteraction(id: tracker.id, active: active, onReorder: onReorder))
     }
 }

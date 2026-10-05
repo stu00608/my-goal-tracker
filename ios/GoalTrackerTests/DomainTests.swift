@@ -260,10 +260,10 @@ import SwiftData
                      Entry(occurredAt: start.addingTimeInterval(172800), localDay: "2024-06-03", change: "2")]
         return t
     }
-    @Test func versionTwoRoundTripKeepsRawEventsAndCSVDerivedValuesWithInputProvenance() throws {
+    @Test func versionThreeRoundTripKeepsRawEventsAndCSVDerivedValuesWithInputProvenance() throws {
         let t = numericLedger()
         let backup = Backup(trackers: [t])
-        #expect(backup.version == 2)
+        #expect(backup.version == 3)
         let loaded = try Backup.decode(backup.encoded())
         #expect(loaded.trackers == [t])
         #expect(loaded.trackers[0].sortedEntries[1].value == nil)
@@ -318,7 +318,7 @@ import SwiftData
         let disk = try ModelContainer(for: Ledger.self, configurations: ModelConfiguration(url: url, cloudKitDatabase: .none))
         let diskContext = ModelContext(disk)
         let persisted = try #require(diskContext.fetch(FetchDescriptor<Ledger>()).first?.payload)
-        #expect(try Backup.decode(persisted).version == 2)
+        #expect(try Backup.decode(persisted).version == 3)
     }
     @Test func malformedRawLedgersAndMetadataRejectAtomicallyForSaveRestoreAndReopen() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -374,13 +374,14 @@ import SwiftData
         t.axisUpper = "200.1234567890123456789"
         t.conditions = (0..<20).map { PlaceCondition(name: "Place \($0)", location: RecordedLocation(latitude: 35, longitude: 139)) }
         t.conditionCombination = .all; t.gateSave = true; t.remindWhenMet = true
-        #expect(try Backup.decode(Backup(trackers: [t]).encoded()).trackers == [t])
+        #expect(try Backup.decode(Backup(version: 2, trackers: [t]).encoded()).trackers == [t])
         #expect(t.photos?.first == image)
         t.axisLower = nil
         try Backup(trackers: [t]).validate()
         t.conditions = nil; t.remindWhenMet = false
-        #expect(!t.requiresLocationGate) // A dormant gate flag follows the shared optional-condition contract.
-        try Backup(trackers: [t]).validate()
+        #expect(!t.requiresLocationGate)
+        try Backup(version: 2, trackers: [t]).validate() // Previously valid dormant flags still restore.
+        #expect(throws: DataError.self) { try Backup(trackers: [t]).validate() } // New enabled-empty configurations reject.
     }
     @Test func malformedPersistedPayloadCannotLoadAndDoesNotRewriteExistingBytes() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)

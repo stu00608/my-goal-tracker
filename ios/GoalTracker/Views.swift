@@ -28,7 +28,8 @@ struct RootView: View {
                 }
             }.id(todayNavigationID).tabItem { Label(L.text("Today"), systemImage: "checkmark.circle") }.tag(0)
             NavigationStack { trackerList(today: false, at: date) }.id(goalsNavigationID).tabItem { Label(L.text("Goals"), systemImage: "chart.xyaxis.line") }.tag(1)
-            SettingsView().tabItem { Label(L.text("Settings"), systemImage: "gearshape") }.tag(2)
+            CompletedTab(trackers: store.trackers).tabItem { Label(L.text("Completed"), systemImage: "sparkles") }.tag(2)
+            SettingsView().tabItem { Label(L.text("Settings"), systemImage: "gearshape") }.tag(3)
         }
         .environment(\.editMode, $editMode)
         .onChange(of: selected) { _, _ in gateNotice = nil }
@@ -59,7 +60,9 @@ struct RootView: View {
         return Group {
             if today && homeLayout != "list" && !active.isEmpty {
                 DashboardView(trackers: store.trackers, now: date,
-                              onRecord: { entryTracker = $0 }, onReorder: reorder)
+                              onRecord: { entryTracker = $0 }, onReorder: reorder,
+                              cancelForPresentation: entryTracker != nil || creating || selected != 0,
+                              onBegin: { gateNotice = nil }, onFailure: { gateNotice = $0 })
             } else {
                 List {
                     if active.isEmpty {
@@ -128,7 +131,7 @@ struct RootView: View {
     }
 }
 
-private struct DailyCompletionButton: View {
+struct DailyCompletionButton: View {
     @Environment(AppStore.self) private var store
     let tracker: Tracker
     let now: Date
@@ -139,6 +142,8 @@ private struct DailyCompletionButton: View {
     let onFailure: (String) -> Void
     @State private var checking = false
     @State private var verification: Task<Void, Never>?
+    @State private var pendingRemoval: Tracker?
+    @State private var quickLocation = RecordLocationRecorder()
     private var done: Bool { tracker.entries.contains { $0.localDay == tracker.day(now) } }
     var body: some View {
         Button(action: toggle) {
@@ -149,21 +154,35 @@ private struct DailyCompletionButton: View {
         }.buttonStyle(.borderless).disabled(checking)
             .accessibilityLabel(L.text(checking ? "Checking record conditions" : done ? "Undo completion" : "Mark complete") + ": " + tracker.name)
             .accessibilityIdentifier("complete." + tracker.id.uuidString)
-            .onDisappear { verification?.cancel() }
-            .onChange(of: cancelForPresentation) { _, cancel in if cancel { verification?.cancel() } }
+            .onDisappear { verification?.cancel(); quickLocation.cancel() }
+            .onChange(of: cancelForPresentation) { _, cancel in if cancel { verification?.cancel(); quickLocation.cancel() } }
+            .confirmationDialog(L.text("Cancel this completion and its attachments?"), isPresented: Binding(
+                get: { pendingRemoval != nil }, set: { if !$0 { pendingRemoval = nil } }
+            ), titleVisibility: .visible) {
+                Button(L.text("Undo completion"), role: .destructive) {
+                    guard let original = pendingRemoval else { return }
+                    pendingRemoval = nil
+                    guard store.trackers.first(where: { $0.id == original.id }) == original else {
+                        onFailure(L.text("Records changed while checking. Try recording again.")); return
+                    }
+                    var candidate = original
+                    candidate.entries.removeAll { $0.localDay == original.day(Date()) }
+                    store.perform { try store.save(candidate) }
+                }
+                Button(L.text("Cancel"), role: .cancel) { pendingRemoval = nil }
+            } message: { Text(L.text("The record, notes and photos for today will be removed.")) }
     }
     private func toggle() {
         guard !checking, var original = store.trackers.first(where: { $0.id == tracker.id }) else { return }
         onBegin()
         let instant = Date(), day = original.day(instant)
         if let entry = original.entries.first(where: { $0.localDay == day }) {
-            if !entry.note.isEmpty || !entry.photos.isEmpty || entry.location != nil { onEditor(original); return }
+            if !entry.note.isEmpty || !entry.photos.isEmpty || entry.location != nil { pendingRemoval = original; return }
             original.entries.removeAll { $0.localDay == day }
             store.perform { try store.save(original) }
             return
         }
-        if recordLocationByDefault { onEditor(original); return }
-        guard original.requiresLocationGate else {
+        guard original.requiresConditionGate || recordLocationByDefault else {
             original.put(Entry(occurredAt: instant, localDay: day))
             store.perform { try store.save(original) }
             return
@@ -175,29 +194,26 @@ private struct DailyCompletionButton: View {
             do {
                 try await RecordConditions.verify(tracker: snapshot)
                 try Task.checkCancellation()
+                if recordLocationByDefault {
+                    quickLocation.draft = RecordLocationDraft(existing: nil, defaultEnabled: true)
+                    await quickLocation.resolveForSave()
+                    try Task.checkCancellation()
+                    // A location prompt can suspend across a time-condition boundary.
+                    try await RecordConditions.verify(tracker: snapshot)
+                }
                 guard store.trackers.first(where: { $0.id == snapshot.id }) == snapshot else {
                     onFailure(L.text("Records changed while checking. Try recording again.")); return
                 }
                 var candidate = snapshot
                 let instant = Date()
-                candidate.put(Entry(occurredAt: instant, localDay: candidate.day(instant)))
+                var entry = Entry(occurredAt: instant, localDay: candidate.day(instant))
+                if recordLocationByDefault { entry.location = quickLocation.draft.applying(to: nil) }
+                candidate.put(entry)
                 try store.save(candidate)
             } catch is CancellationError { }
             catch {
                 if !Task.isCancelled {
-                    if let condition = error as? ConditionError {
-                        let key: String
-                        switch condition.key {
-                        case "Your location does not meet the conditions. Your draft was kept.":
-                            key = "Your location does not meet the conditions. No record was saved."
-                        case "Your location is too uncertain or stale. Try again in a moment. Your draft was kept.":
-                            key = "Your location is too uncertain or stale. No record was saved."
-                        case "Could not verify your location. Your draft was kept.":
-                            key = "Could not verify your location. No record was saved."
-                        default: key = condition.key
-                        }
-                        onFailure(L.text(key))
-                    } else { onFailure(L.error(error)) }
+                    onFailure(L.error(error))
                 }
             }
         }
@@ -209,7 +225,13 @@ struct TrackerSummary: View {
     var now = Date()
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(tracker.name).font(.headline)
+            HStack(alignment: .firstTextBaseline) {
+                Text(tracker.name).font(.headline)
+                if CompletionEngine.isCompleted(tracker: tracker, now: now) {
+                    Image(systemName: "checkmark.seal.fill").foregroundStyle(TrackerColors.accent)
+                        .accessibilityLabel(L.text("Completed goal"))
+                }
+            }
             if tracker.kind == .number {
                 if let v = tracker.resolvedEntries.last(where: { $0.occurredAt <= now })?.value.flatMap(Numbers.decimal) {
                     Text(Numbers.display(v, precision: tracker.precision, locale: L.locale) + (tracker.unit.isEmpty ? "" : " " + tracker.unit)).font(.title3.monospacedDigit()).foregroundStyle(.primary)
@@ -236,6 +258,9 @@ struct TrackerSummary: View {
     @State private var initializedRange = false
     @State private var month = Date()
     @State private var deleteTracker = false
+    @State private var reopenCompletion = false
+    @State private var completing = false
+    @State private var completionTask: Task<Void, Never>?
     @AppStorage("firstWeekday", store: L.defaults) private var firstWeekday = 1
     private var tracker: Tracker? { store.trackers.first { $0.id == id } }
     var body: some View {
@@ -249,6 +274,25 @@ struct TrackerSummary: View {
                     if t.kind == .number { numeric(t, now: now) }
                     else { CompletionProgressView(tracker: t, now: now) { daily(t) } }
                     locations(t)
+                    CompletionHistoryView(tracker: t)
+                    if t.resolvedLifecycle == .finite {
+                        Section(L.text("Goal status")) {
+                            if CompletionEngine.isCompleted(tracker: t, now: now) {
+                                Label(L.text("Completed goal"), systemImage: "checkmark.seal.fill")
+                                if t.manualCompletion != nil {
+                                    Button(L.text("Reopen goal")) { reopenCompletion = true }
+                                        .accessibilityIdentifier("tracker.reopen")
+                                } else {
+                                    Text(L.text("Create a new goal or switch to ongoing tracking to keep going."))
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
+                            } else if t.rules.isEmpty {
+                                Button(L.text("Complete goal")) { completeManually(t) }
+                                    .disabled(completing).accessibilityIdentifier("tracker.complete")
+                                if completing { ProgressView(L.text("Checking record conditions")) }
+                            } else { Label(L.text("In progress"), systemImage: "circle.dotted") }
+                        }
+                    }
                     if !t.rules.isEmpty {
                         Section(L.text("Goal history")) {
                             ForEach(t.rules.sorted { $0.effectiveAt > $1.effectiveAt }) { rule in
@@ -315,11 +359,38 @@ struct TrackerSummary: View {
                     EntryEditor(tracker: t, existing: t.entries.first { $0.id == selection.id } ?? selection)
                 }
                 .fullScreenCover(item: $photoPreview) { PhotoViewer(photos: $0.photos, initialIndex: $0.index) }
+                .onDisappear { completionTask?.cancel() }
+                .confirmationDialog(L.text("Reopen this goal?"), isPresented: $reopenCompletion, titleVisibility: .visible) {
+                    Button(L.text("Reopen goal"), role: .destructive) {
+                        store.perform {
+                            guard var current = tracker else { return }
+                            current.manualCompletion = nil
+                            try store.save(current)
+                        }
+                    }
+                    Button(L.text("Cancel"), role: .cancel) { }
+                } message: { Text(L.text("The manual completion card will be removed. Your records stay unchanged.")) }
                 .confirmationDialog(L.text("Delete this tracker and all its records?"), isPresented: $deleteTracker, titleVisibility: .visible) {
                     Button(L.text("Delete tracker"), role: .destructive) { store.perform { try store.remove(id) } }
                 }
             } else { ContentUnavailableView(L.text("Tracker removed"), systemImage: "archivebox") }
         }
+        }
+    }
+    private func completeManually(_ original: Tracker) {
+        guard !completing else { return }
+        completing = true
+        completionTask = Task {
+            defer { completing = false }
+            do {
+                try await RecordConditions.verify(tracker: original)
+                try Task.checkCancellation()
+                guard tracker == original else { throw ConditionError("Records changed while checking. Try recording again.") }
+                var candidate = original
+                candidate.manualCompletion = CompletionEngine.manualSnapshot(tracker: original, now: Date())
+                try store.save(candidate)
+            } catch is CancellationError { }
+            catch { store.error = L.error(error) }
         }
     }
     @ViewBuilder private func content(_ t: Tracker) -> some View {

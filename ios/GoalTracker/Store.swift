@@ -32,7 +32,8 @@ import UIKit
                     try existing.payload.write(to: safetyCopy, options: [.atomic, .completeFileProtection])
                 }
             }
-            row = existing; trackers = decoded.trackers
+            row = existing
+            trackers = decoded.version < 3 ? decoded.trackers.map { tracker in var copy = tracker; copy.migrateConditions(); return copy } : decoded.trackers
         } else {
             row = Ledger(payload: try Backup(trackers: []).encoded())
             context.insert(row); try context.save(); trackers = []
@@ -80,6 +81,7 @@ import UIKit
     }
     func restore(_ data: Data) throws {
         let b = try Backup.decode(data)
-        try replace(b.trackers)
+        let restored = b.version < 3 ? b.trackers.map { tracker in var copy = tracker; copy.migrateConditions(); return copy } : b.trackers
+        try replace(restored)
     }
 }

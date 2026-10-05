@@ -69,6 +69,9 @@ struct EntryEditor: View {
                 }.listRowBackground(Color.clear)
                     .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
                     .disabled(saving)
+                if currentTracker.requiresConditionGate {
+                    Section(L.text("Achievement conditions")) { ConditionStatusView(tracker: currentTracker) }
+                }
                 Section {
                     DatePicker(L.text("Date"), selection: Binding(get: { date }, set: { endEditing(); date = $0; dateEdited = true }), in: ...Date(), displayedComponents: tracker.kind == .number ? [.date, .hourAndMinute] : [.date])
                         .simultaneousGesture(TapGesture().onEnded { endEditing() })
@@ -447,7 +450,7 @@ struct EntryEditor: View {
                 guard editorActive else { return }
                 // A confirmed candidate may never overwrite changes made while its dialog was open.
                 guard store.trackers.first(where: { $0.id == tracker.id }) == pending.original else {
-                    error = L.text("Records changed while saving. Review your draft and save again."); return
+                    error = L.text("Records changed while saving. Review the entry and try again."); return
                 }
                 if let entry = pending.entry, NumericEntry.requiresGate(in: pending.original, for: entry, editing: existing?.id) {
                     gatePending = true
@@ -456,11 +459,18 @@ struct EntryEditor: View {
                 }
                 try Task.checkCancellation()
                 guard editorActive else { return }
-                if pending.entry != nil, location.draft.canResolve { await location.resolveForSave() }
+                let resolvingLocation = pending.entry != nil && location.draft.canResolve
+                if resolvingLocation { await location.resolveForSave() }
                 try Task.checkCancellation()
                 guard editorActive else { return }
+                if resolvingLocation, let entry = pending.entry, NumericEntry.requiresGate(in: pending.original, for: entry, editing: existing?.id) {
+                    gatePending = true
+                    try await RecordConditions.verify(tracker: pending.original)
+                    gatePending = false
+                }
+                try Task.checkCancellation()
                 guard store.trackers.first(where: { $0.id == tracker.id }) == pending.original else {
-                    error = L.text("Records changed while saving. Review your draft and save again."); return
+                    error = L.text("Records changed while saving. Review the entry and try again."); return
                 }
                 var candidate = pending.mutation.tracker
                 if let entry = pending.entry, let index = candidate.entries.firstIndex(where: { $0.id == entry.id }) {
