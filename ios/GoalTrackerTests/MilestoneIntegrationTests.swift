@@ -113,6 +113,11 @@ import Testing
     }
     @Test func completionExportFixturesKeepContentAcrossBackgroundsLocalesAndAppearance() throws {
         let now = date("2026-10-05T08:00:00Z")
+        let originalLanguage = L.defaults.object(forKey: "language")
+        defer {
+            if let originalLanguage { L.defaults.set(originalLanguage, forKey: "language") }
+            else { L.defaults.removeObject(forKey: "language") }
+        }
         var tracker = Tracker(name: "Milestone 成就 達成 — a small daily step", kind: .number)
         tracker.createdAt = now.addingTimeInterval(-60 * 86400)
         tracker.rules = [GoalRule(period: .deadline, target: "20", effectiveAt: tracker.createdAt, deadline: now.addingTimeInterval(86400))]
@@ -129,6 +134,10 @@ import Testing
             if background == .photo { tracker.entries[1].photos = tracker.photos! }
             let snapshot = try #require(CompletionEngine.snapshots(for: tracker, until: now).first)
             for language in ["en", "ja", "zh-Hant"] {
+                L.defaults.set(language, forKey: "language")
+                #expect(L.language == language)
+                #expect(L.text("Goal reached") == (language == "ja" ? "目標達成" : language == "zh-Hant" ? "目標達成" : "Goal reached"))
+                #expect(AchievementText.summary(snapshot).contains(AchievementText.date(snapshot)))
                 for scheme in [ColorScheme.light, .dark] {
                     let view = AchievementPoster(snapshot: snapshot, mapImage: background == .map ? sample : nil)
                         .frame(width: 320).environment(\.locale, Locale(identifier: language))

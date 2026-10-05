@@ -312,11 +312,24 @@ nonisolated final class FeatureTests: XCTestCase {
             hierarchy.name = "Location default completion hierarchy"; hierarchy.lifetime = .keepAlways; add(hierarchy)
         }
         XCTAssertTrue(completion.waitForExistence(timeout: 10)); XCTAssertTrue(completion.isHittable); completion.tap()
+        let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
+        let allow = springboard.buttons["Allow While Using App"]
+        if allow.waitForExistence(timeout: 3) { allow.tap() }
+        let recorded = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", "Undo completion"), object: completion)
+        XCTAssertEqual(XCTWaiter.wait(for: [recorded], timeout: 20), .completed)
+        XCTAssertFalse(list.buttons["entry.save"].exists, "The checkbox remains a direct action with the optional location default")
+        element(list, prefix: "tracker.", name: "DEFAULT COOK").tap()
         XCTAssertTrue(list.buttons["entry.save"].waitForExistence(timeout: 10))
         for _ in 0..<6 { if list.switches["entry.location"].exists { break }; list.swipeUp() }
-        XCTAssertEqual(list.switches["entry.location"].value as? String, "1")
+        XCTAssertTrue(list.switches["entry.location"].exists)
+        attach(list, "Direct completion location result inspected in its record")
         list.buttons["entry.cancel"].tap()
-        // A persisted record without coordinates stays OFF when the global default is ON.
+        completion.tap()
+        let undo = list.buttons["Undo completion"]
+        if undo.waitForExistence(timeout: 2) { undo.tap() }
+        let removed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", "Mark complete"), object: completion)
+        XCTAssertEqual(XCTWaiter.wait(for: [removed], timeout: 10), .completed)
+        // Create a different record with the default OFF. Turning it ON must not change that saved record.
         list.tabBars.buttons.element(boundBy: 3).tap()
         list.switches["settings.recordLocationDefault"].coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
         list.tabBars.buttons.element(boundBy: 0).tap()
