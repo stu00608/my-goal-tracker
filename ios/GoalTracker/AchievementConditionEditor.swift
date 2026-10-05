@@ -5,7 +5,9 @@ struct AchievementConditionEditor: View {
     @Binding var outerCombination: ConditionCombination
     @Binding var gateSave: Bool
     @State private var expanded: Set<UUID> = []
-    @State private var editing: ConditionEditorSelection?
+    @Binding var editing: ConditionEditorSelection?
+    @Binding var deleting: ConditionGroup?
+    @State private var initialized = false
 
     var body: some View {
         Section {
@@ -19,6 +21,12 @@ struct AchievementConditionEditor: View {
         } header: { Text(L.text("Achievement conditions")) } footer: {
             Text(L.text("New records and changes to a record’s number or date check the current conditions. Notes and photos can still be edited."))
         }
+        .onAppear {
+            guard !initialized else { return }
+            initialized = true
+            if groups.isEmpty { groups = [ConditionGroup()] }
+            if let first = groups.first { expanded.insert(first.id) }
+        }
         ForEach(Array(groups.enumerated()), id: \.element.id) { index, group in
             Section {
                 if flatExpanded { contents(group: group) }
@@ -28,10 +36,11 @@ struct AchievementConditionEditor: View {
                     } label: {
                         VStack(alignment: .leading, spacing: 4) {
                             Text(ConditionLabels.group(group, index: index))
+                                .accessibilityIdentifier("conditions.editor.group." + group.id.uuidString)
                             Text(ConditionLabels.combination(group.combination) + " · " + String(group.conditions.count))
                                 .font(.caption).foregroundStyle(.secondary)
                         }
-                    }.accessibilityIdentifier("conditions.editor.group." + group.id.uuidString)
+                    }
                 }
             } header: {
                 if flatExpanded { Text(ConditionLabels.group(group, index: index)) }
@@ -43,28 +52,15 @@ struct AchievementConditionEditor: View {
                 let group = ConditionGroup(); groups.append(group); expanded.insert(group.id)
             }.disabled(groups.count >= ConditionGroup.limit).accessibilityIdentifier("conditions.editor.addGroup")
         } footer: { Text(L.text("Up to 10 groups, with up to 10 conditions in each group.")) }
-        .onAppear {
-            if groups.isEmpty { groups = [ConditionGroup()] }
-            if expanded.isEmpty, let first = groups.first { expanded.insert(first.id) }
-        }
-        .sheet(item: $editing) { selection in
-            AchievementLeafEditor(existing: selection.condition, kind: selection.kind) { payload in
-                guard let group = groups.firstIndex(where: { $0.id == selection.groupID }) else { return }
-                if let old = selection.condition,
-                   let leaf = groups[group].conditions.firstIndex(where: { $0.id == old.id }) {
-                    groups[group].conditions[leaf].payload = payload
-                } else if groups[group].conditions.count < ConditionGroup.limit {
-                    groups[group].conditions.append(AchievementCondition(payload: payload))
-                }
-                expanded.insert(selection.groupID)
-            }
-        }
+
     }
     @ViewBuilder private func contents(group: ConditionGroup) -> some View {
-        TextField(L.text("Group name (optional)"), text: Binding(
-            get: { groups.first { $0.id == group.id }?.name ?? "" },
-            set: { value in if let index = groups.firstIndex(where: { $0.id == group.id }) { groups[index].name = value.isEmpty ? nil : value } }
-        )).accessibilityIdentifier("conditions.editor.name." + group.id.uuidString)
+        LabeledContent(L.text("Name")) {
+            TextField(L.text("Group name (optional)"), text: Binding(
+                get: { groups.first { $0.id == group.id }?.name ?? "" },
+                set: { value in if let index = groups.firstIndex(where: { $0.id == group.id }) { groups[index].name = value.isEmpty ? nil : value } }
+            )).multilineTextAlignment(.trailing).accessibilityIdentifier("conditions.editor.name." + group.id.uuidString)
+        }
         Picker(L.text("Combine conditions"), selection: Binding(
             get: { groups.first { $0.id == group.id }?.combination ?? .all },
             set: { value in if let index = groups.firstIndex(where: { $0.id == group.id }) { groups[index].combination = value } }
@@ -93,12 +89,17 @@ struct AchievementConditionEditor: View {
                     .accessibilityIdentifier("conditions.editor.add." + kind.rawValue)
             }
         } label: { Label(L.text("Add condition"), systemImage: "plus") }
+            .buttonStyle(.borderless)
             .disabled(group.conditions.count >= ConditionGroup.limit).accessibilityIdentifier("conditions.editor.addCondition." + group.id.uuidString)
         Button(L.text("Delete group"), role: .destructive) {
             guard groups.count > 1 else { return }
-            groups.removeAll { $0.id == group.id }; expanded.remove(group.id)
-            if groups.allSatisfy({ $0.conditions.isEmpty }) { gateSave = false }
-        }.disabled(groups.count <= 1).accessibilityIdentifier("conditions.editor.deleteGroup." + group.id.uuidString)
+            if group.conditions.isEmpty { delete(group: group) } else { deleting = group }
+        }.buttonStyle(.borderless).disabled(groups.count <= 1).accessibilityIdentifier("conditions.editor.deleteGroup." + group.id.uuidString)
+    }
+    private func delete(group: ConditionGroup) {
+        guard groups.count > 1 else { return }
+        groups.removeAll { $0.id == group.id }; expanded.remove(group.id)
+        if groups.allSatisfy({ $0.conditions.isEmpty }) { gateSave = false }
     }
     private func remove(condition: AchievementCondition, groupID: UUID) {
         guard let index = groups.firstIndex(where: { $0.id == groupID }) else { return }
@@ -117,13 +118,13 @@ struct AchievementConditionEditor: View {
     }
 }
 
-private struct ConditionEditorSelection: Identifiable {
+struct ConditionEditorSelection: Identifiable {
     let id = UUID()
     let groupID: UUID
     let condition: AchievementCondition?
     let kind: ConditionLeafKind
 }
-private enum ConditionLeafKind: String, Identifiable, CaseIterable {
+enum ConditionLeafKind: String, Identifiable, CaseIterable {
     case place, time, weekdays, steps, sleep
     var id: String { rawValue }
     var title: String {
@@ -134,7 +135,7 @@ private enum ConditionLeafKind: String, Identifiable, CaseIterable {
     }
 }
 
-private struct AchievementLeafEditor: View {
+struct AchievementLeafEditor: View {
     @Environment(\.dismiss) private var dismiss
     let existing: AchievementCondition?
     let kind: ConditionLeafKind
@@ -192,11 +193,24 @@ private struct AchievementLeafEditor: View {
     }
     private var weekdayFields: some View {
         Section {
-            ForEach(WeekdayOrder.days(starting: L.firstWeekday), id: \.self) { day in
-                Toggle(L.locale.calendar.weekdaySymbols[day - 1], isOn: Binding(
-                    get: { weekdays.contains(day) }, set: { if $0 { weekdays.insert(day) } else { weekdays.remove(day) } }
-                )).accessibilityIdentifier("condition.weekday.\(day)")
+            HStack(spacing: 0) {
+                ForEach(WeekdayOrder.days(starting: L.firstWeekday), id: \.self) { day in
+                    Button {
+                        if weekdays.contains(day) { weekdays.remove(day) } else { weekdays.insert(day) }
+                    } label: {
+                        Text(L.locale.calendar.veryShortStandaloneWeekdaySymbols[day - 1])
+                            .font(.body.weight(.medium)).lineLimit(1).minimumScaleFactor(0.5)
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .foregroundStyle(weekdays.contains(day) ? Color(uiColor: .systemBackground) : Color.primary)
+                            .background(weekdays.contains(day) ? TrackerColors.accent : .clear, in: Circle())
+                    }.buttonStyle(.borderless)
+                        .accessibilityLabel(L.locale.calendar.weekdaySymbols[day - 1])
+                        .accessibilityValue(L.text(weekdays.contains(day) ? "On" : "Off"))
+                        .accessibilityAddTraits(weekdays.contains(day) ? .isSelected : [])
+                        .accessibilityIdentifier("condition.weekday.\(day)")
+                }
             }
+            .accessibilityElement(children: .contain)
         } footer: { if weekdays.isEmpty { Text(L.text("Choose at least one weekday.")) } }
     }
     private var healthFields: some View {

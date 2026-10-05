@@ -32,6 +32,8 @@ struct TrackerEditor: View {
     @State private var loadingPhotos = false
     @State private var reminder: Reminder?
     @State private var groups: [ConditionGroup] = [ConditionGroup()]
+    @State private var editingCondition: ConditionEditorSelection?
+    @State private var deletingGroup: ConditionGroup?
     @State private var combination = ConditionCombination.any
     @State private var gateSave = false
     @State private var remindWhenMet = false
@@ -67,7 +69,7 @@ struct TrackerEditor: View {
                     CardPresentationEditor(textPosition: $textPosition, showLastRecorded: $showLastRecorded,
                                            ringStyle: $ringStyle, showsRing: cardBackground == .progress)
                 }
-                AchievementConditionEditor(groups: $groups, outerCombination: $combination, gateSave: $gateSave)
+                AchievementConditionEditor(groups: $groups, outerCombination: $combination, gateSave: $gateSave, editing: $editingCondition, deleting: $deletingGroup)
                 notificationsSection
             }
             .safeAreaInset(edge: .top, spacing: 0) {
@@ -88,7 +90,7 @@ struct TrackerEditor: View {
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(L.text("Cancel")) { endEditing(); photoTask?.cancel(); dismiss() }.disabled(busy)
+                    Button(L.text("Cancel")) { endEditing(); photoTask?.cancel(); dismiss() }.disabled(busy).accessibilityIdentifier("tracker.cancel")
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(L.text("Save"), action: save)
@@ -114,7 +116,25 @@ struct TrackerEditor: View {
             .fullScreenCover(item: $photoPresentation) { selection in
                 PhotoViewer(photos: selection.photos, initialIndex: selection.initialIndex)
             }
+            .confirmationDialog(L.text("Delete this group and its conditions?"), isPresented: Binding(get: { deletingGroup != nil }, set: { if !$0 { deletingGroup = nil } }), titleVisibility: .visible) {
+                Button(L.text("Delete group"), role: .destructive) {
+                    if let group = deletingGroup, groups.count > 1 { groups.removeAll { $0.id == group.id } }
+                    if groups.allSatisfy({ $0.conditions.isEmpty }) { gateSave = false }
+                    deletingGroup = nil
+                }
+            }
             .sheet(item: $photoRemoval) { removalSheet($0) }
+            .sheet(item: $editingCondition) { selection in
+                AchievementLeafEditor(existing: selection.condition, kind: selection.kind) { payload in
+                    guard let group = groups.firstIndex(where: { $0.id == selection.groupID }) else { return }
+                    if let old = selection.condition,
+                       let leaf = groups[group].conditions.firstIndex(where: { $0.id == old.id }) {
+                        groups[group].conditions[leaf].payload = payload
+                    } else if groups[group].conditions.count < ConditionGroup.limit {
+                        groups[group].conditions.append(AchievementCondition(payload: payload))
+                    }
+                }
+            }
 
         }
     }
@@ -284,8 +304,8 @@ struct TrackerEditor: View {
         PhotosPicker(selection: $selections, maxSelectionCount: max(1, Entry.photoLimit - photos.count),
                      selectionBehavior: .ordered, matching: .images, preferredItemEncoding: .current) {
             Label(L.text("Add photos"), systemImage: "plus")
-                .labelStyle(.titleAndIcon).frame(minHeight: 44)
-        }.buttonStyle(.borderless).disabled(loadingPhotos || photos.count == Entry.photoLimit)
+                .frame(minHeight: 44)
+        }.labelStyle(.titleAndIcon).buttonStyle(.borderless).disabled(loadingPhotos || photos.count == Entry.photoLimit)
             .simultaneousGesture(TapGesture().onEnded { endEditing() }).accessibilityIdentifier("tracker.photos")
     }
     private func photoTile(_ photo: DraftPhoto) -> some View {

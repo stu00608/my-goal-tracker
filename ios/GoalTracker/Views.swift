@@ -28,8 +28,8 @@ struct RootView: View {
                 }
             }.id(todayNavigationID).tabItem { Label(L.text("Today"), systemImage: "checkmark.circle") }.tag(0)
             NavigationStack { trackerList(today: false, at: date) }.id(goalsNavigationID).tabItem { Label(L.text("Goals"), systemImage: "chart.xyaxis.line") }.tag(1)
-            CompletedTab(trackers: store.trackers).tabItem { Label(L.text("Completed"), systemImage: "sparkles") }.tag(2)
-            SettingsView().tabItem { Label(L.text("Settings"), systemImage: "gearshape") }.tag(3)
+            CompletedTab(trackers: store.trackers, now: date).tabItem { Label(L.text("Completed tab"), systemImage: "sparkles") }.tag(2)
+            SettingsView(now: date).tabItem { Label(L.text("Settings"), systemImage: "gearshape") }.tag(3)
         }
         .environment(\.editMode, $editMode)
         .onChange(of: selected) { _, _ in gateNotice = nil }
@@ -79,7 +79,7 @@ struct RootView: View {
                                     TrackerSummary(tracker: tracker, now: date).frame(maxWidth: .infinity, alignment: .leading)
                                 }.buttonStyle(.borderless).accessibilityIdentifier("tracker." + tracker.id.uuidString)
                             } else {
-                                NavigationLink { TrackerDetail(id: tracker.id) } label: { TrackerSummary(tracker: tracker, now: date) }
+                                NavigationLink { TrackerDetail(id: tracker.id, now: date) } label: { TrackerSummary(tracker: tracker, now: date) }
                                     .accessibilityIdentifier("tracker." + tracker.id.uuidString)
                             }
                             if today && tracker.kind == .daily {
@@ -248,6 +248,7 @@ struct TrackerSummary: View {
 @MainActor struct TrackerDetail: View {
     @Environment(AppStore.self) private var store
     let id: UUID
+    let now: Date
     @State private var editing = false
     @State private var addEntry = false
     @State private var selectedEntry: Entry?
@@ -265,8 +266,6 @@ struct TrackerSummary: View {
     @AppStorage("firstWeekday", store: L.defaults) private var firstWeekday = 1
     private var tracker: Tracker? { store.trackers.first { $0.id == id } }
     var body: some View {
-        TimelineView(.everyMinute) { _ in
-        let now = Date()
         Group {
             if let t = tracker {
                 List {
@@ -375,7 +374,6 @@ struct TrackerSummary: View {
                     Button(L.text("Delete tracker"), role: .destructive) { store.perform { try store.remove(id) } }
                 }
             } else { ContentUnavailableView(L.text("Tracker removed"), systemImage: "archivebox") }
-        }
         }
     }
     private func completeManually(_ original: Tracker) {

@@ -193,7 +193,9 @@ nonisolated extension AchievementCondition {
             let value = String(argument.dropFirst("--condition-gate=".count))
             let state: ConditionState = value == "met" ? .met : value == "unmet" ? .unmet : .unknown
             var facts = ConditionFacts()
-            for condition in tracker.resolvedConditionGroups.flatMap(\.conditions) { facts.fixtureStates[condition.id] = state }
+            for condition in tracker.resolvedConditionGroups.flatMap(\.conditions) where condition.place != nil || condition.isHealth {
+                facts.fixtureStates[condition.id] = state
+            }
             return facts
         }
         #endif
@@ -201,6 +203,10 @@ nonisolated extension AchievementCondition {
     }
     static func checkLocation(tracker: Tracker) async throws -> CLLocation {
         try await ConditionFixRequest(tracker: tracker, facts: ConditionFacts(), precise: false).acquire()
+    }
+    static var hasLocationAuthorization: Bool {
+        let status = CLLocationManager().authorizationStatus
+        return status == .authorizedWhenInUse || status == .authorizedAlways
     }
     static func checkAuthorizedLocation(tracker: Tracker) async throws -> CLLocation? {
         try Task.checkCancellation()

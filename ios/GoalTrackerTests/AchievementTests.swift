@@ -205,7 +205,8 @@ struct AchievementTests {
         var t = tracker()
         t.timeZoneID = "Asia/Tokyo"
         t.cardBackground = .trackerPhoto
-        let image = UIGraphicsImageRenderer(size: CGSize(width: 900, height: 800)).image { context in
+        let format = UIGraphicsImageRendererFormat(); format.scale = 1
+        let image = UIGraphicsImageRenderer(size: CGSize(width: 900, height: 800), format: format).image { context in
             UIColor.systemTeal.setFill(); context.fill(CGRect(x: 0, y: 0, width: 900, height: 800))
         }
         t.photos = [try #require(image.jpegData(compressionQuality: 0.8))]
@@ -238,7 +239,7 @@ struct AchievementTests {
     @Test func flatExportCreatesRealImageAndPNGAndRequiresPreparedMap() throws {
         let snapshot = CompletionEngine.manualSnapshot(tracker: tracker(), now: now)
         #expect(snapshot.value == nil && snapshot.target == nil)
-        #expect(AchievementText.value(snapshot) == L.text("No snapshots"))
+        #expect(AchievementText.value(snapshot) == L.text("No recorded value"))
         let image = try #require(AchievementExport.image(snapshot: snapshot))
         #expect(image.size.width == 600 && image.size.height >= 750)
         let png = try #require(AchievementExport.png(snapshot: snapshot))

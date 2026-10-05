@@ -7,6 +7,7 @@ struct ConditionStatusView: View {
     @State private var request: Task<Void, Never>?
     @State private var generation = UUID()
     @State private var error: String?
+    @State private var locationAuthorized = RecordConditions.hasLocationAuthorization
 
     var body: some View {
         if tracker.requiresConditionGate {
@@ -26,7 +27,7 @@ struct ConditionStatusView: View {
                                 ForEach(group.conditions) { condition in
                                     if let leaf = result.leaves.first(where: { $0.id == condition.id }) {
                                         VStack(alignment: .leading, spacing: 4) {
-                                            statusRow(title: ConditionLabels.leaf(condition), state: leaf.state, loading: leaf.loading)
+                                            statusRow(title: ConditionLabels.leaf(condition), state: leaf.state, loading: leaf.loading, compact: true)
                                             if let detail = leaf.detail {
                                                 Text(L.text(detail)).font(.caption).foregroundStyle(.secondary)
                                             }
@@ -40,7 +41,7 @@ struct ConditionStatusView: View {
                                                         .font(.caption).foregroundStyle(.secondary)
                                                 }
                                             }
-                                        }.accessibilityElement(children: .combine)
+                                        }.padding(.leading, 12).accessibilityElement(children: .combine)
                                             .accessibilityIdentifier("conditions.leaf." + condition.id.uuidString)
                                     }
                                 }
@@ -55,7 +56,7 @@ struct ConditionStatusView: View {
                         Button(L.text("Connect Apple Health")) { refresh(connect: true) }
                             .buttonStyle(.borderless).disabled(request != nil).accessibilityIdentifier("conditions.connectHealth")
                     }
-                    if !tracker.resolvedConditions.isEmpty {
+                    if !tracker.resolvedConditions.isEmpty && !locationAuthorized {
                         Button(L.text("Check current location")) { refresh(location: true) }
                             .buttonStyle(.borderless).disabled(request != nil).accessibilityIdentifier("conditions.checkLocation")
                     }
@@ -73,14 +74,17 @@ struct ConditionStatusView: View {
             .onDisappear { stop() }
         }
     }
-    @ViewBuilder private func statusRow(title: String, state: ConditionState, loading: Bool) -> some View {
+    @ViewBuilder private func statusRow(title: String, state: ConditionState, loading: Bool, compact: Bool = false) -> some View {
         VStack(alignment: .leading, spacing: 3) {
             Text(title).foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true)
             if loading { ProgressView(L.text("Checking conditions…")) }
             else {
-                Label(L.text(state == .met ? "Conditions met" : state == .unmet ? "Conditions not met" : "Cannot determine yet"),
-                    systemImage: state == .met ? "checkmark.circle" : state == .unmet ? "xmark.circle" : "questionmark.circle")
-                    .font(.caption).foregroundStyle(state == .unmet ? Color.red : Color.secondary)
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Image(systemName: state == .met ? "checkmark.circle" : state == .unmet ? "xmark.circle" : "questionmark.circle")
+                        .accessibilityHidden(true)
+                    Text(L.text(compact ? (state == .met ? "Condition met" : state == .unmet ? "Condition not met" : "Condition unknown")
+                        : (state == .met ? "Conditions met" : state == .unmet ? "Conditions not met" : "Cannot determine yet")))
+                }.font(.caption).foregroundStyle(state == .unmet ? Color.red : Color.secondary)
             }
         }.accessibilityElement(children: .combine)
     }
@@ -89,7 +93,7 @@ struct ConditionStatusView: View {
         facts.loadingPlaces = false; facts.loadingHealth = []
     }
     private func refresh(connect: Bool = false, location: Bool = false, allHealth: Bool = false) {
-        stop(); error = nil
+        stop(); error = nil; locationAuthorized = RecordConditions.hasLocationAuthorization
         let token = generation
         let source = tracker
         if let fixture = RecordConditions.previewFixture(tracker: source) { facts = fixture; return }
@@ -101,7 +105,7 @@ struct ConditionStatusView: View {
         request = Task {
             var checkingLocation = false
             defer {
-                if generation == token { request = nil; facts.loadingHealth = []; facts.loadingPlaces = false }
+                if generation == token { request = nil; facts.loadingHealth = []; facts.loadingPlaces = false; locationAuthorized = RecordConditions.hasLocationAuthorization }
             }
             do {
                 if connect { try await HealthConditions.shared.connect(tracker: source) }

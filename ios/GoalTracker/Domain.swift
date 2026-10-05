@@ -366,8 +366,7 @@ nonisolated struct Backup: Codable, Equatable {
     private static func validateMetadata(_ t: Tracker, version: Int) throws {
         if version < 3 {
             guard t.conditionGroups == nil, t.outerCombination == nil, t.cardTextPosition == nil,
-                  t.showLastRecorded == nil, t.ringStyle == nil, t.lifecycle == nil, t.manualCompletion == nil,
-                  (t.conditions?.count ?? 0) <= 20 else { throw DataError.invalidBackup }
+                  t.showLastRecorded == nil, t.ringStyle == nil, t.lifecycle == nil, t.manualCompletion == nil else { throw DataError.invalidBackup }
         }
         guard (t.description?.count ?? 0) <= 10000,
               (t.photos?.count ?? 0) <= Entry.photoLimit,
@@ -383,7 +382,8 @@ nonisolated struct Backup: Codable, Equatable {
         if let lower = t.axisLower.flatMap(Numbers.decimal), let upper = t.axisUpper.flatMap(Numbers.decimal), lower >= upper {
             throw DataError.invalidBackup
         }
-        guard t.conditionGroups == nil || t.conditions == nil && t.conditionCombination == nil else { throw DataError.invalidBackup }
+        guard (t.conditions?.count ?? 0) <= 20,
+              t.conditionGroups == nil || t.conditions == nil && t.conditionCombination == nil else { throw DataError.invalidBackup }
         let groups = t.resolvedConditionGroups
         guard groups.count <= ConditionGroup.limit, Set(groups.map(\.id)).count == groups.count,
               groups.allSatisfy({ ($0.name?.count ?? 0) <= 120 && (1...ConditionGroup.limit).contains($0.conditions.count) }),

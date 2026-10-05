@@ -62,15 +62,16 @@ struct TrackerCardSurface<Backdrop: View>: View {
     @ViewBuilder var backdrop: () -> Backdrop
     @Environment(\.colorSchemeContrast) private var contrast
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .title2) private var accessibleRingHeight = 220
 
     var body: some View {
         TrackerCardLabel(row: row, now: now, locale: locale, text: text, showsDailyStatus: showsDailyStatus)
             .padding(CardLayout.textInset)
             .padding(.bottom, row.resolvedBackground == .map && !row.resolvedTextPosition.isTop ? 18 : 0)
-            .padding(.trailing, row.kind == .daily && !showsDailyStatus && row.resolvedTextPosition == .bottomTrailing ? 44 : 0)
+            .padding(.trailing, row.kind == .daily && !showsDailyStatus && !row.resolvedTextPosition.isTop ? 44 : 0)
             .frame(maxWidth: .infinity, maxHeight: fillsHeight ? .infinity : nil, alignment: row.resolvedTextPosition.alignment)
             .fixedSize(horizontal: false, vertical: !fillsHeight)
-            .frame(minHeight: row.resolvedBackground == .progress && dynamicTypeSize.isAccessibilitySize && !fillsHeight ? max(minimumHeight, 440) : minimumHeight,
+            .frame(minHeight: row.resolvedBackground == .progress && dynamicTypeSize.isAccessibilitySize && !fillsHeight ? max(minimumHeight, accessibleRingHeight) : minimumHeight,
                    alignment: row.resolvedTextPosition.alignment)
             .background {
                 GeometryReader { geometry in
@@ -127,13 +128,17 @@ struct TrackerCardLabel: View {
                 Text(text("Some records are outside chart bounds")).font(.caption2).lineLimit(compact ? 1 : 2)
             }
             if row.resolvedShowLastRecorded, let date = row.lastRecordedDate {
-                Text(text("Last recorded") + " " + date.formatted(Date.FormatStyle(locale: locale, calendar: row.tracker.calendar, timeZone: row.tracker.calendar.timeZone).month().day()))
+                Text(date.formatted(Date.FormatStyle(locale: locale, calendar: row.tracker.calendar, timeZone: row.tracker.calendar.timeZone).month().day()))
                     .font(.caption2).lineLimit(compact ? 1 : row.resolvedBackground == .progress ? 2 : nil)
             }
         }
         .multilineTextAlignment(position.textAlignment)
         .foregroundStyle(foreground)
         .shadow(color: hasImage ? (foregroundIsLight ? Color.black.opacity(0.45) : Color.white.opacity(0.5)) : .clear, radius: 1, y: 1)
+        .shadow(color: hasImage ? .clear : Color(uiColor: .secondarySystemGroupedBackground), radius: 0, x: -1.5)
+        .shadow(color: hasImage ? .clear : Color(uiColor: .secondarySystemGroupedBackground), radius: 0, x: 1.5)
+        .shadow(color: hasImage ? .clear : Color(uiColor: .secondarySystemGroupedBackground), radius: 0, y: -1.5)
+        .shadow(color: hasImage ? .clear : Color(uiColor: .secondarySystemGroupedBackground), radius: 0, y: 1.5)
     }
     private var dailyStatus: some View {
         Image(systemName: completed ? "checkmark.circle.fill" : "circle")
@@ -309,8 +314,8 @@ struct GoalProgressRing: View {
                 GeometryReader { geometry in
                     Text(value).font(.title2.weight(.semibold).monospacedDigit())
                         .foregroundStyle(.primary).multilineTextAlignment(.center)
-                        .lineLimit(2).minimumScaleFactor(0.35)
-                        .frame(width: geometry.size.width * 0.68, height: geometry.size.height * 0.48)
+                        .lineLimit(1).minimumScaleFactor(0.35)
+                        .frame(width: geometry.size.width * 0.82, height: geometry.size.height * 0.28)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }

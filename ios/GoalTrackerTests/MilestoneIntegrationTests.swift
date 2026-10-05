@@ -136,6 +136,7 @@ import Testing
             for language in ["en", "ja", "zh-Hant"] {
                 L.defaults.set(language, forKey: "language")
                 #expect(L.language == language)
+                #expect(L.text("Completed tab") == (language == "ja" ? "達成" : language == "zh-Hant" ? "完成" : "Completed"))
                 #expect(L.text("Goal reached") == (language == "ja" ? "目標達成" : language == "zh-Hant" ? "目標達成" : "Goal reached"))
                 #expect(AchievementText.summary(snapshot).contains(AchievementText.date(snapshot)))
                 for scheme in [ColorScheme.light, .dark] {
@@ -148,6 +149,7 @@ import Testing
                     Attachment.record(image, named: "poster-AX-\(background.rawValue)-\(language)-\(scheme).png", as: .png)
                     let export = try #require(AchievementExport.image(snapshot: snapshot, mapImage: background == .map ? sample : nil, colorScheme: scheme))
                     #expect(export.size.width == 600 && export.size.height >= 750)
+                    Attachment.record(export, named: "poster-export-\(background.rawValue)-\(language)-\(scheme).png", as: .png)
                 }
             }
         }

@@ -138,7 +138,7 @@ nonisolated final class ExpansionTests: XCTestCase {
         let office = button(app, prefix: "tracker.", text: "OFFICE")
         for _ in 0..<8 { if office.isHittable { break }; app.swipeUp() }
         office.tap(); app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
-        let condition = button(app, prefix: "tracker.condition.", text: "Office A")
+        let condition = button(app, prefix: "conditions.editor.leaf.", text: "Office A")
         for _ in 0..<12 { if condition.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(condition.waitForExistence(timeout: 10)); condition.tap()
         let map = app.descendants(matching: .any).matching(identifier: "condition.map").firstMatch
@@ -148,7 +148,7 @@ nonisolated final class ExpansionTests: XCTestCase {
         for _ in 0..<6 { if relation.isHittable { break }; app.swipeUp() }
         relation.buttons["Outside"].tap()
         app.buttons["condition.confirm"].tap()
-        let combination = app.buttons["tracker.conditions.combination"]
+        let combination = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "conditions.editor.combination.")).firstMatch
         XCTAssertTrue(combination.waitForExistence(timeout: 10)); combination.tap()
         app.buttons["All conditions"].tap()
         screenshot(app, "Multiple location conditions and ALL combination")
@@ -192,7 +192,7 @@ nonisolated final class ExpansionTests: XCTestCase {
                 let office = button(app, prefix: "tracker.", text: "OFFICE")
                 for _ in 0..<8 { if office.isHittable { break }; app.swipeUp() }
                 office.tap(); app.buttons["tracker.menu"].tap(); app.buttons[edit].tap()
-                let place = button(app, prefix: "tracker.condition.", text: "Office A")
+                let place = button(app, prefix: "conditions.editor.leaf.", text: "Office A")
                 for _ in 0..<18 { if place.isHittable { break }; app.swipeUp() }
                 XCTAssertTrue(place.waitForExistence(timeout: 10))
                 screenshot(app, "Tracker location conditions " + suffix)
@@ -210,7 +210,7 @@ nonisolated final class ExpansionTests: XCTestCase {
         let office = button(app, prefix: "tracker.", text: "OFFICE")
         for _ in 0..<8 { if office.isHittable { break }; app.swipeUp() }
         office.tap(); app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
-        let place = button(app, prefix: "tracker.condition.", text: "Office A")
+        let place = button(app, prefix: "conditions.editor.leaf.", text: "Office A")
         for _ in 0..<12 { if place.isHittable { break }; app.swipeUp() }
         place.tap()
         XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "condition.map").firstMatch.waitForExistence(timeout: 10))
@@ -243,7 +243,11 @@ nonisolated final class ExpansionTests: XCTestCase {
         conversion.buttons["entry.orphan.confirm"].firstMatch.tap()
         XCTAssertTrue(conversion.waitForNonExistence(timeout: 10), "Confirmation must dismiss the conversion alert")
         XCTAssertTrue(anchor.waitForNonExistence(timeout: 10))
+        // Reopen the detail after removal so a recycled List viewport cannot hide the retained row.
+        app.navigationBars["SCORE"].buttons["BackButton"].tap()
+        button(app, prefix: "tracker.", text: "SCORE").tap()
         let retained = button(app, prefix: "entry.", text: "Derived change")
+        for _ in 0..<12 { if retained.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(retained.waitForExistence(timeout: 10)); retained.tap()
         let display = app.descendants(matching: .any).matching(identifier: "entry.value.scrubber").firstMatch
         XCTAssertTrue(display.waitForExistence(timeout: 10)); display.tap()

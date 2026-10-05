@@ -154,6 +154,10 @@ nonisolated enum L {
                     score.showLastRecorded = !args.contains("--milestone-hide-date")
                     var check = Tracker(name: "CHECK", kind: .daily)
                     check.setFrequency(.weekly, target: 2, now: now)
+                    if args.contains("--milestone-long-checkbox") {
+                        check.name = "CHECK — 一週兩次 · long daily goal with no overlap"
+                        check.cardTextPosition = .bottomLeading
+                    }
                     var grouped = Tracker(name: "GROUPED", kind: .daily)
                     grouped.setFrequency(.weekly, target: 2, now: now)
                     grouped.conditionGroups = [

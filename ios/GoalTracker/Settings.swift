@@ -25,6 +25,7 @@ nonisolated struct ExportNameGenerator {
 }
 
 struct SettingsView: View {
+    let now: Date
     @Environment(AppStore.self) private var store
     @AppStorage("appearance") private var appearance = "system"
     @AppStorage("language") private var language = "system"
@@ -100,7 +101,7 @@ struct SettingsView: View {
                 }
                 if store.trackers.contains(where: \.archived) {
                     Section(L.text("Archived")) {
-                        ForEach(store.trackers.filter(\.archived)) { t in NavigationLink(t.name) { TrackerDetail(id: t.id) } }
+                        ForEach(store.trackers.filter(\.archived)) { t in NavigationLink(t.name) { TrackerDetail(id: t.id, now: now) } }
                     }
                 }
                 if let error { Section { Text(error).foregroundStyle(.red) } }
