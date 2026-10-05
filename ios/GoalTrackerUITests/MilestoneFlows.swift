@@ -112,13 +112,60 @@ nonisolated final class MilestoneFlows: XCTestCase {
         // A completed read must appear immediately, before the next minute-clock tick.
         let readResult = app.descendants(matching: .any).matching(NSPredicate(
             format: "identifier BEGINSWITH %@ AND (label CONTAINS %@ OR label CONTAINS %@ OR label CONTAINS %@ OR label CONTAINS %@)",
-            "conditions.leaf.", "Connect Apple Health to read", "No readable data for this period",
+            "conditions.leaf.", "Set up Apple Health", "No readable samples yet",
             "Could not read Apple Health data", "Apple Health is unavailable" )).firstMatch
         XCTAssertTrue(readResult.waitForExistence(timeout: 10), "Fresh async Health results must not wait for a minute tick")
-        reveal(app, app.buttons["conditions.connectHealth"])
-        XCTAssertTrue(app.buttons["conditions.connectHealth"].exists)
-        capture(app, "Readable Health unknown and explicit connection")
+        XCTAssertFalse(app.buttons["conditions.connectHealth"].exists)
+        XCTAssertFalse(app.buttons["conditions.refresh"].exists)
+        capture(app, "Health unknown without permanent connection or refresh actions")
         XCTAssertFalse(app.alerts.firstMatch.exists, "Opening a record must not implicitly request permission")
+    }
+    @MainActor func testHealthSetupConnectsDuringEditingAndRemovesObsoleteButton() {
+        for (language, dark, large) in [("en", false, false), ("ja", true, false), ("zh-Hant", true, true)] {
+            let app = launch(extra: ["--health-setup=needed"], language: language, dark: dark, large: large)
+            openGoal(app, "HEALTH")
+            app.buttons["tracker.menu"].tap()
+            app.buttons[language == "ja" ? "項目を編集" : language == "zh-Hant" ? "編輯追蹤項目" : "Edit tracker"].tap()
+            let connection = app.buttons["health.connect"]; reveal(app, connection)
+            capture(app, "Health connection belongs to tracker setup " + language)
+            connection.tap()
+            XCTAssertTrue(element(app, "health.configured").waitForExistence(timeout: 10))
+            XCTAssertFalse(connection.exists)
+            capture(app, "Configured health automatic readable data status " + language)
+            app.buttons["health.manage"].tap()
+            capture(app, "Health read access guidance " + language)
+            app.terminate()
+        }
+    }
+    @MainActor func testAccessibleHealthGuidanceUsesAvailableHeight() {
+        let app = launch(extra: ["--health-setup=configured"], dark: true, large: true)
+        openGoal(app, "HEALTH")
+        app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
+        let manage = app.buttons["health.manage"]; reveal(app, manage); manage.tap()
+        let title = app.navigationBars["Manage health access"]
+        XCTAssertTrue(title.waitForExistence(timeout: 10))
+        XCTAssertLessThan(title.frame.minY, app.frame.height * 0.25)
+        capture(app, "AX health access guidance opens at full available sheet height")
+    }
+    @MainActor func testToastDoesNotShiftGridAndIsDismissible() {
+        for language in ["en", "ja", "zh-Hant"] {
+            for dark in [false, true] {
+                let app = launch(extra: ["--condition-gate=unmet"], language: language, dark: dark, large: language == "zh-Hant")
+                let card = button(app, prefix: "card.", name: "GROUPED")
+                let action = button(app, prefix: "complete.", name: "GROUPED")
+                reveal(app, action); let before = card.frame
+                action.tap()
+                let toast = app.staticTexts["home.conditions.error"]
+                XCTAssertTrue(toast.waitForExistence(timeout: 10))
+                XCTAssertEqual(card.frame.minY, before.minY, accuracy: 1)
+                XCTAssertTrue(app.buttons["tracker.create"].isHittable, "Toast must not cover navigation")
+                capture(app, "Native toast without layout shift " + language + (dark ? " dark" : " light"))
+                app.buttons["home.conditions.error.dismiss"].tap()
+                XCTAssertFalse(toast.exists)
+                XCTAssertFalse(app.buttons["entry.save"].exists)
+                app.terminate()
+            }
+        }
     }
     @MainActor func testManualCompletionExportAndReopen() {
         let app = launch(extra: ["--milestone-compare-layout"], large: true)
@@ -320,12 +367,11 @@ nonisolated final class MilestoneFlows: XCTestCase {
         // Two real minute boundaries catch the observed native TimelineView/List layout loop.
         for _ in 0..<3 { RunLoop.current.run(until: Date().addingTimeInterval(41)) }
         let start = Date()
-        app.buttons["conditions.refresh"].tap()
-        XCTAssertLessThan(Date().timeIntervalSince(start), 5, "The form must remain responsive after timeline updates")
-        XCTAssertTrue(element(app, "conditions.overall").exists)
-        capture(app, "Condition preview after two real minute updates")
+        XCTAssertFalse(app.buttons["conditions.refresh"].exists)
         app.buttons["entry.cancel"].tap()
+        XCTAssertLessThan(Date().timeIntervalSince(start), 5, "The form must remain responsive after timeline updates")
         XCTAssertFalse(app.buttons["entry.save"].exists)
+        capture(app, "Condition preview remains cancellable after automatic minute updates")
     }
     @MainActor func testLocalizedDarkLargeCompletionAndPreferences() {
         for language in ["en", "ja", "zh-Hant"] {

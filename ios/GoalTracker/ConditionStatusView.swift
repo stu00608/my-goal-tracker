@@ -3,10 +3,15 @@ import SwiftUI
 struct ConditionStatusView: View {
     @Environment(\.scenePhase) private var scenePhase
     let tracker: Tracker
+    var onFailure: (String) -> Void = { _ in }
+    @State private var health = HealthConditions.shared
+    @State private var observerOwner = UUID()
+    @State private var refreshQueued = false
+    private var clockID: String { String(describing: scenePhase) + ConditionPlan.signature(tracker) }
+    private var healthKeys: Set<HealthFactKey> { Set(tracker.resolvedConditionGroups.flatMap(\.conditions).compactMap(\.healthKey)) }
     @State private var facts = ConditionFacts()
     @State private var request: Task<Void, Never>?
     @State private var generation = UUID()
-    @State private var error: String?
     @State private var locationAuthorized = RecordConditions.hasLocationAuthorization
 
     var body: some View {
@@ -54,25 +59,32 @@ struct ConditionStatusView: View {
                     if tracker.resolvedConditionGroups.flatMap(\.conditions).contains(where: \.isHealth) {
                         Text(L.text("Based on readable Apple Health data so far in this calendar period. Sleep is clipped to the period, not grouped by wake-up."))
                             .font(.caption).foregroundStyle(.secondary)
-                        Button(L.text("Connect Apple Health")) { refresh(connect: true) }
-                            .buttonStyle(.borderless).disabled(request != nil).accessibilityIdentifier("conditions.connectHealth")
                     }
-                    if !tracker.resolvedConditions.isEmpty && !locationAuthorized {
+                    if !tracker.resolvedConditions.isEmpty && (!locationAuthorized || facts.locationIssue != nil) {
                         Button(L.text("Check current location")) { refresh(location: true) }
                             .buttonStyle(.borderless).disabled(request != nil).accessibilityIdentifier("conditions.checkLocation")
                     }
-                    Button(L.text("Refresh conditions")) { refresh(allHealth: true) }
-                        .buttonStyle(.borderless).disabled(request != nil).accessibilityIdentifier("conditions.refresh")
-                    if let error { Text(error).font(.callout).foregroundStyle(.red).accessibilityIdentifier("conditions.error") }
                 }.padding(.vertical, 4)
             }
-            .onAppear { refresh() }
-            .onChange(of: ConditionPlan.signature(tracker)) { _, _ in facts = ConditionFacts(); refresh() }
-            .onChange(of: scenePhase) { _, phase in
-                if phase == .active { facts = ConditionFacts(); refresh() }
-                else { stop() }
+            .onAppear { start() }
+            .onChange(of: ConditionPlan.signature(tracker)) { _, _ in facts = ConditionFacts(); start() }
+            .onChange(of: health.revision) { _, _ in automaticRefresh() }
+            .task(id: clockID) {
+                guard scenePhase == .active else { return }
+                do {
+                    while !Task.isCancelled {
+                        let wait = 60 - Date().timeIntervalSince1970.truncatingRemainder(dividingBy: 60)
+                        try await Task.sleep(for: .seconds(wait))
+                        try Task.checkCancellation()
+                        automaticRefresh()
+                    }
+                } catch { }
             }
-            .onDisappear { stop() }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active { facts = ConditionFacts(); start() }
+                else { stop(); health.stopObserving(owner: observerOwner) }
+            }
+            .onDisappear { stop(); health.stopObserving(owner: observerOwner) }
         }
     }
     @ViewBuilder private func statusRow(title: String, state: ConditionState, loading: Bool, compact: Bool = false) -> some View {
@@ -85,31 +97,49 @@ struct ConditionStatusView: View {
                         .accessibilityHidden(true)
                     Text(L.text(compact ? (state == .met ? "Condition met" : state == .unmet ? "Condition not met" : "Condition unknown")
                         : (state == .met ? "Conditions met" : state == .unmet ? "Conditions not met" : "Cannot determine yet")))
-                }.font(.caption).foregroundStyle(state == .unmet ? Color.red : Color.secondary)
+                }.font(.caption).foregroundStyle(Color.secondary)
             }
         }.accessibilityElement(children: .combine)
     }
+    private func start() {
+        guard scenePhase == .active else { return }
+        health.observe(keys: healthKeys, owner: observerOwner)
+        refresh(allHealth: true)
+    }
+    private func automaticRefresh() {
+        guard scenePhase == .active else { return }
+        if request != nil { refreshQueued = true; return }
+        refresh(allHealth: true)
+    }
     private func stop() {
-        generation = UUID(); request?.cancel(); request = nil
+        generation = UUID(); request?.cancel(); request = nil; refreshQueued = false
         facts.loadingPlaces = false; facts.loadingHealth = []
     }
-    private func refresh(connect: Bool = false, location: Bool = false, allHealth: Bool = false) {
-        stop(); error = nil; locationAuthorized = RecordConditions.hasLocationAuthorization
+    private func refresh(location: Bool = false, allHealth: Bool = false) {
+        stop(); locationAuthorized = RecordConditions.hasLocationAuthorization
         let token = generation
         let source = tracker
         if let fixture = RecordConditions.previewFixture(tracker: source) { facts = fixture; return }
-        let needed = allHealth || connect ? source.resolvedConditionGroups.flatMap(\.conditions)
+        let needed = allHealth ? source.resolvedConditionGroups.flatMap(\.conditions)
             : ConditionEvaluation.neededLeaves(tracker: source, facts: facts, now: Date())
         let keys = Set(needed.compactMap(\.healthKey))
-        facts.loadingHealth = keys
+        let instant = Date()
+        facts.loadingHealth = Set(keys.filter { key in
+            guard let fact = facts.health[key] else { return true }
+            return fact.start != HealthConditionEvaluation.start(window: key.window, calendar: source.calendar, now: instant)
+                || !(0...300).contains(instant.timeIntervalSince(fact.through))
+        })
         facts.loadingPlaces = location
         request = Task {
             var checkingLocation = false
             defer {
-                if generation == token { request = nil; facts.loadingHealth = []; facts.loadingPlaces = false; locationAuthorized = RecordConditions.hasLocationAuthorization }
+                if generation == token {
+                    request = nil; facts.loadingHealth = []; facts.loadingPlaces = false
+                    locationAuthorized = RecordConditions.hasLocationAuthorization
+                    if refreshQueued { refreshQueued = false; automaticRefresh() }
+                }
             }
             do {
-                if connect { try await HealthConditions.shared.connect(tracker: source) }
                 let health = try await HealthConditions.shared.read(keys: keys, tracker: source, now: Date())
                 try Task.checkCancellation()
                 guard generation == token else { return }
@@ -120,7 +150,7 @@ struct ConditionStatusView: View {
                     try Task.checkCancellation()
                     guard generation == token else { return }
                     facts.fix = fix; facts.locationIssue = nil
-                } else if ConditionEvaluation.canVerifyWithLocation(tracker: source, facts: facts, now: Date()) {
+                } else if facts.locationIssue == nil && ConditionEvaluation.canVerifyWithLocation(tracker: source, facts: facts, now: Date()) {
                     checkingLocation = true
                     facts.loadingPlaces = true
                     if let fix = try await RecordConditions.checkAuthorizedLocation(tracker: source) {
@@ -133,7 +163,7 @@ struct ConditionStatusView: View {
             catch {
                 guard generation == token else { return }
                 if checkingLocation { facts.fix = nil; facts.locationIssue = (error as? ConditionError)?.key }
-                self.error = L.error(error)
+                if location { onFailure(L.error(error)) }
             }
         }
     }

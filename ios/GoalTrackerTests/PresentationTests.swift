@@ -1,10 +1,41 @@
 import Testing
 import SwiftUI
 import UIKit
+import MapKit
 @testable import GoalTracker
 
 @MainActor struct PresentationTests {
     private let now = ISO8601DateFormatter().date(from: "2024-03-10T12:00:00Z")!
+
+    @Test func mapPositionsResolveLegacyBottomWithoutMutatingSavedPreference() {
+        #expect(CardTextPosition.available(for: .map) == [.topLeading, .topTrailing, .hidden])
+        var tracker = Tracker(name: "MAP", kind: .daily, cardBackground: .map)
+        for (saved, expected) in [(CardTextPosition.bottomLeading, CardTextPosition.topLeading), (.bottomTrailing, .topTrailing), (.hidden, .hidden)] {
+            tracker.cardTextPosition = saved
+            #expect(WidgetRow(tracker, now: now).resolvedTextPosition == expected)
+            #expect(tracker.cardTextPosition == saved)
+            tracker.cardBackground = .plot
+            #expect(WidgetRow(tracker, now: now).resolvedTextPosition == saved)
+            tracker.cardBackground = .map
+        }
+    }
+
+    @Test func mapFramingKeepsPinsBelowCopyAndRetainsEveryLocation() throws {
+        let locations = [RecordedLocation(latitude: 35.68, longitude: 139.76),
+                         RecordedLocation(latitude: 35.69, longitude: 139.77)]
+        let hidden = try #require(CardMapFraming.rect(locations: locations, textPosition: .hidden))
+        for position in [CardTextPosition.topLeading, .topTrailing] {
+            let frame = try #require(CardMapFraming.rect(locations: locations, textPosition: position))
+            for location in locations {
+                #expect(frame.contains(MKMapPoint(CLLocationCoordinate2D(latitude: location.latitude, longitude: location.longitude))))
+            }
+            let y = (hidden.midY - frame.minY) / frame.height
+            let x = (hidden.midX - frame.minX) / frame.width
+            #expect(y > 0.65 && y < 0.75)
+            #expect(position == .topLeading ? x > 0.6 : x < 0.4)
+        }
+        #expect(CardMapFraming.rect(locations: [], textPosition: .topLeading) == nil)
+    }
 
     @Test(arguments: ["en", "ja", "zh-Hant"])
     func ringCenterKeepsTrueFractionAndHiddenTextKeepsFullSummary(language: String) throws {
@@ -85,7 +116,7 @@ import UIKit
                         } else {
                             TrackerCardLabel(row: row, now: now, locale: locale, text: { $0 }, compact: true, monochrome: monochrome)
                                 .padding(CardLayout.textInset)
-                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: position.alignment)
+                                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: row.resolvedTextPosition.alignment)
                         }
                     }.frame(width: 172, height: 172)
                         .background(Color(uiColor: .secondarySystemGroupedBackground))

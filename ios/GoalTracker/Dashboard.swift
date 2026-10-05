@@ -13,6 +13,7 @@ struct DashboardView: View {
     @AppStorage("recordLocationByDefault", store: L.defaults) private var recordLocationByDefault = false
     @AppStorage("homeLayout") private var homeLayout = "grid"
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @ScaledMetric(relativeTo: .title2) private var dailyControlTextInset = 32
     private var active: [Tracker] { trackers.filter { !$0.archived } }
     private var grid: Bool { homeLayout != "list" && !dynamicTypeSize.isAccessibilitySize }
 
@@ -34,7 +35,7 @@ struct DashboardView: View {
         return Button { onRecord(tracker) } label: {
             TrackerCardSurface(row: row, now: now, locale: L.locale, text: L.text, minimumHeight: grid ? 0 : 164, fillsHeight: grid, showsDailyStatus: false) {
                 if row.resolvedBackground == .map, let locations = row.locations, !locations.isEmpty {
-                    Map(interactionModes: []) {
+                    Map(position: .constant(.rect(CardMapFraming.rect(locations: locations, textPosition: row.resolvedTextPosition) ?? .world)), interactionModes: []) {
                         ForEach(Array(locations.enumerated()), id: \.offset) { _, location in
                             Marker(tracker.name, coordinate: CLLocationCoordinate2D(latitude: location.latitude, longitude: location.longitude)).annotationTitles(.hidden)
                         }
@@ -47,22 +48,26 @@ struct DashboardView: View {
         .buttonStyle(.plain)
         .accessibilityHint(L.text("Record progress"))
         .accessibilityIdentifier("card." + tracker.id.uuidString)
-        .overlay(alignment: .bottomTrailing) {
+        .overlayPreferenceValue(DailyControlAnchor.self) { anchor in
             if tracker.kind == .daily {
-                DailyCompletionButton(tracker: tracker, now: now,
-                    recordLocationByDefault: recordLocationByDefault,
-                    cancelForPresentation: cancelForPresentation,
-                    onEditor: onRecord, onBegin: onBegin, onFailure: onFailure)
-                    .tint(completionTint(row))
-                    .padding(.trailing, CardLayout.dailyControlInset)
-                    .padding(.bottom, CardLayout.dailyControlInset + (row.resolvedBackground == .map && row.locations?.isEmpty == false ? 18 : 0))
+                GeometryReader { geometry in
+                    let bounds = anchor.map { geometry[$0] }
+                    let fallbackY: CGFloat = row.resolvedBackground == .map ? 28 : geometry.size.height - 28
+                    DailyCompletionButton(tracker: tracker, now: now,
+                        recordLocationByDefault: recordLocationByDefault,
+                        cancelForPresentation: cancelForPresentation,
+                        onEditor: onRecord, onBegin: onBegin, onFailure: onFailure)
+                        .tint(completionTint(row))
+                        .position(x: bounds.map { $0.maxX - dailyControlTextInset / 2 + 2 } ?? geometry.size.width - 28,
+                                  y: bounds?.midY ?? fallbackY)
+                }
             }
         }
         .modifier(TrackerReorderInteraction(id: tracker.id, active: active, onReorder: onReorder))
     }
     private func completionTint(_ row: WidgetRow) -> Color {
         guard row.hasPhoto, let thumbnail = row.thumbnail else { return TrackerColors.accent }
-        return CardImageContrast.prefersLightText(thumbnail, position: .bottomTrailing) ? .white : .black
+        return CardImageContrast.prefersLightText(thumbnail, position: row.resolvedTextPosition) ? .white : .black
     }
 }
 

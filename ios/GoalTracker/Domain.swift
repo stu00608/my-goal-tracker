@@ -6,7 +6,16 @@ nonisolated enum Direction: String, Codable, CaseIterable { case up, down }
 nonisolated enum Period: String, Codable, CaseIterable { case weekly, monthly, deadline }
 nonisolated enum NumericEntryError: Error, Equatable { case missingBaseline, orphanedChange(UUID) }
 
-nonisolated enum CardTextPosition: String, Codable, CaseIterable { case topLeading, topTrailing, bottomLeading, bottomTrailing, hidden }
+nonisolated enum CardTextPosition: String, Codable, CaseIterable {
+    case topLeading, topTrailing, bottomLeading, bottomTrailing, hidden
+    static func available(for background: CardBackground) -> [Self] {
+        background == .map ? [.topLeading, .topTrailing, .hidden] : allCases
+    }
+    func resolved(for background: CardBackground) -> Self {
+        guard background == .map else { return self }
+        switch self { case .bottomLeading: return .topLeading; case .bottomTrailing: return .topTrailing; default: return self }
+    }
+}
 nonisolated enum RingProgressStyle: String, Codable, CaseIterable { case percent, fraction }
 nonisolated enum TrackingLifecycle: String, Codable, CaseIterable { case ongoing, finite }
 nonisolated enum WeekdayOrder {

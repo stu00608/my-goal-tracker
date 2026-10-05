@@ -70,7 +70,7 @@ struct EntryEditor: View {
                     .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
                     .disabled(saving)
                 if currentTracker.requiresConditionGate {
-                    Section(L.text("Achievement conditions")) { ConditionStatusView(tracker: currentTracker) }
+                    Section(L.text("Achievement conditions")) { ConditionStatusView(tracker: currentTracker, onFailure: { error = $0 }) }
                 }
                 Section {
                     DatePicker(L.text("Date"), selection: Binding(get: { date }, set: { endEditing(); date = $0; dateEdited = true }), in: ...Date(), displayedComponents: tracker.kind == .number ? [.date, .hourAndMinute] : [.date])
@@ -102,17 +102,7 @@ struct EntryEditor: View {
                     Section { Button(L.text("Delete record"), role: .destructive) { deleting = true }.accessibilityIdentifier("entry.delete").disabled(saving) }
                 }
             }
-            .safeAreaInset(edge: .top, spacing: 0) {
-                if let error {
-                    Text(error).font(.callout).foregroundStyle(.red)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal).padding(.vertical, 8).background(.background)
-                        .accessibilityIdentifier("editor.error")
-                }
-            }
-            .onChange(of: error) { _, message in
-                if let message { UIAccessibility.post(notification: .announcement, argument: message) }
-            }
+            .statusToast(message: $error, identifier: "editor.error", autoDismiss: false)
             .scrollDismissesKeyboard(.interactively)
             .background(EditorKeyboardDismissal(keyboard: keyboard) { valueFocused = false; noteFocused = false })
             .background(EditorDismissalObserver(onDismiss: stopRequests))

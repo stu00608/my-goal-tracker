@@ -1,5 +1,6 @@
 import SwiftUI
 import Charts
+import MapKit
 
 // Native semantic roles shared by the app and Widget, with a readable teal on light surfaces.
 enum TrackerColors {
@@ -44,6 +45,36 @@ extension CardTextPosition {
     }
 }
 
+/// Full-surface camera framing shared by Today and Widget snapshots.
+nonisolated enum CardMapFraming {
+    static func rect(locations: [RecordedLocation], textPosition: CardTextPosition) -> MKMapRect? {
+        var bounds = MKMapRect.null
+        for location in locations where location.isValid {
+            let point = MKMapPoint(CLLocationCoordinate2D(latitude: location.latitude, longitude: location.longitude))
+            guard point.x.isFinite && point.y.isFinite else { continue }
+            let radius = 500 / max(MKMetersPerMapPointAtLatitude(location.latitude), 0.01)
+            bounds = bounds.union(MKMapRect(x: point.x - radius, y: point.y - radius,
+                                          width: radius * 2, height: radius * 2))
+        }
+        guard !bounds.isNull else { return nil }
+        let framed = bounds.insetBy(dx: -bounds.width * 0.15, dy: -bounds.height * 0.15)
+        guard textPosition != .hidden else { return framed }
+        // Expand the camera toward the copy; pins move below it and toward the opposite side.
+        // The map still fills every pixel, without a blank inset or an extra container.
+        let top = framed.height * 0.65, side = framed.width * 0.35
+        let leading = textPosition == .topLeading || textPosition == .bottomLeading
+        return MKMapRect(x: framed.minX - (leading ? side : 0), y: framed.minY - top,
+                         width: framed.width + side, height: framed.height + top)
+    }
+}
+
+struct DailyControlAnchor: PreferenceKey {
+    static var defaultValue: Anchor<CGRect>? { nil }
+    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
+        if let next = nextValue() { value = next }
+    }
+}
+
 enum CardLayout {
     static let plotInset: CGFloat = 14
     static let textInset: CGFloat = 14
@@ -76,9 +107,10 @@ struct TrackerCardSurface<Backdrop: View>: View {
                 .frame(minHeight: dynamicTypeSize.isAccessibilitySize && !fillsHeight ? max(minimumHeight, accessibleRingHeight) : minimumHeight)
             } else {
                 TrackerCardLabel(row: row, now: now, locale: locale, text: text, showsDailyStatus: showsDailyStatus,
-                                     reservesDailyControl: row.kind == .daily && !showsDailyStatus && !row.resolvedTextPosition.isTop)
+                                     reservesDailyControl: row.kind == .daily && !showsDailyStatus)
                     .padding(CardLayout.textInset)
-                    .padding(.bottom, row.resolvedBackground == .map && !row.resolvedTextPosition.isTop ? 18 : 0)
+                    // AX lists grow downward; leave native map attribution clear without moving upper copy.
+                    .padding(.bottom, row.resolvedBackground == .map && dynamicTypeSize.isAccessibilitySize ? 28 : 0)
                     .frame(maxWidth: .infinity, maxHeight: fillsHeight ? .infinity : nil, alignment: row.resolvedTextPosition.alignment)
                     .fixedSize(horizontal: false, vertical: !fillsHeight)
                     .frame(minHeight: minimumHeight, alignment: row.resolvedTextPosition.alignment)
@@ -144,6 +176,7 @@ struct TrackerCardLabel: View {
                         .accessibilityIdentifier("progress." + row.id.uuidString)
                     if row.kind == .daily && showsDailyStatus { dailyStatus }
                 }.padding(.trailing, reservesDailyControl ? dailyControlTextInset : 0)
+                    .anchorPreference(key: DailyControlAnchor.self, value: .bounds) { reservesDailyControl ? $0 : nil }
             } else if row.kind == .daily && showsDailyStatus { dailyStatus }
             if row.kind != .daily || row.resolvedBackground == .progress { recordedDate }
         }

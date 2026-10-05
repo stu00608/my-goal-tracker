@@ -104,13 +104,13 @@ struct SettingsView: View {
                         ForEach(store.trackers.filter(\.archived)) { t in NavigationLink(t.name) { TrackerDetail(id: t.id, now: now) } }
                     }
                 }
-                if let error { Section { Text(error).foregroundStyle(.red) } }
                 Section(L.text("About")) {
                     Text(L.text("Goalooker - 過路客")).font(.headline)
                     Text(L.text("Small daily steps leave a visible trace. Explore your own orbit, one record at a time."))
                         .font(.footnote).foregroundStyle(TrackerColors.secondaryText)
                 }
             }
+            .statusToast(message: $error, identifier: "settings.error", autoDismiss: false)
             .navigationTitle(L.text("Settings"))
             .onChange(of: remindersEnabled) { _, enabled in
                 Task {

@@ -123,6 +123,7 @@ import Testing
         let less = HealthThreshold(comparison: .less, threshold: "5000", window: .day)
         #expect(HealthConditionEvaluation.compare(Decimal(5000), threshold: less, metric: .steps) == .unmet)
         #expect(HealthConditionEvaluation.compare(nil, threshold: less, metric: .steps) == .unknown)
+        #expect(HealthConditionEvaluation.compare(Decimal.zero, threshold: less, metric: .steps) == .met)
         let sleep = HealthThreshold(comparison: .less, threshold: "8.000000000000001", window: .week)
         #expect(HealthConditionEvaluation.compare(Decimal(28_800), threshold: sleep, metric: .sleep) == .met)
         for bad in [Double.nan, .infinity, -1] { #expect(HealthConditionEvaluation.quantity(bad) == nil) }

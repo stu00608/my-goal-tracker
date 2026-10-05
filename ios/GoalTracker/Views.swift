@@ -19,23 +19,15 @@ struct RootView: View {
     private func screen(at date: Date) -> some View {
         TabView(selection: $selected) {
             NavigationStack {
-                trackerList(today: true, at: date).safeAreaInset(edge: .top, spacing: 0) {
-                    if let gateNotice {
-                        Text(gateNotice).font(.callout).foregroundStyle(.red)
-                            .frame(maxWidth: .infinity, alignment: .leading).padding().background(.background)
-                            .accessibilityIdentifier("home.conditions.error")
-                    }
-                }
+                trackerList(today: true, at: date)
+                    .statusToast(message: statusMessage, identifier: "home.conditions.error", autoDismiss: store.error == nil)
             }.id(todayNavigationID).tabItem { Label(L.text("Today"), systemImage: "checkmark.circle") }.tag(0)
-            NavigationStack { trackerList(today: false, at: date) }.id(goalsNavigationID).tabItem { Label(L.text("Goals"), systemImage: "chart.xyaxis.line") }.tag(1)
+            NavigationStack { trackerList(today: false, at: date).statusToast(message: statusMessage, identifier: "home.conditions.error", autoDismiss: store.error == nil) }.id(goalsNavigationID).tabItem { Label(L.text("Goals"), systemImage: "chart.xyaxis.line") }.tag(1)
             CompletedTab(trackers: store.trackers, now: date).tabItem { Label(L.text("Completed tab"), systemImage: "sparkles") }.tag(2)
             SettingsView(now: date).tabItem { Label(L.text("Settings"), systemImage: "gearshape") }.tag(3)
         }
         .environment(\.editMode, $editMode)
         .onChange(of: selected) { _, _ in gateNotice = nil }
-        .onChange(of: gateNotice) { _, notice in
-            if let notice { UIAccessibility.post(notification: .announcement, argument: notice) }
-        }
         .task(id: store.trackers) {
             do { try await Reminders.sync(store.trackers) }
             catch is CancellationError { }
@@ -51,9 +43,10 @@ struct RootView: View {
         }
         .sheet(isPresented: $creating) { TrackerEditor() }
         .sheet(item: $entryTracker) { t in EntryEditor(tracker: t, existing: t.entries.first { $0.localDay == t.day(Date()) && t.kind == .daily }) }
-        .alert(L.text("Action failed"), isPresented: Binding(get: { store.error != nil }, set: { if !$0 { store.error = nil } })) {
-            Button(L.text("OK"), role: .cancel) { store.error = nil }
-        } message: { Text(store.error ?? "") }
+
+    }
+    private var statusMessage: Binding<String?> {
+        Binding(get: { gateNotice ?? store.error }, set: { value in gateNotice = value; if value == nil { store.error = nil } })
     }
     private func trackerList(today: Bool, at date: Date) -> some View {
         let active = store.trackers.filter { !$0.archived }
@@ -332,6 +325,7 @@ struct TrackerSummary: View {
                         Button(L.text("Delete tracker"), role: .destructive) { deleteTracker = true }
                     }
                 }
+                .statusToast(message: Binding(get: { store.error }, set: { store.error = $0 }), identifier: "detail.error", autoDismiss: false)
                 .navigationTitle(t.name).navigationBarTitleDisplayMode(.inline)
                 .environment(\.timeZone, t.calendar.timeZone)
                 .environment(\.calendar, t.calendar)

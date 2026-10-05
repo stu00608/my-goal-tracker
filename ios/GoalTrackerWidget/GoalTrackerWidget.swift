@@ -89,26 +89,20 @@ struct Provider: AppIntentTimelineProvider {
         if let row = entry.row, row.resolvedBackground == .map {
             let locations = Array((row.locations ?? []).filter(\.isValid).suffix(24))
             if !locations.isEmpty {
-                async let light = mapImage(locations, dark: false)
-                async let dark = mapImage(locations, dark: true)
+                async let light = mapImage(locations, textPosition: row.resolvedTextPosition, dark: false)
+                async let dark = mapImage(locations, textPosition: row.resolvedTextPosition, dark: true)
                 entry.mapImages[row.id] = await CardMapImages(light: light, dark: dark)
             }
         }
         return entry
     }
-    @MainActor private func mapImage(_ locations: [RecordedLocation], dark: Bool) async -> Data? {
+    @MainActor private func mapImage(_ locations: [RecordedLocation], textPosition: CardTextPosition, dark: Bool) async -> Data? {
         let options = MKMapSnapshotter.Options()
         options.size = CGSize(width: 320, height: 320)
         options.traitCollection = UITraitCollection(userInterfaceStyle: dark ? .dark : .light)
         options.pointOfInterestFilter = .excludingAll
-        var rect = MKMapRect.null
-        for location in locations {
-            let point = MKMapPoint(CLLocationCoordinate2D(latitude: location.latitude, longitude: location.longitude))
-            guard point.x.isFinite && point.y.isFinite else { return nil }
-            let radius = 500 / max(MKMetersPerMapPointAtLatitude(location.latitude), 0.01)
-            rect = rect.union(MKMapRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2))
-        }
-        options.mapRect = rect.insetBy(dx: -rect.width * 0.15, dy: -rect.height * 0.15)
+        guard let rect = CardMapFraming.rect(locations: locations, textPosition: textPosition) else { return nil }
+        options.mapRect = rect
         let snapshotter = MKMapSnapshotter(options: options)
         // A failed/offline preview must not hold up the entire Widget timeline.
         let timeout = Task { @MainActor in
@@ -157,7 +151,6 @@ struct GoalWidgetView: View {
                         TrackerCardLabel(row: row, now: entry.date, locale: locale, text: text, compact: true, monochrome: monochrome)
                             .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                             .padding(CardLayout.textInset)
-                            .padding(.bottom, row.resolvedBackground == .map && !monochrome && !row.resolvedTextPosition.isTop ? 18 : 0)
                             .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: row.resolvedTextPosition.alignment)
                     }
                 } else {
@@ -180,7 +173,7 @@ struct GoalWidgetView: View {
             let data = photo ? row.thumbnail : colorScheme == .dark ? images?.dark : images?.light
             if let data, let image = UIImage(data: data) {
                 if #available(iOS 18, *) {
-                    if photo && renderingMode == .accented {
+                    if renderingMode == .accented {
                         GeometryReader { geometry in
                             Image(uiImage: CardAccentedPhoto.make(image, size: geometry.size, position: row.resolvedTextPosition, increasedContrast: contrast == .increased))
                                 .renderingMode(.original).resizable().widgetAccentedRenderingMode(.fullColor)

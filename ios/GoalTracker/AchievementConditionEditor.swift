@@ -163,8 +163,8 @@ struct AchievementLeafEditor: View {
                     case .steps, .sleep: healthFields
                     case .place: EmptyView()
                     }
-                    if let error { Section { Text(error).foregroundStyle(.red).accessibilityIdentifier("condition.error") } }
                 }
+                .statusToast(message: $error, identifier: "condition.error")
                 .scrollDismissesKeyboard(.interactively)
                 .background(EditorKeyboardDismissal(keyboard: keyboard, dismiss: { keyboard.dismiss(); numberFocused = false }))
                 .navigationTitle(L.text(kind.title)).navigationBarTitleDisplayMode(.inline)
@@ -227,6 +227,7 @@ struct AchievementLeafEditor: View {
             Picker(L.text("Calendar period"), selection: $window) {
                 ForEach(HealthWindow.allCases, id: \.self) { Text(ConditionLabels.window($0)).tag($0) }
             }.accessibilityIdentifier("condition.health.window")
+            HealthConnectionView(keys: [HealthFactKey(metric: kind == .sleep ? .sleep : .steps, window: window)], onFailure: { error = $0 })
         } footer: {
             Text(L.text("Strict comparison: equality does not meet the condition. Uses readable Apple Health data from the calendar period’s start through now."))
         }

@@ -5,12 +5,13 @@ struct CardPresentationEditor: View {
     @Binding var textPosition: CardTextPosition
     @Binding var showLastRecorded: Bool
     @Binding var ringStyle: RingProgressStyle
-    let showsRing: Bool
+    let background: CardBackground
+    private var showsRing: Bool { background == .progress }
 
     var body: some View {
         if !showsRing {
-            Picker(L.text("Card text position"), selection: $textPosition) {
-                ForEach(CardTextPosition.allCases, id: \.self) { position in
+            Picker(L.text("Card text position"), selection: Binding(get: { textPosition.resolved(for: background) }, set: { textPosition = $0 })) {
+                ForEach(CardTextPosition.available(for: background), id: \.self) { position in
                     Text(L.text(position.labelKey)).tag(position)
                 }
             }

@@ -116,12 +116,12 @@ nonisolated enum ConditionEvaluation {
             let key = HealthFactKey(metric: condition.isSleep ? .sleep : .steps, window: threshold.window)
             guard let fact = facts.health[key] else {
                 return ConditionLeafStatus(id: condition.id, state: .unknown, loading: facts.loadingHealth.contains(key),
-                    detail: facts.loadingHealth.contains(key) ? nil : "Connect Apple Health or refresh to read this period’s data.")
+                    detail: facts.loadingHealth.contains(key) ? nil : "Health data updates automatically. Set up access in this tracker’s settings.")
             }
             guard let start = HealthConditionEvaluation.start(window: key.window, calendar: tracker.calendar, now: now),
                   start == fact.start, (0...300).contains(now.timeIntervalSince(fact.through)) else {
                 return ConditionLeafStatus(id: condition.id, state: .unknown, loading: facts.loadingHealth.contains(key),
-                    detail: facts.loadingHealth.contains(key) ? nil : "Health data needs refreshing for the current period.")
+                    detail: facts.loadingHealth.contains(key) ? nil : "Updating health data for the current period…")
             }
             return ConditionLeafStatus(id: condition.id, state: HealthConditionEvaluation.compare(fact.value, threshold: threshold, metric: key.metric),
                 loading: facts.loadingHealth.contains(key), detail: fact.issue,

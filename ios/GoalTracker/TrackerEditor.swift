@@ -50,6 +50,8 @@ struct TrackerEditor: View {
     @State private var initialized = false
     @State private var keyboard = EditorKeyboardControl()
 
+    private var healthKeys: Set<HealthFactKey> { Set(groups.flatMap(\.conditions).compactMap(\.healthKey)) }
+
     var body: some View {
         NavigationStack {
             Form {
@@ -67,23 +69,16 @@ struct TrackerEditor: View {
                         if progressEligible { Text(L.text("Goal progress")).tag(CardBackground.progress) }
                     }.accessibilityIdentifier("tracker.cardBackground")
                     CardPresentationEditor(textPosition: $textPosition, showLastRecorded: $showLastRecorded,
-                                           ringStyle: $ringStyle, showsRing: cardBackground == .progress)
+                                           ringStyle: $ringStyle, background: cardBackground)
                 }
                 AchievementConditionEditor(groups: $groups, outerCombination: $combination, gateSave: $gateSave, editing: $editingCondition, deleting: $deletingGroup)
+                if !healthKeys.isEmpty {
+                    Section { HealthConnectionView(keys: healthKeys, onFailure: { error = $0 }) }
+                }
                 notificationsSection
             }
-            .safeAreaInset(edge: .top, spacing: 0) {
-                if let error {
-                    Text(error).font(.callout).foregroundStyle(.red)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal).padding(.vertical, 8).background(.background)
-                        .accessibilityIdentifier("editor.error")
-                }
-            }
-            .onChange(of: error) { _, message in
-                if let message { UIAccessibility.post(notification: .announcement, argument: message) }
-            }
             .disabled(busy)
+            .statusToast(message: $error, identifier: "editor.error", autoDismiss: false)
             .scrollDismissesKeyboard(.interactively)
             .background(EditorKeyboardDismissal(keyboard: keyboard) { focusedField = nil })
             .navigationTitle(L.text(existing == nil ? "New tracker" : "Edit tracker"))

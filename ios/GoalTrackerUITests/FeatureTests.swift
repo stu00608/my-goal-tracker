@@ -130,6 +130,54 @@ nonisolated final class FeatureTests: XCTestCase {
         XCTAssertTrue(app.buttons["entry.save"].waitForExistence(timeout: 10))
     }
 
+    @MainActor func testMapOnlyOffersUpperCornersAndCheckboxFollowsCount() {
+        continueAfterFailure = false
+        let app = app(extraArguments: ["--goalooker-test-fixture", "--checkbox-card-layout"])
+        let upperRight = element(app, prefix: "complete.", name: "每月出社")
+        let mapCard = element(app, prefix: "card.", name: "每月出社")
+        XCTAssertTrue(upperRight.waitForExistence(timeout: 10))
+        XCTAssertLessThan(upperRight.frame.midY, mapCard.frame.midY)
+        XCTAssertGreaterThan(upperRight.frame.midX, mapCard.frame.midX)
+        attach(app, "Map top-right copy and completion keep the pin visible")
+        app.tabBars.buttons.element(boundBy: 1).tap()
+        let goal = element(app, prefix: "tracker.", name: "每月出社")
+        XCTAssertTrue(goal.waitForExistence(timeout: 10)); goal.tap()
+        app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
+        let position = app.descendants(matching: .any).matching(identifier: "card.textPosition").firstMatch
+        for _ in 0..<15 { if position.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(position.isHittable); position.tap()
+        XCTAssertTrue(app.buttons["Top left"].exists); XCTAssertTrue(app.buttons["Top right"].exists)
+        XCTAssertTrue(app.buttons["Hidden"].exists)
+        XCTAssertFalse(app.buttons["Bottom left"].exists); XCTAssertFalse(app.buttons["Bottom right"].exists)
+        attach(app, "Map picker offers only upper corners and hidden")
+        app.buttons["Top left"].tap(); app.buttons["tracker.save"].tap()
+        app.tabBars.buttons.element(boundBy: 0).tap()
+        let card = element(app, prefix: "card.", name: "每月出社")
+        let control = element(app, prefix: "complete.", name: "每月出社")
+        XCTAssertTrue(control.waitForExistence(timeout: 10))
+        XCTAssertLessThan(control.frame.midY, card.frame.midY)
+        XCTAssertLessThan(control.frame.midX, card.frame.midX)
+        attach(app, "Map top-left count and sibling completion share chosen position")
+        control.tap() // Existing location needs native undo confirmation.
+        XCTAssertTrue(app.buttons["Undo completion"].waitForExistence(timeout: 10))
+    }
+    @MainActor func testAccessibleMapKeepsControlWithCopyAndAttributionClear() {
+        let app = app(appearance: "dark", large: true, extraArguments: ["--goalooker-test-fixture", "--checkbox-card-layout", "--checkbox-map-top-left"])
+        let card = element(app, prefix: "card.", name: "每月出社")
+        let control = element(app, prefix: "complete.", name: "每月出社")
+        for _ in 0..<16 {
+            if card.exists && card.frame.minY > app.frame.minY + 120 && card.frame.maxY < app.frame.maxY - 110 { break }
+            let down = card.exists && card.frame.minY < app.frame.minY + 120
+            app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55)).press(forDuration: 0.05,
+                thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: down ? 0.78 : 0.32)))
+        }
+        XCTAssertTrue(control.isHittable)
+        XCTAssertLessThan(card.frame.maxY, app.frame.maxY - 100)
+        XCTAssertGreaterThanOrEqual(control.frame.minX, card.frame.minX)
+        XCTAssertLessThanOrEqual(control.frame.maxX, card.frame.maxX)
+        XCTAssertLessThan(control.frame.maxY, card.frame.maxY - 18)
+        attach(app, "AX map top-left count and scaled completion clear native attribution")
+    }
     @MainActor func testGridTileDimensionsIgnoreLongContent() {
         continueAfterFailure = false
         for extra in [[], ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryXXXL"]] {

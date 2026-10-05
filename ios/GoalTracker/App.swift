@@ -184,6 +184,7 @@ nonisolated enum L {
                     fixture[4].name = "測試早安"; fixture[4].rules = []
                     fixture[4].setFrequency(.weekly, target: 4, now: now)
                     fixture[4].conditions = nil; fixture[4].gateSave = false
+                    if args.contains("--checkbox-map-top-left") { fixture[2].cardTextPosition = .topLeading }
                 }
                 try loaded.replace(fixture)
             }

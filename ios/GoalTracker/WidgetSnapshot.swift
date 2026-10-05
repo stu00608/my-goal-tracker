@@ -265,7 +265,7 @@ nonisolated struct WidgetRow: Codable, Identifiable {
         }
     }
     var resolvedBackground: CardBackground { background ?? .plot }
-    var resolvedTextPosition: CardTextPosition { textPosition ?? .bottomTrailing }
+    var resolvedTextPosition: CardTextPosition { (textPosition ?? .bottomTrailing).resolved(for: resolvedBackground) }
     var resolvedShowLastRecorded: Bool { showLastRecorded ?? true }
     var resolvedRingStyle: RingProgressStyle { ringStyle ?? .percent }
     var lastRecordedDate: Date? {

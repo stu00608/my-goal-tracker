@@ -1,5 +1,6 @@
 import Foundation
 import HealthKit
+import Observation
 
 nonisolated enum HealthMetric: String, Hashable { case steps, sleep }
 nonisolated struct HealthFactKey: Hashable {
@@ -59,20 +60,64 @@ nonisolated enum HealthConditionEvaluation {
     }
 }
 
-// Read-only, on-demand Health access. No observers, background delivery, disk cache or shared data.
-@MainActor final class HealthConditions {
+nonisolated enum HealthAccessSetup: Equatable { case checking, requestNeeded, requested, unavailable }
+
+// Read-only, foreground subscriptions. No background delivery or persisted health facts.
+@MainActor @Observable final class HealthConditions {
     static let shared = HealthConditions()
     private let store = HKHealthStore()
+    private(set) var revision = 0
+    @ObservationIgnored private var fixtureRequestedMetrics: Set<HealthMetric> = []
+    @ObservationIgnored private var observers: [UUID: [HKObserverQuery]] = [:]
+
+    func setup(keys: Set<HealthFactKey>) async throws -> HealthAccessSetup {
+        guard !keys.isEmpty else { return .unavailable }
+        #if DEBUG && targetEnvironment(simulator)
+        let args = ProcessInfo.processInfo.arguments
+        if args.contains("--uitesting"), let flag = args.first(where: { $0.hasPrefix("--health-setup=") }) {
+            return flag.hasSuffix("needed") && !Set(keys.map(\.metric)).isSubset(of: fixtureRequestedMetrics) ? .requestNeeded : .requested
+        }
+        #endif
+        guard HKHealthStore.isHealthDataAvailable() else { return .unavailable }
+        let status = try await store.statusForAuthorizationRequest(toShare: [], read: types(keys))
+        try Task.checkCancellation()
+        switch status { case .shouldRequest: return .requestNeeded; case .unnecessary: return .requested; default: return .requestNeeded }
+    }
+    func observe(keys: Set<HealthFactKey>, owner: UUID) {
+        stopObserving(owner: owner)
+        guard HKHealthStore.isHealthDataAvailable() else { return }
+        let queries = types(keys).compactMap { $0 as? HKSampleType }.map { type in
+            HKObserverQuery(sampleType: type, predicate: nil) { [weak self] _, completion, error in
+                defer { completion() }
+                guard error == nil else { return }
+                Task { @MainActor in
+                    guard let self, self.observers[owner] != nil else { return }
+                    self.revision &+= 1
+                }
+            }
+        }
+        observers[owner] = queries
+        for query in queries { store.execute(query) }
+    }
+    func stopObserving(owner: UUID) {
+        for query in observers.removeValue(forKey: owner) ?? [] { store.stop(query) }
+    }
 
     func connect(tracker: Tracker) async throws {
-        guard HKHealthStore.isHealthDataAvailable() else {
-            throw ConditionError("Apple Health is unavailable on this device.")
-        }
-        let keys = Set(tracker.resolvedConditionGroups.flatMap(\.conditions).compactMap(\.healthKey))
+        try await connect(keys: Set(tracker.resolvedConditionGroups.flatMap(\.conditions).compactMap(\.healthKey)))
+    }
+    func connect(keys: Set<HealthFactKey>) async throws {
         guard !keys.isEmpty else { return }
+        #if DEBUG && targetEnvironment(simulator)
+        if ProcessInfo.processInfo.arguments.contains("--uitesting"), ProcessInfo.processInfo.arguments.contains("--health-setup=needed") {
+            fixtureRequestedMetrics.formUnion(keys.map(\.metric)); revision &+= 1; return
+        }
+        #endif
+        guard HKHealthStore.isHealthDataAvailable() else { throw ConditionError("Apple Health is unavailable on this device.") }
         try await store.requestAuthorization(toShare: [], read: types(keys))
         try Task.checkCancellation()
-        // Successful request means the permission sheet was processed, not that reading was granted.
+        revision &+= 1
+        // Sheet processed does not mean reading was granted.
     }
 
     func read(keys: Set<HealthFactKey>, tracker: Tracker, now: Date) async throws -> [HealthFactKey: HealthFact] {
@@ -90,7 +135,7 @@ nonisolated enum HealthConditionEvaluation {
                 // This is a sheet-needed check, never a read-permission check. It cannot prompt.
                 let request = try await store.statusForAuthorizationRequest(toShare: [], read: types([key]))
                 guard request == .unnecessary else {
-                    fact.issue = "Connect Apple Health to read the data used by this condition."; facts[key] = fact; continue
+                    fact.issue = "Set up Apple Health in this tracker’s settings."; facts[key] = fact; continue
                 }
                 try Task.checkCancellation()
                 let predicate = HKQuery.predicateForSamples(withStart: start, end: now, options: [])
@@ -108,12 +153,12 @@ nonisolated enum HealthConditionEvaluation {
                     let spans = samples.map { ConditionSleepSample(start: $0.startDate, end: $0.endDate, category: $0.value) }
                     fact.value = HealthConditionEvaluation.sleepSeconds(spans, start: start, end: now)
                 }
-                if fact.value == nil { fact.issue = "No readable data for this period. Check access in Apple Health." }
+                if fact.value == nil { fact.issue = "No readable samples yet in this period. Apple Health does not distinguish an empty period from disabled read access." }
             } catch is CancellationError { throw CancellationError() }
             catch {
                 fact.issue = (error as? HKError)?.code == .errorDatabaseInaccessible
                     ? "Unlock this iPhone to read Apple Health data."
-                    : "Could not read Apple Health data. Try refreshing."
+                    : "Could not read Apple Health data. It will update automatically when available."
             }
             try Task.checkCancellation()
             facts[key] = fact
