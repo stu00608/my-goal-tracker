@@ -81,12 +81,13 @@ nonisolated enum CompletionCalendarCell: Identifiable {
         }
     }
 
-    static func month(for tracker: Tracker, containing date: Date) -> [Self] {
+    static func month(for tracker: Tracker, containing date: Date, firstWeekday: Int = 2) -> [Self] {
         let calendar = tracker.calendar
         guard let window = calendar.dateInterval(of: .month, for: date),
               let days = calendar.range(of: .day, in: .month, for: date) else { return [] }
-        let offset = (calendar.component(.weekday, from: window.start) + 5) % 7
-        return (0..<7).map { .weekday($0) } + (0..<offset).map { .padding($0) } + days.compactMap { day in
+        let first = firstWeekday == 2 ? 2 : 1
+        let offset = (calendar.component(.weekday, from: window.start) - first + 7) % 7
+        return WeekdayOrder.days(starting: first).map { .weekday($0) } + (0..<offset).map { .padding($0) } + days.compactMap { day in
             guard let instant = calendar.date(byAdding: .day, value: day - 1, to: window.start) else { return nil }
             return .day(instant, localDay: tracker.day(instant))
         }

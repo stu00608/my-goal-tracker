@@ -32,6 +32,7 @@ struct SettingsView: View {
     @AppStorage("recordLocationByDefault", store: L.defaults) private var recordLocationByDefault = false
     @AppStorage("numericInputMode", store: L.defaults) private var numericInputMode = NumericEntryMode.direct.rawValue
     @AppStorage("remindersEnabled", store: L.defaults) private var remindersEnabled = true
+    @AppStorage("firstWeekday", store: L.defaults) private var firstWeekday = 1
     @State private var syncingReminders = false
     @State private var exportNames = ExportNameGenerator()
     @State private var exportFilename = ""
@@ -60,6 +61,10 @@ struct SettingsView: View {
                         Text(L.text("New value")).tag(NumericEntryMode.direct.rawValue)
                         Text(L.text("Change amount")).tag(NumericEntryMode.change.rawValue)
                     }.accessibilityIdentifier("settings.numericInputMode")
+                    Picker(L.text("First day of week"), selection: $firstWeekday) {
+                        Text(L.text("Sunday")).tag(1)
+                        Text(L.text("Monday")).tag(2)
+                    }.accessibilityIdentifier("settings.firstWeekday")
                     VStack(alignment: .leading, spacing: 8) {
                         Toggle(L.text("Record location by default"), isOn: $recordLocationByDefault)
                             .accessibilityIdentifier("settings.recordLocationDefault")

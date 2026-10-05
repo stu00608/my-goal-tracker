@@ -2,3 +2,5 @@
 "NSLocationWhenInUseUsageDescription" = "Use your current location when you record location or check a tracker’s place conditions.";
 "NSLocationAlwaysAndWhenInUseUsageDescription" = "Notify you when a tracker’s place conditions become satisfied, including while Goalooker is closed.";
 "GoalookerCondition" = "Use precise location to check whether you are inside or outside your chosen place.";
+
+"NSHealthShareUsageDescription" = "Read your steps and sleep duration to check the achievement conditions you choose. Goalooker does not write health data.";

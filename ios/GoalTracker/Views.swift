@@ -236,6 +236,7 @@ struct TrackerSummary: View {
     @State private var initializedRange = false
     @State private var month = Date()
     @State private var deleteTracker = false
+    @AppStorage("firstWeekday", store: L.defaults) private var firstWeekday = 1
     private var tracker: Tracker? { store.trackers.first { $0.id == id } }
     var body: some View {
         TimelineView(.everyMinute) { _ in
@@ -522,7 +523,7 @@ struct TrackerSummary: View {
     }
     private func metric(_ key: String, _ value: String) -> some View { LabeledContent(L.text(key), value: value).monospacedDigit() }
     private func daily(_ t: Tracker) -> some View {
-        let cells = CompletionCalendarCell.month(for: t, containing: month)
+        let cells = CompletionCalendarCell.month(for: t, containing: month, firstWeekday: firstWeekday)
         let completed = Set(t.entries.map(\.localDay))
         let history = t.frequencyHistory(until: Date())
         let full = history.filter { !$0.3 && $0.0.end <= Date() }
@@ -537,7 +538,7 @@ struct TrackerSummary: View {
                 ForEach(cells) { cell in
                     switch cell {
                     case .weekday(let index):
-                        Text(L.locale.calendar.veryShortStandaloneWeekdaySymbols[(index + 1) % 7]).font(.caption).foregroundStyle(TrackerColors.secondaryText)
+                        Text(L.locale.calendar.veryShortStandaloneWeekdaySymbols[index - 1]).font(.caption).foregroundStyle(TrackerColors.secondaryText)
                     case .padding:
                         Color.clear.frame(height: 32).accessibilityHidden(true)
                     case .day(let date, let localDay):

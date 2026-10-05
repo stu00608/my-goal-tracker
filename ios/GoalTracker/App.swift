@@ -12,6 +12,7 @@ nonisolated enum L {
         let preferred = Locale.preferredLanguages.first ?? "en"
         return preferred.hasPrefix("ja") ? "ja" : preferred.hasPrefix("zh") ? "zh-Hant" : "en"
     }
+    static var firstWeekday: Int { defaults.integer(forKey: "firstWeekday") == 2 ? 2 : 1 }
     static var locale: Locale { Locale(identifier: language) }
     static func text(_ key: String) -> String {
         let bundle = Bundle.main.path(forResource: language, ofType: "lproj").flatMap(Bundle.init(path:)) ?? .main
@@ -52,6 +53,7 @@ nonisolated enum L {
                     L.defaults.removeObject(forKey: "recordLocationByDefault")
                     L.defaults.removeObject(forKey: "numericInputMode")
                     L.defaults.removeObject(forKey: "remindersEnabled")
+                    L.defaults.removeObject(forKey: "firstWeekday")
                 }
                 let directory = URL.applicationSupportDirectory.appendingPathComponent("UITests", isDirectory: true)
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)

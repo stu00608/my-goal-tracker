@@ -2,3 +2,5 @@
 "NSLocationWhenInUseUsageDescription" = "在記錄位置或驗證追蹤項目的地點條件時，使用 iPhone 目前位置。";
 "NSLocationAlwaysAndWhenInUseUsageDescription" = "當追蹤項目的地點條件符合時提醒你，即使過路客沒有開啟。";
 "GoalookerCondition" = "使用精確位置，確認你是否位於所選地點的範圍內或範圍外。";
+
+"NSHealthShareUsageDescription" = "讀取步數與睡眠時數，檢查你設定的達成條件。Goalooker 不會寫入健康資料。";

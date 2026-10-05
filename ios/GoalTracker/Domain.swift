@@ -9,6 +9,12 @@ nonisolated enum NumericEntryError: Error, Equatable { case missingBaseline, orp
 nonisolated enum CardTextPosition: String, Codable, CaseIterable { case topLeading, topTrailing, bottomLeading, bottomTrailing, hidden }
 nonisolated enum RingProgressStyle: String, Codable, CaseIterable { case percent, fraction }
 nonisolated enum TrackingLifecycle: String, Codable, CaseIterable { case ongoing, finite }
+nonisolated enum WeekdayOrder {
+    static func days(starting firstWeekday: Int) -> [Int] {
+        let first = firstWeekday == 2 ? 2 : 1
+        return (0..<7).map { (first - 1 + $0) % 7 + 1 }
+    }
+}
 nonisolated enum HealthWindow: String, Codable, CaseIterable, Hashable { case day, week, month }
 nonisolated enum ThresholdComparison: String, Codable, CaseIterable { case greater, less }
 nonisolated struct TimeCondition: Codable, Equatable {
@@ -424,8 +430,13 @@ nonisolated struct Backup: Codable, Equatable {
     }
     func encoded() throws -> Data {
         try validate()
+        var document = self
+        if document.version >= 3 {
+            document.trackers = trackers.map { tracker in var copy = tracker; copy.migrateConditions(); return copy }
+        }
+        try document.validate()
         let e = JSONEncoder(); e.outputFormatting = [.sortedKeys]
-        let data = try e.encode(self)
+        let data = try e.encode(document)
         guard data.count <= 100_000_000 else { throw DataError.tooLarge }
         return data
     }
