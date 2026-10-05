@@ -185,6 +185,8 @@ nonisolated final class FeatureTests: XCTestCase {
 
     @MainActor func testLocationDenialStillSavesRecord() {
         continueAfterFailure = false
+        // Authorization survives fixture resets and earlier native Health/place checks.
+        XCUIApplication().resetAuthorizationStatus(for: .location)
         let app = app()
         element(app, prefix: "card.", name: "SCORE").tap()
         let value = numericField(app)
@@ -197,7 +199,8 @@ nonisolated final class FeatureTests: XCTestCase {
         XCTAssertEqual(toggle.value as? String, "1")
         let springboard = XCUIApplication(bundleIdentifier: "com.apple.springboard")
         let deny = springboard.alerts.buttons.matching(NSPredicate(format: "label MATCHES[c] %@", "don.t allow|不允許|許可しない")).firstMatch
-        if deny.waitForExistence(timeout: 5) { deny.tap() }
+        XCTAssertTrue(deny.waitForExistence(timeout: 10), "A fresh native location prompt must be denied explicitly")
+        deny.tap()
         let status = app.staticTexts["entry.location.status"]
         XCTAssertTrue(status.waitForExistence(timeout: 10))
         let denied = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", "denied"), object: status)
@@ -465,7 +468,12 @@ nonisolated final class FeatureTests: XCTestCase {
             app.tabBars.buttons["Goals"].tap()
             element(app, prefix: "tracker.", name: "SCORE").tap()
             let record = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "entry.", "Synthetic snapshot")).firstMatch
-            for _ in 0..<8 { if record.isHittable { break }; app.swipeUp() }
+            // Drag in the List gutter, outside the interactive MapKit surface.
+            for _ in 0..<12 {
+                if record.exists && record.isHittable { break }
+                app.coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.75))
+                    .press(forDuration: 0.1, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.05, dy: 0.2)))
+            }
             XCTAssertTrue(record.waitForExistence(timeout: 10)); record.tap()
             XCTAssertTrue(app.buttons["entry.photos"].waitForExistence(timeout: 10))
             attach(app, (alternative ? "Alternative B numeric and photo workspace" : "Chosen A numeric and photo workspace") + (large ? " accessibility XXXL" : ""))
