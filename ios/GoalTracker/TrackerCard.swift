@@ -1,15 +1,21 @@
 import SwiftUI
 import Charts
 import MapKit
+import WidgetKit
 
 // Native semantic roles shared by the app and Widget, with a readable teal on light surfaces.
 enum TrackerColors {
     static let accent = Color(uiColor: UIColor { traits in
-        traits.userInterfaceStyle == .dark
+        if traits.accessibilityContrast == .high {
+            return traits.userInterfaceStyle == .dark
+                ? UIColor(red: 0.50, green: 0.94, blue: 0.94, alpha: 1)
+                : UIColor(red: 0, green: 0.31, blue: 0.33, alpha: 1)
+        }
+        return traits.userInterfaceStyle == .dark
             ? UIColor(red: 0.35, green: 0.83, blue: 0.83, alpha: 1)
             : UIColor(red: 0, green: 0.40, blue: 0.42, alpha: 1)
     })
-    static var secondaryText: Color { Color.primary.opacity(0.72) }
+    static var secondaryText: Color { .secondary }
 }
 
 extension CardTextPosition {
@@ -78,7 +84,11 @@ struct DailyControlAnchor: PreferenceKey {
 enum CardLayout {
     static let plotInset: CGFloat = 14
     static let textInset: CGFloat = 14
-    static let dailyControlInset: CGFloat = 6
+    static let radius: CGFloat = 20
+    static let screenInset: CGFloat = 16
+    static let gridSpacing: CGFloat = 12
+    static let listHeight: CGFloat = 164
+    static let hiddenControlInset: CGFloat = 28
     static func ringTextWidth(in size: CGSize) -> CGFloat { max(0, min(size.width, size.height) - plotInset * 2) * 0.70 }
 }
 
@@ -110,7 +120,7 @@ struct TrackerCardSurface<Backdrop: View>: View {
                                      reservesDailyControl: row.kind == .daily && !showsDailyStatus)
                     .padding(CardLayout.textInset)
                     // AX lists grow downward; leave native map attribution clear without moving upper copy.
-                    .padding(.bottom, row.resolvedBackground == .map && dynamicTypeSize.isAccessibilitySize ? 28 : 0)
+                    .padding(.bottom, row.resolvedBackground == .map && dynamicTypeSize.isAccessibilitySize ? CardLayout.hiddenControlInset : 0)
                     .frame(maxWidth: .infinity, maxHeight: fillsHeight ? .infinity : nil, alignment: row.resolvedTextPosition.alignment)
                     .fixedSize(horizontal: false, vertical: !fillsHeight)
                     .frame(minHeight: minimumHeight, alignment: row.resolvedTextPosition.alignment)
@@ -122,8 +132,8 @@ struct TrackerCardSurface<Backdrop: View>: View {
                 }.allowsHitTesting(false).accessibilityHidden(true)
             }
             .background(Color(uiColor: .secondarySystemGroupedBackground))
-            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
-            .overlay { RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(.primary.opacity(contrast == .increased ? 0.4 : 0.08)) }
+            .clipShape(RoundedRectangle(cornerRadius: CardLayout.radius, style: .continuous))
+            .overlay { RoundedRectangle(cornerRadius: CardLayout.radius, style: .continuous).strokeBorder(.primary.opacity(contrast == .increased ? 0.4 : 0.08)) }
     }
 }
 
@@ -158,10 +168,11 @@ struct TrackerCardLabel: View {
             if row.resolvedBackground == .progress {
                 Text(row.ringText(at: now, locale: locale) ?? "—")
                     .font(.title2.weight(.semibold).monospacedDigit())
-                    .lineLimit(1).minimumScaleFactor(0.35)
+                    .lineLimit(row.resolvedRingStyle == .fraction ? 2 : 1).minimumScaleFactor(0.6)
+                    .fixedSize(horizontal: false, vertical: true)
                     .accessibilityIdentifier("progress." + row.id.uuidString)
             }
-            Text(row.name).font(compact ? .subheadline.weight(.semibold) : .headline)
+            Text(row.name).font(.subheadline.weight(.medium))
                 .lineLimit(row.resolvedBackground == .progress ? compact ? 1 : 2 : dynamicTypeSize.isAccessibilitySize && !compact ? nil : compact ? 2 : 3)
                 .minimumScaleFactor(0.8)
                 .fixedSize(horizontal: false, vertical: true)
@@ -170,7 +181,8 @@ struct TrackerCardLabel: View {
             // Progress has one centered number; other backgrounds keep the raw value.
             if row.resolvedBackground != .progress {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Text(row.valueText(at: now, locale: locale, text: text)).font((compact ? Font.subheadline : .title3).monospacedDigit())
+                    Text(row.valueText(at: now, locale: locale, text: text))
+                        .font(hasValue ? .title2.weight(.semibold) : .caption).monospacedDigit()
                         .lineLimit(dynamicTypeSize.isAccessibilitySize && !compact ? nil : 2).minimumScaleFactor(0.6)
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("progress." + row.id.uuidString)
@@ -182,21 +194,19 @@ struct TrackerCardLabel: View {
         }
         .multilineTextAlignment(row.resolvedBackground == .progress ? .center : position.textAlignment)
         .foregroundStyle(foreground)
-        .shadow(color: hasImage ? (foregroundIsLight ? Color.black.opacity(0.45) : Color.white.opacity(0.5)) : .clear, radius: 1, y: 1)
-        .shadow(color: hasImage || monochrome ? .clear : Color(uiColor: .secondarySystemGroupedBackground), radius: 0, x: -1.5)
-        .shadow(color: hasImage || monochrome ? .clear : Color(uiColor: .secondarySystemGroupedBackground), radius: 0, x: 1.5)
-        .shadow(color: hasImage || monochrome ? .clear : Color(uiColor: .secondarySystemGroupedBackground), radius: 0, y: -1.5)
-        .shadow(color: hasImage || monochrome ? .clear : Color(uiColor: .secondarySystemGroupedBackground), radius: 0, y: 1.5)
+        .shadow(color: hasImage ? (foregroundIsLight ? Color.black.opacity(0.3) : Color.white.opacity(0.3)) : Color(uiColor: .secondarySystemGroupedBackground), radius: 3, y: 1)
     }
     @ViewBuilder private var recordedDate: some View {
         if row.resolvedShowLastRecorded, let date = row.lastRecordedDate {
             Text(date.formatted(Date.FormatStyle(locale: locale, calendar: row.tracker.calendar, timeZone: row.tracker.calendar.timeZone).month().day()))
-                .font(.caption2).lineLimit(compact ? 1 : row.resolvedBackground == .progress ? 2 : nil)
+                .font(compact ? .caption2 : .caption).lineLimit(compact ? 1 : row.resolvedBackground == .progress ? 2 : nil)
         }
     }
+    private var hasValue: Bool { row.kind == .number ? row.value != nil : row.tracker.rule(at: now) != nil }
     private var dailyStatus: some View {
         Image(systemName: completed ? "checkmark.circle.fill" : "circle")
             .foregroundStyle(!hasImage && !monochrome && completed ? TrackerColors.accent : foreground)
+            .widgetAccentable()
     }
     private var foregroundIsLight: Bool {
         if row.resolvedBackground == .map { return colorScheme == .dark }
@@ -279,6 +289,7 @@ struct TrackerCardBackdrop: View {
     var locale = Locale.current
     var mapImage: UIImage?
     var monochrome = false
+    @Environment(\.colorScheme) private var colorScheme
     var body: some View {
         switch row.resolvedBackground {
         case .progress:
@@ -321,8 +332,7 @@ struct TrackerCardBackdrop: View {
                 .chartYScale(domain: row.plotDomain(at: now)).chartPlotStyle { $0.clipped() }
                 .padding(CardLayout.plotInset)
             } else {
-                Image(systemName: "chart.xyaxis.line").font(.title2).foregroundStyle(TrackerColors.secondaryText)
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).padding(16).accessibilityHidden(true)
+                Color.clear
             }
         case .photo, .trackerPhoto:
             if let data = row.thumbnail, let image = UIImage(data: data) {
@@ -333,18 +343,19 @@ struct TrackerCardBackdrop: View {
                                                          lightText: CardImageContrast.prefersLightText(data, position: row.resolvedTextPosition))
                         }
                 }
-            } else { empty("No photos yet", symbol: "photo") }
+            } else { empty("No photos yet") }
         case .map:
             if let mapImage {
                 GeometryReader { geometry in
                     Image(uiImage: mapImage).renderingMode(.original).resizable().scaledToFill().frame(width: geometry.size.width, height: geometry.size.height).clipped()
+                        .overlay { CardPhotoReadabilityGradient(position: row.resolvedTextPosition, monochrome: monochrome, lightText: colorScheme == .dark) }
                 }
-            } else { empty(row.locations?.isEmpty == false ? "Map preview unavailable" : "No locations yet", symbol: "map") }
+            } else { empty(row.locations?.isEmpty == false ? "Map preview unavailable" : "No locations yet") }
         }
     }
-    private func empty(_ key: String, symbol: String) -> some View {
-        Label(text(key), systemImage: symbol).font(.caption).foregroundStyle(TrackerColors.secondaryText)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).padding(16)
+    private func empty(_ key: String) -> some View {
+        Text(text(key)).font(.caption).foregroundStyle(.secondary)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).padding(CardLayout.textInset)
     }
 }
 
@@ -354,18 +365,19 @@ struct GoalProgressRing: View {
     var value: String?
     var body: some View {
         ZStack {
-            Circle().stroke(Color.primary.opacity(0.12), lineWidth: 12)
+            Circle().stroke(Color.primary.opacity(0.12), lineWidth: 8)
             Circle().trim(from: 0, to: min(max(fraction, 0), 1))
-                .stroke(monochrome ? Color.primary.opacity(0.35) : TrackerColors.accent, style: StrokeStyle(lineWidth: 12, lineCap: .round))
+                .stroke(monochrome ? Color.primary.opacity(0.35) : TrackerColors.accent, style: StrokeStyle(lineWidth: 8, lineCap: .round))
                 .rotationEffect(.degrees(-90))
+                .widgetAccentable()
         }
-        .padding(6)
+        .padding(4)
         .overlay {
             if let value {
                 GeometryReader { geometry in
                     Text(value).font(.title2.weight(.semibold).monospacedDigit())
                         .foregroundStyle(.primary).multilineTextAlignment(.center)
-                        .lineLimit(1).minimumScaleFactor(0.35)
+                        .lineLimit(1).minimumScaleFactor(0.6)
                         .frame(width: geometry.size.width * 0.70, height: geometry.size.height * 0.28)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }

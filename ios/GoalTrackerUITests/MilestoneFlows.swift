@@ -46,7 +46,7 @@ nonisolated final class MilestoneFlows: XCTestCase {
             capture(app, "Centered ring with hidden corner preference " + language)
             if language == "en" {
                 openGoal(app, "SCORE")
-                app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
+                app.buttons["tracker.menu"].tap(); if app.buttons["Edit tracker"].waitForExistence(timeout: 1) { app.buttons["Edit tracker"].tap() }
                 let date = app.switches["card.showLastRecorded"]
                 reveal(app, date)
                 XCTAssertFalse(element(app, "card.textPosition").exists)
@@ -61,7 +61,7 @@ nonisolated final class MilestoneFlows: XCTestCase {
                 // Each tab retains its navigation stack; Goals resumes the open SCORE detail.
                 app.tabBars.buttons.element(boundBy: 1).tap()
                 XCTAssertTrue(app.buttons["tracker.menu"].waitForExistence(timeout: 10))
-                app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
+                app.buttons["tracker.menu"].tap(); if app.buttons["Edit tracker"].waitForExistence(timeout: 1) { app.buttons["Edit tracker"].tap() }
                 reveal(app, app.switches["card.showLastRecorded"])
                 XCTAssertEqual(app.switches["card.showLastRecorded"].value as? String, "0")
                 app.buttons["tracker.cancel"].tap()
@@ -108,6 +108,8 @@ nonisolated final class MilestoneFlows: XCTestCase {
         let card = button(app, prefix: "card.", name: "HEALTH"); reveal(app, card); card.tap()
         XCTAssertTrue(element(app, "conditions.overall").waitForExistence(timeout: 10))
         XCTAssertTrue(element(app, "conditions.overall").label.contains("Cannot determine yet"))
+        XCTAssertEqual(app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "conditions.leaf.")).count, 0)
+        element(app, "conditions.overall").tap()
         // Exercise the actual asynchronous HealthKit read/status result, with no gate override.
         // A completed read must appear immediately, before the next minute-clock tick.
         let readResult = app.descendants(matching: .any).matching(NSPredicate(
@@ -140,7 +142,7 @@ nonisolated final class MilestoneFlows: XCTestCase {
     @MainActor func testAccessibleHealthGuidanceUsesAvailableHeight() {
         let app = launch(extra: ["--health-setup=configured"], dark: true, large: true)
         openGoal(app, "HEALTH")
-        app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
+        app.buttons["tracker.menu"].tap(); if app.buttons["Edit tracker"].waitForExistence(timeout: 1) { app.buttons["Edit tracker"].tap() }
         let manage = app.buttons["health.manage"]; reveal(app, manage); manage.tap()
         let title = app.navigationBars["Manage health access"]
         XCTAssertTrue(title.waitForExistence(timeout: 10))
@@ -227,7 +229,7 @@ nonisolated final class MilestoneFlows: XCTestCase {
     @MainActor func testGroupedEditorAndAlternativeLayout() {
         for alternative in [false, true] {
             let app = launch(extra: alternative ? ["--conditions-flat-expanded"] : [])
-            openGoal(app, "GROUPED"); app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
+            openGoal(app, "GROUPED"); app.buttons["tracker.menu"].tap(); if app.buttons["Edit tracker"].waitForExistence(timeout: 1) { app.buttons["Edit tracker"].tap() }
             let outer = element(app, "tracker.conditions.outerCombination"); reveal(app, outer)
             XCTAssertTrue(outer.isEnabled)
             let firstLeaf = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "conditions.editor.leaf.")).firstMatch
@@ -322,7 +324,7 @@ nonisolated final class MilestoneFlows: XCTestCase {
     }
     @MainActor func testTypedConditionsPersistAfterEditing() {
         let app = launch()
-        openGoal(app, "MANUAL"); app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
+        openGoal(app, "MANUAL"); app.buttons["tracker.menu"].tap(); if app.buttons["Edit tracker"].waitForExistence(timeout: 1) { app.buttons["Edit tracker"].tap() }
         addCondition(app, kind: "time")
         XCTAssertTrue(element(app, "condition.time.start").exists && element(app, "condition.time.end").exists)
         capture(app, "Native inclusive time interval condition")
@@ -346,7 +348,7 @@ nonisolated final class MilestoneFlows: XCTestCase {
         XCTAssertTrue(inner.isEnabled, "Multiple leaves retain an active inner operator")
         app.buttons["tracker.save"].tap()
         XCTAssertTrue(app.buttons["tracker.menu"].waitForExistence(timeout: 10))
-        app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
+        app.buttons["tracker.menu"].tap(); if app.buttons["Edit tracker"].waitForExistence(timeout: 1) { app.buttons["Edit tracker"].tap() }
         let first = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "conditions.editor.leaf.")).firstMatch
         reveal(app, first)
         let stepsLeaf = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "conditions.editor.leaf.", "9000")).firstMatch

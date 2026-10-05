@@ -30,8 +30,9 @@ import UIKit
         .safeAreaInset(edge: .top) {
             HStack {
                 Spacer()
-                Button { dismiss() } label: { Label(L.text("Close"), systemImage: "xmark").padding(12) }
-                    .buttonStyle(.bordered)
+                Button { dismiss() } label: { Image(systemName: "xmark").font(.body.weight(.semibold)).dynamicTypeSize(...DynamicTypeSize.xxxLarge).frame(width: 44, height: 44) }
+                    .buttonStyle(.plain).background(.regularMaterial, in: Circle())
+                    .accessibilityLabel(L.text("Close"))
                     .accessibilityIdentifier("photo.close")
             }.padding(.horizontal)
         }
@@ -43,13 +44,16 @@ import UIKit
                         .accessibilityLabel(L.text("Previous photo"))
                         .accessibilityIdentifier("photo.previous")
                     Spacer()
-                    Text(pageLabel(selectedIndex)).font(.callout.monospacedDigit())
+                    Text("\(selectedIndex + 1) / \(photos.count)").font(.subheadline.monospacedDigit())
+                        .accessibilityLabel(pageLabel(selectedIndex))
                     Spacer()
                     Button { selectedIndex += 1 } label: { Image(systemName: "chevron.right").frame(width: 44, height: 44) }
                         .disabled(selectedIndex >= photos.count - 1)
                         .accessibilityLabel(L.text("Next photo"))
                         .accessibilityIdentifier("photo.next")
-                }.padding(.horizontal)
+                }.padding(.horizontal).padding(.vertical, 8)
+                    .background(.regularMaterial, in: Capsule())
+                    .padding(.horizontal, 20)
             }
         }
         .environment(\.colorScheme, .dark)
@@ -151,20 +155,20 @@ import UIKit
     }
 
     @objc private func toggleZoom(_ gesture: UITapGestureRecognizer) {
-        if zoomScale > minimumZoomScale + 0.01 { setZoomScale(minimumZoomScale, animated: true) }
+        if zoomScale > minimumZoomScale + 0.01 { setZoomScale(minimumZoomScale, animated: !UIAccessibility.isReduceMotionEnabled) }
         else {
             let scale = min(3, maximumZoomScale)
             let point = gesture.location(in: imageView)
             let size = CGSize(width: bounds.width / scale, height: bounds.height / scale)
-            zoom(to: CGRect(x: point.x - size.width / 2, y: point.y - size.height / 2, width: size.width, height: size.height), animated: true)
+            zoom(to: CGRect(x: point.x - size.width / 2, y: point.y - size.height / 2, width: size.width, height: size.height), animated: !UIAccessibility.isReduceMotionEnabled)
         }
     }
     @objc private func zoomIn() -> Bool {
-        setZoomScale(min(zoomScale * 2, maximumZoomScale), animated: true)
+        setZoomScale(min(zoomScale * 2, maximumZoomScale), animated: !UIAccessibility.isReduceMotionEnabled)
         return true
     }
     @objc private func zoomOut() -> Bool {
-        setZoomScale(max(zoomScale / 2, minimumZoomScale), animated: true)
+        setZoomScale(max(zoomScale / 2, minimumZoomScale), animated: !UIAccessibility.isReduceMotionEnabled)
         return true
     }
 }

@@ -19,29 +19,29 @@ private struct StatusToast: ViewModifier {
     func body(content: Content) -> some View {
         content.overlay(alignment: .top) {
             if let message {
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: "exclamationmark.circle.fill").font(.system(size: 20))
-                        .padding(.top, 12).accessibilityHidden(true)
+                HStack(alignment: .top, spacing: 12) {
+                    Image(systemName: "exclamationmark.circle.fill").font(.title3).foregroundStyle(.red).accessibilityHidden(true)
                     Text(message).font(.subheadline.weight(.medium))
-                        .fixedSize(horizontal: false, vertical: true).padding(.vertical, 12)
+                        .fixedSize(horizontal: false, vertical: true)
                         .frame(maxWidth: .infinity, alignment: .leading)
                         .accessibilityIdentifier(identifier)
                     Button { self.message = nil } label: {
-                        Image(systemName: "xmark").font(.system(size: 13, weight: .semibold)).frame(width: 44, height: 44)
+                        Image(systemName: "xmark").font(.subheadline.weight(.semibold)).frame(width: 44, height: 44)
                     }.buttonStyle(.plain).accessibilityLabel(L.text("Dismiss message"))
                         .accessibilityIdentifier(identifier + ".dismiss")
                 }
-                .foregroundStyle(.primary).padding(.leading, 14).padding(.trailing, 2)
+                .foregroundStyle(Color.primary).padding(16)
                 .background {
-                    if reduceTransparency { RoundedRectangle(cornerRadius: 18).fill(Color(uiColor: .secondarySystemBackground)) }
-                    else { RoundedRectangle(cornerRadius: 18).fill(.regularMaterial) }
+                    if reduceTransparency { RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color(uiColor: .secondarySystemBackground)) }
+                    else { RoundedRectangle(cornerRadius: 20, style: .continuous).fill(.regularMaterial) }
                 }
-                .overlay { RoundedRectangle(cornerRadius: 18).strokeBorder(.primary.opacity(contrast == .increased ? 0.4 : 0.08)) }
+                .overlay { RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(.primary.opacity(contrast == .increased ? 0.4 : 0.08)) }
                 .shadow(color: .black.opacity(0.12), radius: 12, y: 5)
                 .frame(maxWidth: 440).padding(.horizontal, 16).padding(.top, 8)
                 .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
             }
         }
+        .sensoryFeedback(.error, trigger: message) { _, new in new != nil }
         .animation(reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.32, dampingFraction: 1), value: message)
         .task(id: message) {
             guard let shown = message else { return }

@@ -80,6 +80,7 @@ nonisolated final class ExpansionTests: XCTestCase {
         XCTAssertEqual(note.value as? String, "Review before saving")
         screenshot(app, "Condition preview and inline save failure")
         app.buttons["entry.cancel"].tap()
+        XCTAssertTrue(app.buttons["entry.discard"].firstMatch.waitForExistence(timeout: 5)); app.buttons["entry.discard"].firstMatch.tap()
         XCTAssertTrue(complete.waitForExistence(timeout: 10))
         XCTAssertTrue(complete.label.contains("Mark complete"), "Failed gate cannot silently create a completion")
     }

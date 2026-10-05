@@ -9,62 +9,70 @@ struct ConditionStatusView: View {
     @State private var refreshQueued = false
     private var clockID: String { String(describing: scenePhase) + ConditionPlan.signature(tracker) }
     private var healthKeys: Set<HealthFactKey> { Set(tracker.resolvedConditionGroups.flatMap(\.conditions).compactMap(\.healthKey)) }
+    @State private var expanded = false
     @State private var facts = ConditionFacts()
     @State private var request: Task<Void, Never>?
     @State private var generation = UUID()
-    @State private var locationAuthorized = RecordConditions.hasLocationAuthorization
+    @State private var locationAuthorized = false
 
     var body: some View {
         if tracker.requiresConditionGate {
             TimelineView(.everyMinute) { _ in
                 // Async facts can arrive after the scheduled tick; evaluate at render time.
                 let snapshot = RecordConditions.status(tracker: tracker, now: Date(), facts: facts)
-                VStack(alignment: .leading, spacing: 14) {
-                    statusRow(title: L.text("Overall result"), state: snapshot.state, loading: snapshot.loading)
-                        .font(.headline).accessibilityIdentifier("conditions.overall")
-                    Text(L.text(tracker.resolvedOuterCombination == .all ? "All groups" : "Any group"))
-                        .font(.caption).foregroundStyle(.secondary)
-                    ForEach(Array(tracker.resolvedConditionGroups.enumerated()), id: \.element.id) { index, group in
-                        if let result = snapshot.groups.first(where: { $0.id == group.id }) {
-                            VStack(alignment: .leading, spacing: 8) {
-                                statusRow(title: ConditionLabels.group(group, index: index), state: result.state, loading: result.loading)
-                                    .font(.subheadline.weight(.semibold)).accessibilityIdentifier("conditions.group." + group.id.uuidString)
-                                Text(ConditionLabels.combination(group.combination)).font(.caption).foregroundStyle(.secondary)
-                                ForEach(group.conditions) { condition in
-                                    if let leaf = result.leaves.first(where: { $0.id == condition.id }) {
-                                        VStack(alignment: .leading, spacing: 4) {
-                                            statusRow(title: ConditionLabels.leaf(condition), state: leaf.state, loading: leaf.loading, compact: true)
-                                            if let detail = leaf.detail {
-                                                Text(L.text(detail)).font(.caption).foregroundStyle(.secondary)
+                VStack(alignment: .leading, spacing: 12) {
+                    DisclosureGroup(isExpanded: $expanded) {
+                        VStack(alignment: .leading, spacing: 16) {
+                            if tracker.resolvedConditionGroups.count > 1 {
+                                Text(L.text(tracker.resolvedOuterCombination == .all ? "All groups" : "Any group"))
+                                    .font(.subheadline).foregroundStyle(Color.secondary)
+                            }
+                            ForEach(Array(tracker.resolvedConditionGroups.enumerated()), id: \.element.id) { index, group in
+                                if let result = snapshot.groups.first(where: { $0.id == group.id }) {
+                                    VStack(alignment: .leading, spacing: 12) {
+                                        if tracker.resolvedConditionGroups.count > 1 {
+                                            statusRow(title: ConditionLabels.group(group, index: index), state: result.state, loading: result.loading)
+                                                .accessibilityIdentifier("conditions.group." + group.id.uuidString)
+                                            Text(ConditionLabels.combination(group.combination)).foregroundStyle(Color.secondary)
+                                        }
+                                        ForEach(group.conditions) { condition in
+                                            if let leaf = result.leaves.first(where: { $0.id == condition.id }) {
+                                                VStack(alignment: .leading, spacing: 4) {
+                                                    statusRow(title: ConditionLabels.leaf(condition), state: leaf.state, loading: leaf.loading)
+                                                    if let detail = leaf.detail { Text(L.text(detail)).foregroundStyle(Color.secondary).fixedSize(horizontal: false, vertical: true) }
+                                                    if let value = leaf.measurement, let key = condition.healthKey {
+                                                        Text(ConditionLabels.measurement(value, metric: key.metric)).monospacedDigit().foregroundStyle(Color.secondary).fixedSize(horizontal: false, vertical: true)
+                                                        if let date = leaf.measuredAt {
+                                                            Text(String(format: L.text("Read at %@"), locale: L.locale,
+                                                                date.formatted(Date.FormatStyle(date: .omitted, time: .shortened,
+                                                                    locale: L.locale, calendar: tracker.calendar, timeZone: tracker.calendar.timeZone))))
+                                                                .foregroundStyle(Color.secondary).fixedSize(horizontal: false, vertical: true)
+                                                        }
+                                                    }
+                                                }.accessibilityElement(children: .combine)
+                                                    .accessibilityIdentifier("conditions.leaf." + condition.id.uuidString)
                                             }
-                                            if let value = leaf.measurement, let key = condition.healthKey {
-                                                Text(ConditionLabels.measurement(value, metric: key.metric))
-                                                    .font(.caption).foregroundStyle(.secondary)
-                                                if let date = leaf.measuredAt {
-                                                    Text(String(format: L.text("Read at %@"), locale: L.locale,
-                                                        date.formatted(Date.FormatStyle(date: .omitted, time: .shortened,
-                                                            locale: L.locale, calendar: tracker.calendar, timeZone: tracker.calendar.timeZone))))
-                                                        .font(.caption).foregroundStyle(.secondary)
-                                                }
-                                            }
-                                        }.padding(.leading, 12).accessibilityElement(children: .combine)
-                                            .accessibilityIdentifier("conditions.leaf." + condition.id.uuidString)
+                                        }
                                     }
                                 }
                             }
-                        }
-                    }
-                    Text(L.text("Conditions use the current time, even for a backdated record."))
-                        .font(.caption).foregroundStyle(.secondary)
-                    if tracker.resolvedConditionGroups.flatMap(\.conditions).contains(where: \.isHealth) {
-                        Text(L.text("Based on readable Apple Health data so far in this calendar period. Sleep is clipped to the period, not grouped by wake-up."))
-                            .font(.caption).foregroundStyle(.secondary)
+                            Text(L.text("Conditions use the current time, even for a backdated record.")).foregroundStyle(Color.secondary)
+                            if tracker.resolvedConditionGroups.flatMap(\.conditions).contains(where: \.isHealth) {
+                                Text(L.text("Based on readable Apple Health data so far in this calendar period. Sleep is clipped to the period, not grouped by wake-up."))
+                                    .foregroundStyle(Color.secondary)
+                            }
+                        }.font(.subheadline).padding(.top, 8)
+                    } label: {
+                        statusRow(title: L.text(snapshot.loading ? "Checking conditions…" : snapshot.state == .met ? "Conditions met" : snapshot.state == .unmet ? "Conditions not met" : "Cannot determine yet"),
+                                  state: snapshot.state, loading: snapshot.loading)
+                            .accessibilityIdentifier("conditions.overall")
                     }
                     if !tracker.resolvedConditions.isEmpty && (!locationAuthorized || facts.locationIssue != nil) {
                         Button(L.text("Check current location")) { refresh(location: true) }
                             .buttonStyle(.borderless).disabled(request != nil).accessibilityIdentifier("conditions.checkLocation")
                     }
                 }.padding(.vertical, 4)
+
             }
             .onAppear { start() }
             .onChange(of: ConditionPlan.signature(tracker)) { _, _ in facts = ConditionFacts(); start() }
@@ -87,19 +95,17 @@ struct ConditionStatusView: View {
             .onDisappear { stop(); health.stopObserving(owner: observerOwner) }
         }
     }
-    @ViewBuilder private func statusRow(title: String, state: ConditionState, loading: Bool, compact: Bool = false) -> some View {
-        VStack(alignment: .leading, spacing: 3) {
-            Text(title).foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true)
-            if loading { ProgressView(L.text("Checking conditions…")) }
+    private func statusRow(title: String, state: ConditionState, loading: Bool) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 8) {
+            if loading { ProgressView().accessibilityLabel(L.text("Checking conditions…")) }
             else {
-                HStack(alignment: .firstTextBaseline, spacing: 6) {
-                    Image(systemName: state == .met ? "checkmark.circle" : state == .unmet ? "xmark.circle" : "questionmark.circle")
-                        .accessibilityHidden(true)
-                    Text(L.text(compact ? (state == .met ? "Condition met" : state == .unmet ? "Condition not met" : "Condition unknown")
-                        : (state == .met ? "Conditions met" : state == .unmet ? "Conditions not met" : "Cannot determine yet")))
-                }.font(.caption).foregroundStyle(Color.secondary)
+                Image(systemName: state == .met ? "checkmark.circle.fill" : state == .unmet ? "xmark.circle.fill" : "questionmark.circle.fill")
+                    .foregroundStyle(state == .met ? Color.green : state == .unmet ? .orange : .secondary)
+                    .accessibilityHidden(true)
             }
+            Text(title).foregroundStyle(Color.primary).fixedSize(horizontal: false, vertical: true)
         }.accessibilityElement(children: .combine)
+            .accessibilityValue(L.text(loading ? "Checking conditions…" : state == .met ? "Condition met" : state == .unmet ? "Condition not met" : "Condition unknown"))
     }
     private func start() {
         guard scenePhase == .active else { return }
@@ -116,10 +122,11 @@ struct ConditionStatusView: View {
         facts.loadingPlaces = false; facts.loadingHealth = []
     }
     private func refresh(location: Bool = false, allHealth: Bool = false) {
-        stop(); locationAuthorized = RecordConditions.hasLocationAuthorization
+        stop()
         let token = generation
         let source = tracker
         if let fixture = RecordConditions.previewFixture(tracker: source) { facts = fixture; return }
+        if !source.resolvedConditions.isEmpty { locationAuthorized = RecordConditions.hasLocationAuthorization }
         let needed = allHealth ? source.resolvedConditionGroups.flatMap(\.conditions)
             : ConditionEvaluation.neededLeaves(tracker: source, facts: facts, now: Date())
         let keys = Set(needed.compactMap(\.healthKey))
@@ -135,7 +142,7 @@ struct ConditionStatusView: View {
             defer {
                 if generation == token {
                     request = nil; facts.loadingHealth = []; facts.loadingPlaces = false
-                    locationAuthorized = RecordConditions.hasLocationAuthorization
+                    if !source.resolvedConditions.isEmpty { locationAuthorized = RecordConditions.hasLocationAuthorization }
                     if refreshQueued { refreshQueued = false; automaticRefresh() }
                 }
             }
@@ -188,13 +195,14 @@ enum ConditionLabels {
         case .place(let p): return p.name + " · " + L.text(p.relation == .inside ? "Inside" : "Outside") + " · 200 m"
         case .time(let t): return t.startMinute == t.endMinute ? L.text("All day") : clock(t.startMinute) + "–" + clock(t.endMinute)
         case .weekdays(let days):
+            if Set(days).count == 7 { return L.text("Every day") }
             return WeekdayOrder.days(starting: L.firstWeekday).filter { days.contains($0) }
                 .map { L.locale.calendar.weekdaySymbols[$0 - 1] }.joined(separator: " · ")
         case .steps(let t), .sleep(let t):
-            let title = L.text(condition.isSleep ? "Sleep" : "Steps")
-            let number = t.threshold.replacingOccurrences(of: ".", with: L.locale.decimalSeparator ?? ".")
-            return title + " " + (t.comparison == .greater ? "> " : "< ") + number
-                + (condition.isSleep ? " " + L.text("hours") : "") + " · " + window(t.window)
+            let number = (Numbers.decimal(t.threshold).map { $0.formatted(.number.precision(.fractionLength(0...28)).locale(L.locale)) }) ?? t.threshold
+            let key = condition.isSleep ? (t.comparison == .greater ? "More than %@ hours" : "Less than %@ hours")
+                : (t.comparison == .greater ? "More than %@ steps" : "Fewer than %@ steps")
+            return String(format: L.text(key), locale: L.locale, number) + " · " + window(t.window)
         }
     }
 }
