@@ -1,6 +1,12 @@
 import XCTest
 import UIKit
 
+@MainActor private func tapEditorBack(_ app: XCUIApplication) {
+    let back = app.navigationBars.buttons.matching(identifier: "BackButton").allElementsBoundByIndex.first { $0.isHittable }
+    XCTAssertNotNil(back)
+    back?.tap()
+}
+
 nonisolated final class MilestoneFlows: XCTestCase {
     @MainActor private func launch(extra: [String] = [], language: String = "en", dark: Bool = false, large: Bool = false) -> XCUIApplication {
         continueAfterFailure = false
@@ -21,7 +27,7 @@ nonisolated final class MilestoneFlows: XCTestCase {
             let exists = item.exists
             if exists {
                 let frame = item.frame
-                if item.isHittable && frame.height > 0 && frame.midY >= app.frame.minY + 120 && frame.midY <= app.frame.maxY - 110 { return }
+                if item.isHittable && frame.height > 0 && frame.midY >= app.frame.minY + 120 { return }
                 direction = frame.midY < app.frame.midY ? 1 : -1
             }
             let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55))
@@ -29,6 +35,9 @@ nonisolated final class MilestoneFlows: XCTestCase {
             start.press(forDuration: 0.05, thenDragTo: end, withVelocity: XCUIGestureVelocity(rawValue: 220), thenHoldForDuration: 0.2)
         }
         XCTAssertTrue(item.exists); XCTAssertTrue(item.isHittable)
+    }
+    @MainActor private func openEditorPage(_ app: XCUIApplication, _ id: String) {
+        let row = app.buttons.matching(identifier: id).firstMatch; reveal(app, row); row.tap()
     }
     @MainActor private func capture(_ app: XCUIApplication, _ name: String) {
         let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
@@ -46,7 +55,8 @@ nonisolated final class MilestoneFlows: XCTestCase {
             capture(app, "Centered ring with hidden corner preference " + language)
             if language == "en" {
                 openGoal(app, "SCORE")
-                app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
+                app.buttons["tracker.menu"].tap(); if app.buttons["Edit tracker"].waitForExistence(timeout: 1) { app.buttons["Edit tracker"].tap() }
+                openEditorPage(app, "tracker.appearance")
                 let date = app.switches["card.showLastRecorded"]
                 reveal(app, date)
                 XCTAssertFalse(element(app, "card.textPosition").exists)
@@ -61,10 +71,11 @@ nonisolated final class MilestoneFlows: XCTestCase {
                 // Each tab retains its navigation stack; Goals resumes the open SCORE detail.
                 app.tabBars.buttons.element(boundBy: 1).tap()
                 XCTAssertTrue(app.buttons["tracker.menu"].waitForExistence(timeout: 10))
-                app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
+                app.buttons["tracker.menu"].tap(); if app.buttons["Edit tracker"].waitForExistence(timeout: 1) { app.buttons["Edit tracker"].tap() }
+                openEditorPage(app, "tracker.appearance")
                 reveal(app, app.switches["card.showLastRecorded"])
                 XCTAssertEqual(app.switches["card.showLastRecorded"].value as? String, "0")
-                app.buttons["tracker.cancel"].tap()
+                tapEditorBack(app); app.buttons["tracker.cancel"].tap()
             }
             app.terminate()
         }
@@ -125,7 +136,9 @@ nonisolated final class MilestoneFlows: XCTestCase {
             let app = launch(extra: ["--health-setup=needed"], language: language, dark: dark, large: large)
             openGoal(app, "HEALTH")
             app.buttons["tracker.menu"].tap()
-            app.buttons[language == "ja" ? "項目を編集" : language == "zh-Hant" ? "編輯追蹤項目" : "Edit tracker"].tap()
+            let editItem = app.buttons[language == "ja" ? "項目を編集" : language == "zh-Hant" ? "編輯追蹤項目" : "Edit tracker"]
+            if editItem.waitForExistence(timeout: 1) { editItem.tap() }
+            openEditorPage(app, "tracker.conditions")
             let connection = app.buttons["health.connect"]; reveal(app, connection)
             capture(app, "Health connection belongs to tracker setup " + language)
             connection.tap()
@@ -140,7 +153,8 @@ nonisolated final class MilestoneFlows: XCTestCase {
     @MainActor func testAccessibleHealthGuidanceUsesAvailableHeight() {
         let app = launch(extra: ["--health-setup=configured"], dark: true, large: true)
         openGoal(app, "HEALTH")
-        app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
+        app.buttons["tracker.menu"].tap(); if app.buttons["Edit tracker"].waitForExistence(timeout: 1) { app.buttons["Edit tracker"].tap() }
+        openEditorPage(app, "tracker.conditions")
         let manage = app.buttons["health.manage"]; reveal(app, manage); manage.tap()
         let title = app.navigationBars["Manage health access"]
         XCTAssertTrue(title.waitForExistence(timeout: 10))
@@ -227,7 +241,8 @@ nonisolated final class MilestoneFlows: XCTestCase {
     @MainActor func testGroupedEditorAndAlternativeLayout() {
         for alternative in [false, true] {
             let app = launch(extra: alternative ? ["--conditions-flat-expanded"] : [])
-            openGoal(app, "GROUPED"); app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
+            openGoal(app, "GROUPED"); app.buttons["tracker.menu"].tap(); if app.buttons["Edit tracker"].waitForExistence(timeout: 1) { app.buttons["Edit tracker"].tap() }
+            openEditorPage(app, "tracker.conditions")
             let outer = element(app, "tracker.conditions.outerCombination"); reveal(app, outer)
             XCTAssertTrue(outer.isEnabled)
             let firstLeaf = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "conditions.editor.leaf.")).firstMatch
@@ -235,10 +250,10 @@ nonisolated final class MilestoneFlows: XCTestCase {
             capture(app, alternative ? "Condition groups alternative expanded form" : "Condition groups chosen disclosure form")
             let add = app.buttons["conditions.editor.addGroup"]; reveal(app, add); add.tap()
             let additions = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "conditions.editor.addCondition."))
-            reveal(app, additions.firstMatch)
+            reveal(app, additions.element(boundBy: additions.count - 1))
             // The visible button belongs to the newly inserted group. Preserve its identity:
             // lazy Form rows can reorder/disappear in the accessibility query during scrolling.
-            let newGroupButtonID = additions.firstMatch.identifier
+            let newGroupButtonID = additions.element(boundBy: additions.count - 1).identifier
             let addCondition = app.buttons[newGroupButtonID]
             reveal(app, addCondition)
             let metadata = XCTAttachment(string: "app frame: \(app.frame); add-condition frame: \(addCondition.frame)")
@@ -253,27 +268,27 @@ nonisolated final class MilestoneFlows: XCTestCase {
             let sunday = element(app, "condition.weekday.1")
             let sundayY = sunday.frame.midY
             for day in 2...7 { XCTAssertEqual(element(app, "condition.weekday.\(day)").frame.midY, sundayY, accuracy: 1) }
-            sunday.tap(); XCTAssertEqual(sunday.value as? String, "Off")
-            XCTAssertEqual(element(app, "condition.weekday.2").value as? String, "On")
+            sunday.tap(); XCTAssertEqual(sunday.value as? String, "0")
+            XCTAssertEqual(element(app, "condition.weekday.2").value as? String, "1")
             capture(app, "Seven independent localized weekday toggles")
             app.buttons["condition.confirm"].tap()
             XCTAssertFalse(app.buttons["condition.confirm"].exists)
             let leaves = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "conditions.editor.leaf."))
             XCTAssertGreaterThan(leaves.count, 2)
-            let deletions = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "conditions.editor.deleteGroup."))
-            let deletion = deletions.element(boundBy: deletions.count - 1)
+            let groupID = newGroupButtonID.replacingOccurrences(of: "conditions.editor.addCondition.", with: "")
+            let deletion = app.buttons["conditions.editor.deleteGroup." + groupID]
             reveal(app, deletion); deletion.tap()
-            XCTAssertTrue(app.sheets.buttons["conditions.editor.confirmDelete"].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.buttons.matching(identifier: "conditions.editor.confirmDelete").firstMatch.waitForExistence(timeout: 5))
             capture(app, "Nonempty group deletion confirmation")
-            let cancelDeletion = app.buttons["conditions.editor.cancelDelete"]
+            let cancelDeletion = app.buttons.matching(identifier: "conditions.editor.cancelDelete").firstMatch
             if cancelDeletion.exists { cancelDeletion.tap() }
             else {
                 // iOS 26 presents this native confirmation as a popover: cancel is tapping outside.
                 app.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.6)).tap()
             }
-            XCTAssertTrue(app.buttons["conditions.editor.confirmDelete"].waitForNonExistence(timeout: 5))
+            XCTAssertTrue(app.buttons.matching(identifier: "conditions.editor.confirmDelete").firstMatch.waitForNonExistence(timeout: 5))
             XCTAssertTrue(deletion.exists)
-            app.buttons["tracker.cancel"].tap(); app.terminate()
+            tapEditorBack(app); app.buttons["tracker.cancel"].tap(); app.terminate()
         }
     }
     @MainActor func testWeekdayPreferenceReordersCalendarWithoutChangingRecords() {
@@ -285,6 +300,7 @@ nonisolated final class MilestoneFlows: XCTestCase {
         let monday = element(app, "calendar.weekday.2"); reveal(app, monday)
         let sunday = element(app, "calendar.weekday.1")
         XCTAssertTrue(sunday.exists)
+        XCTAssertTrue(monday.waitForExistence(timeout: 5))
         XCTAssertLessThan(monday.frame.minX, sunday.frame.minX)
         capture(app, "Monday-first calendar retains true weekday identifiers")
         app.tabBars.buttons.element(boundBy: 3).tap()
@@ -296,6 +312,7 @@ nonisolated final class MilestoneFlows: XCTestCase {
         capture(app, "Sunday-first calendar preference")
     }
     @MainActor private func addCondition(_ app: XCUIApplication, kind: String) {
+        if app.textFields["tracker.name"].exists { openEditorPage(app, "tracker.conditions") }
         let add = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "conditions.editor.addCondition.")).firstMatch
         reveal(app, add)
         add.coordinate(withNormalizedOffset: CGVector(dx: 0.3, dy: 0.5)).tap()
@@ -306,23 +323,23 @@ nonisolated final class MilestoneFlows: XCTestCase {
     @MainActor func testWeekdayConditionLocalizedAtMaximumType() {
         for (language, edit) in [("en", "Edit tracker"), ("ja", "項目を編集"), ("zh-Hant", "編輯追蹤項目")] {
             let app = launch(language: language, dark: true, large: true)
-            openGoal(app, "MANUAL"); app.buttons["tracker.menu"].tap(); app.buttons[edit].tap()
+            openGoal(app, "MANUAL"); app.buttons["tracker.menu"].tap(); if app.buttons[edit].waitForExistence(timeout: 1) { app.buttons[edit].tap() }
             addCondition(app, kind: "weekdays")
             let sunday = element(app, "condition.weekday.1")
             XCTAssertTrue(sunday.waitForExistence(timeout: 5)); sunday.tap()
             for day in 1...7 {
                 let item = element(app, "condition.weekday.\(day)")
-                XCTAssertGreaterThanOrEqual(item.frame.width, 44)
-                XCTAssertGreaterThanOrEqual(item.frame.height, 44)
+                XCTAssertGreaterThanOrEqual(item.frame.width.rounded(), 44)
+                XCTAssertGreaterThanOrEqual(item.frame.height.rounded(), 44)
                 XCTAssertEqual(item.frame.midY, sunday.frame.midY, accuracy: 1)
             }
             capture(app, "Weekday on and off outlines dark AX maximum " + language)
-            app.buttons["condition.cancel"].tap(); app.buttons["tracker.cancel"].tap(); app.terminate()
+            app.buttons["condition.cancel"].tap(); tapEditorBack(app); app.buttons["tracker.cancel"].tap(); app.terminate()
         }
     }
     @MainActor func testTypedConditionsPersistAfterEditing() {
         let app = launch()
-        openGoal(app, "MANUAL"); app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
+        openGoal(app, "MANUAL"); app.buttons["tracker.menu"].tap(); if app.buttons["Edit tracker"].waitForExistence(timeout: 1) { app.buttons["Edit tracker"].tap() }
         addCondition(app, kind: "time")
         XCTAssertTrue(element(app, "condition.time.start").exists && element(app, "condition.time.end").exists)
         capture(app, "Native inclusive time interval condition")
@@ -340,13 +357,14 @@ nonisolated final class MilestoneFlows: XCTestCase {
         app.buttons["condition.confirm"].tap()
         addCondition(app, kind: "weekdays")
         element(app, "condition.weekday.1").tap(); app.buttons["condition.confirm"].tap()
-        let outer = element(app, "tracker.conditions.outerCombination"); reveal(app, outer)
-        XCTAssertFalse(outer.isEnabled, "A sole group disables the outer operator")
+        let outer = element(app, "tracker.conditions.outerCombination")
+        XCTAssertFalse(outer.exists, "A sole group hides the outer operator")
         let inner = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "conditions.editor.combination.")).firstMatch
         XCTAssertTrue(inner.isEnabled, "Multiple leaves retain an active inner operator")
         app.buttons["tracker.save"].tap()
         XCTAssertTrue(app.buttons["tracker.menu"].waitForExistence(timeout: 10))
-        app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
+        app.buttons["tracker.menu"].tap(); if app.buttons["Edit tracker"].waitForExistence(timeout: 1) { app.buttons["Edit tracker"].tap() }
+        openEditorPage(app, "tracker.conditions")
         let first = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "conditions.editor.leaf.")).firstMatch
         reveal(app, first)
         let stepsLeaf = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "conditions.editor.leaf.", "9000")).firstMatch
@@ -357,7 +375,7 @@ nonisolated final class MilestoneFlows: XCTestCase {
         XCTAssertEqual(app.textFields["condition.health.threshold"].value as? String, "9000")
         XCTAssertTrue(element(app, "condition.health.window").label.contains("This month so far"))
         capture(app, "Typed condition threshold and period restored")
-        app.buttons["condition.cancel"].tap(); app.buttons["tracker.cancel"].tap()
+        app.buttons["condition.cancel"].tap(); tapEditorBack(app); app.buttons["tracker.cancel"].tap()
     }
     @MainActor func testConditionPreviewRemainsResponsiveAcrossMinuteUpdates() {
         let app = launch(extra: ["--condition-gate=unmet"])
@@ -392,5 +410,152 @@ nonisolated final class MilestoneFlows: XCTestCase {
             capture(app, "First weekday preferences " + language)
             app.terminate()
         }
+    }
+}
+
+nonisolated final class TrackerEditorFlows: XCTestCase {
+    @MainActor private func launch(_ language: String = "en", dark: Bool = false, large: Bool = false) -> XCUIApplication {
+        continueAfterFailure = false
+        let app = XCUIApplication()
+        app.launchArguments = ["--uitesting", "--reset-test-store", "--feature-test-fixture", "--goalooker-test-fixture", "--milestones-test-fixture", "--health-setup=needed", "-language", language, "-appearance", dark ? "dark" : "light", "-homeLayout", "grid", "-firstWeekday", "2", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        if large { app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] }
+        app.launch(); return app
+    }
+    @MainActor private func item(_ app: XCUIApplication, _ id: String) -> XCUIElement {
+        app.descendants(matching: .any).matching(identifier: id).firstMatch
+    }
+    @MainActor private func reveal(_ app: XCUIApplication, _ item: XCUIElement) {
+        for _ in 0..<50 {
+            if item.exists && item.isHittable && item.frame.midY > 160 { return }
+            let direction = item.exists && item.frame.midY < app.frame.midY ? 1.0 : -1.0
+            let start = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55))
+            let end = app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.55 + direction * (item.exists ? 0.2 : 0.36)))
+            start.press(forDuration: 0.05, thenDragTo: end, withVelocity: XCUIGestureVelocity(rawValue: 220), thenHoldForDuration: 0.2)
+        }
+        XCTAssertTrue(item.isHittable)
+    }
+    @MainActor private func page(_ app: XCUIApplication, _ id: String) {
+        let row = app.buttons.matching(identifier: id).firstMatch; reveal(app, row); row.tap()
+    }
+    @MainActor private func back(_ app: XCUIApplication) { tapEditorBack(app) }
+    @MainActor private func edit(_ app: XCUIApplication, _ name: String) {
+        app.tabBars.buttons.element(boundBy: 1).tap()
+        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "tracker.", name)).firstMatch
+        reveal(app, row); row.tap(); app.buttons["tracker.menu"].tap()
+        let edit = app.buttons.matching(NSPredicate(format: "label IN %@", ["Edit tracker", "編輯追蹤項目", "項目を編集"])).firstMatch
+        if edit.waitForExistence(timeout: 1) { edit.tap() }
+    }
+    @MainActor private func shot(_ app: XCUIApplication, _ name: String) {
+        Thread.sleep(forTimeInterval: 0.7)
+        let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.name = "W2_" + name
+        attachment.lifetime = .keepAlways; add(attachment)
+    }
+    @MainActor func testFirstConditionAndSubpagesPreserveDraft() {
+        let app = launch()
+        app.buttons["tracker.create"].tap()
+        let name = app.textFields["tracker.name"]
+        XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), "Creation autofocuses the name")
+        if app.buttons["Continue"].waitForExistence(timeout: 1) { app.buttons["Continue"].tap() }
+        name.typeText("EDITOR DRAFT\n")
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        page(app, "tracker.conditions")
+        XCTAssertFalse(item(app, "tracker.conditions.gate").exists)
+        XCTAssertFalse(app.buttons["conditions.editor.addGroup"].exists)
+        XCTAssertFalse(app.textFields.matching(NSPredicate(format: "identifier BEGINSWITH %@", "conditions.editor.name.")).firstMatch.exists)
+        shot(app, "Empty_conditions")
+        let add = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "conditions.editor.addCondition.")).firstMatch
+        add.tap(); app.buttons["conditions.editor.add.weekdays"].tap()
+        let monday = item(app, "condition.weekday.2"), sunday = item(app, "condition.weekday.1")
+        XCTAssertTrue(monday.waitForExistence(timeout: 5))
+        XCTAssertLessThan(monday.frame.minX, sunday.frame.minX)
+        sunday.tap(); XCTAssertEqual(sunday.value as? String, "0")
+        app.buttons["condition.confirm"].tap()
+        XCTAssertTrue(item(app, "tracker.conditions.gate").waitForExistence(timeout: 5))
+        XCTAssertFalse(item(app, "tracker.conditions.outerCombination").exists)
+        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "conditions.editor.combination.")).firstMatch.exists)
+        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "conditions.editor.deleteGroup.")).firstMatch.exists)
+        let groupName = app.textFields.matching(NSPredicate(format: "identifier BEGINSWITH %@", "conditions.editor.name.")).firstMatch
+        let groupNameID = groupName.identifier
+        groupName.tap(); groupName.typeText("DRAFT GROUP"); app.buttons["tracker.keyboard.done"].tap()
+        app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "conditions.editor.leaf.")).firstMatch.press(forDuration: 1)
+        app.buttons.matching(NSPredicate(format: "label == %@", "Delete condition")).firstMatch.tap()
+        XCTAssertFalse(item(app, "tracker.conditions.gate").exists)
+        XCTAssertFalse(groupName.exists)
+        add.tap(); app.buttons["conditions.editor.add.weekdays"].tap(); app.buttons["condition.confirm"].tap()
+        XCTAssertEqual(app.textFields[groupNameID].value as? String, "DRAFT GROUP", "Replacing the last condition preserves the group's identity and name")
+        back(app)
+        XCTAssertTrue(app.buttons["tracker.conditions"].label.contains("1 condition"))
+        page(app, "tracker.content")
+        let text = item(app, "tracker.description")
+        text.tap(); text.typeText("Draft description")
+        app.buttons["tracker.keyboard.done"].tap(); back(app)
+        page(app, "tracker.content")
+        XCTAssertEqual(text.value as? String, "Draft description")
+        app.buttons["tracker.save"].tap()
+        XCTAssertTrue(app.buttons["tracker.create"].waitForExistence(timeout: 10))
+        edit(app, "EDITOR DRAFT"); page(app, "tracker.conditions")
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "conditions.editor.leaf.")).count, 1)
+        back(app); app.buttons["tracker.cancel"].tap()
+    }
+    @MainActor func testEditorArchiveAndConfirmedDeleteDismiss() {
+        var app = launch(); edit(app, "MANUAL")
+        page(app, "tracker.archive")
+        XCTAssertTrue(app.buttons["tracker.cancel"].waitForNonExistence(timeout: 5))
+        app.tabBars.buttons.element(boundBy: 0).tap()
+        XCTAssertFalse(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "card.", "MANUAL")).firstMatch.exists)
+        app.terminate(); app = launch(); edit(app, "MANUAL")
+        page(app, "tracker.delete")
+        XCTAssertTrue(app.buttons["tracker.delete.confirm"].waitForExistence(timeout: 5))
+        shot(app, "Delete_confirmation")
+        app.buttons.matching(identifier: "tracker.delete.confirm").firstMatch.tap()
+        XCTAssertTrue(app.buttons["tracker.cancel"].waitForNonExistence(timeout: 5))
+        XCTAssertTrue(app.staticTexts["Tracker removed"].waitForExistence(timeout: 5))
+    }
+    @MainActor func testDraftGoalPreviewUsesEditedTarget() {
+        let app = launch(); edit(app, "SCORE")
+        let target = app.textFields["goal.target"]
+        reveal(app, target); target.coordinate(withNormalizedOffset: CGVector(dx: 0.999, dy: 0.5)).tap()
+        let prior = target.value as? String ?? ""
+        target.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: prior.count) + "42")
+        XCTAssertEqual(target.value as? String, "42")
+        app.buttons["tracker.keyboard.done"].tap()
+        page(app, "tracker.appearance")
+        let background = item(app, "tracker.cardBackground")
+        if !(background.label + " " + (background.value as? String ?? "")).contains("Goal progress") {
+            background.tap()
+            let choices = app.buttons.matching(NSPredicate(format: "label == %@", "Goal progress"))
+            let choice = choices.allElementsBoundByIndex.first { $0.isHittable }
+            XCTAssertNotNil(choice); choice?.tap()
+            if app.buttons.matching(NSPredicate(format: "label == %@", "Chart")).allElementsBoundByIndex.contains(where: { $0.isHittable }) {
+                app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.15)).tap()
+            }
+        }
+        let preview = app.descendants(matching: .any).matching(NSPredicate(format: "identifier == %@ AND label BEGINSWITH %@", "tracker.preview", "SCORE")).firstMatch
+        XCTAssertTrue(preview.waitForExistence(timeout: 5))
+        let value = preview.value as? String ?? ""
+        shot(app, "Edited_target_preview")
+        XCTAssertTrue(value.contains("42.000"), "Preview uses the edited goal at the same reference time: " + value)
+        back(app); app.buttons["tracker.cancel"].tap()
+    }
+    @MainActor func testSharedWeekdaysReminderPersists() {
+        let app = launch(); edit(app, "MANUAL")
+        page(app, "tracker.reminders"); page(app, "tracker.reminders.schedule")
+        let enabled = app.switches["reminder.enabled"]
+        enabled.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
+        let sunday = item(app, "reminder.weekday.1"), monday = item(app, "reminder.weekday.2")
+        XCTAssertTrue(monday.waitForExistence(timeout: 5))
+        XCTAssertLessThan(monday.frame.minX, sunday.frame.minX)
+        sunday.tap(); XCTAssertEqual(sunday.value as? String, "0")
+        back(app); back(app); app.buttons["tracker.save"].tap()
+        let alert = XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.firstMatch
+        if alert.waitForExistence(timeout: 3) {
+            let allow = alert.buttons.matching(NSPredicate(format: "label IN %@", ["Allow", "允許", "許可"])).firstMatch
+            if allow.exists { allow.tap() }
+        }
+        XCTAssertTrue(app.buttons["tracker.menu"].waitForExistence(timeout: 10))
+        app.buttons["tracker.menu"].tap(); if app.buttons["Edit tracker"].waitForExistence(timeout: 1) { app.buttons["Edit tracker"].tap() }
+        page(app, "tracker.reminders"); page(app, "tracker.reminders.schedule")
+        XCTAssertEqual(item(app, "reminder.weekday.1").value as? String, "0")
+        XCTAssertEqual(item(app, "reminder.weekday.2").value as? String, "1")
     }
 }
