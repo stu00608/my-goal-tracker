@@ -102,20 +102,22 @@ nonisolated final class ExpansionTests: XCTestCase {
         let app = launch()
         app.tabBars.buttons.element(boundBy: 1).tap()
         button(app, prefix: "tracker.", text: "SCORE").tap()
+        for _ in 0..<10 { if app.staticTexts["tracker.description"].isHittable { break }; app.swipeUp() }
         XCTAssertTrue(app.staticTexts["tracker.description"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["tracker.website"].exists)
         let photo = app.buttons["tracker.photo.0"]
+        for _ in 0..<4 { if photo.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(photo.waitForExistence(timeout: 10)); photo.tap()
         XCTAssertTrue(app.buttons["photo.close"].waitForExistence(timeout: 10))
         screenshot(app, "Tracker-owned photo opens full screen")
         app.buttons["photo.close"].tap()
         let view = app.segmentedControls["snapshot.view"]
-        for _ in 0..<8 { if view.isHittable { break }; app.swipeUp() }
+        for _ in 0..<8 { if view.isHittable { break }; app.swipeDown() }
         XCTAssertTrue(view.waitForExistence(timeout: 10)); view.buttons["Goal progress"].tap()
         XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "snapshot.progress").firstMatch.waitForExistence(timeout: 10))
         app.swipeUp()
         screenshot(app, "Signed numeric goal progress ring")
-        app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
+        app.buttons["tracker.menu"].tap()
         let lower = app.textFields["tracker.axisLower"], upper = app.textFields["tracker.axisUpper"]
         for _ in 0..<12 { if lower.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(lower.waitForExistence(timeout: 10)); XCTAssertEqual(lower.value as? String, "0")
@@ -126,7 +128,7 @@ nonisolated final class ExpansionTests: XCTestCase {
         screenshot(app, "Optional chart bounds grouped with explanation")
         app.buttons["tracker.save"].tap()
         XCTAssertTrue(app.buttons["tracker.menu"].waitForExistence(timeout: 10))
-        app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
+        app.buttons["tracker.menu"].tap()
         for _ in 0..<12 { if lower.isHittable { break }; app.swipeUp() }
         XCTAssertEqual(lower.value as? String, "10"); XCTAssertEqual(upper.value as? String, "30")
         app.buttons["Cancel"].tap()
@@ -137,7 +139,7 @@ nonisolated final class ExpansionTests: XCTestCase {
         app.tabBars.buttons.element(boundBy: 1).tap()
         let office = button(app, prefix: "tracker.", text: "OFFICE")
         for _ in 0..<8 { if office.isHittable { break }; app.swipeUp() }
-        office.tap(); app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
+        office.tap(); app.buttons["tracker.menu"].tap()
         let condition = button(app, prefix: "conditions.editor.leaf.", text: "Office A")
         for _ in 0..<12 { if condition.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(condition.waitForExistence(timeout: 10)); condition.tap()
@@ -154,7 +156,7 @@ nonisolated final class ExpansionTests: XCTestCase {
         screenshot(app, "Multiple location conditions and ALL combination")
         app.buttons["tracker.save"].tap()
         XCTAssertTrue(app.buttons["tracker.menu"].waitForExistence(timeout: 10))
-        app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
+        app.buttons["tracker.menu"].tap()
         for _ in 0..<12 { if condition.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(condition.label.contains("Outside"))
         XCTAssertTrue(combination.label.contains("All conditions"))
@@ -181,7 +183,7 @@ nonisolated final class ExpansionTests: XCTestCase {
                 XCTAssertTrue(progress.waitForExistence(timeout: 10))
                 app.swipeUp()
                 screenshot(app, "Numeric ring " + suffix)
-                app.buttons["tracker.menu"].tap(); app.buttons[edit].tap()
+                app.buttons["tracker.menu"].tap()
                 XCTAssertTrue(app.textFields["tracker.name"].waitForExistence(timeout: 10))
                 screenshot(app, "Tracker metadata editor " + suffix)
                 let axis = app.textFields["tracker.axisLower"]
@@ -191,7 +193,7 @@ nonisolated final class ExpansionTests: XCTestCase {
                 app.navigationBars["SCORE"].buttons["BackButton"].tap()
                 let office = button(app, prefix: "tracker.", text: "OFFICE")
                 for _ in 0..<8 { if office.isHittable { break }; app.swipeUp() }
-                office.tap(); app.buttons["tracker.menu"].tap(); app.buttons[edit].tap()
+                office.tap(); app.buttons["tracker.menu"].tap()
                 let place = button(app, prefix: "conditions.editor.leaf.", text: "Office A")
                 for _ in 0..<18 { if place.isHittable { break }; app.swipeUp() }
                 XCTAssertTrue(place.waitForExistence(timeout: 10))
@@ -209,7 +211,7 @@ nonisolated final class ExpansionTests: XCTestCase {
         app.tabBars.buttons.element(boundBy: 1).tap()
         let office = button(app, prefix: "tracker.", text: "OFFICE")
         for _ in 0..<8 { if office.isHittable { break }; app.swipeUp() }
-        office.tap(); app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
+        office.tap(); app.buttons["tracker.menu"].tap()
         let place = button(app, prefix: "conditions.editor.leaf.", text: "Office A")
         for _ in 0..<12 { if place.isHittable { break }; app.swipeUp() }
         place.tap()
@@ -265,10 +267,9 @@ nonisolated final class ExpansionTests: XCTestCase {
         screenshot(app, "Exact bounds exclude collapsed huge value from overview")
         app.tabBars.buttons.element(boundBy: 1).tap()
         button(app, prefix: "tracker.", text: "SCORE").tap()
-        let period = app.buttons["snapshot.period"]
+        let period = app.segmentedControls["snapshot.period"]
         for _ in 0..<10 { if period.isHittable { break }; app.swipeUp() }
-        XCTAssertTrue(period.waitForExistence(timeout: 10)); period.tap()
-        app.buttons["30 days"].tap()
+        XCTAssertTrue(period.waitForExistence(timeout: 10)); period.buttons["30 days"].tap()
         let notice = app.staticTexts["snapshot.clipped"]
         for _ in 0..<8 { if notice.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(notice.waitForExistence(timeout: 10))

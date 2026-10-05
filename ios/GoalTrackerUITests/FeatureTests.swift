@@ -78,7 +78,7 @@ nonisolated final class FeatureTests: XCTestCase {
     @MainActor func testCalendarAndEmptyCustomChart() {
         continueAfterFailure = false
         let app = app()
-        app.tabBars.buttons["Goals"].tap()
+        app.tabBars.buttons.element(boundBy: 1).tap()
         element(app, prefix: "tracker.", name: "COOK").tap()
         var calendar = Calendar(identifier: .gregorian); calendar.timeZone = .current
         let month = calendar.date(byAdding: .month, value: -1, to: Date())!
@@ -95,7 +95,7 @@ nonisolated final class FeatureTests: XCTestCase {
         app.buttons["Cancel"].tap()
         for (label, id) in [("Bar chart", "completion.chart"), ("Progress bar", "completion.progress")] {
             for _ in 0..<4 { if app.descendants(matching: .any).matching(identifier: "completion.view").firstMatch.isHittable { break }; app.swipeDown() }
-            app.descendants(matching: .any).matching(identifier: "completion.view").firstMatch.tap(); app.buttons[label].tap()
+            app.segmentedControls["completion.view"].buttons[label].tap()
             let presentation = app.descendants(matching: .any).matching(identifier: id).firstMatch
             XCTAssertTrue(presentation.waitForExistence(timeout: 10))
             if id == "completion.chart" { XCTAssertTrue(app.staticTexts["Target"].exists) }
@@ -104,11 +104,10 @@ nonisolated final class FeatureTests: XCTestCase {
         }
         app.navigationBars["COOK"].buttons["BackButton"].tap()
         element(app, prefix: "tracker.", name: "EMPTY").tap()
-        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "snapshot.chart").firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "snapshot.empty").firstMatch.waitForExistence(timeout: 10))
         for label in ["30 days", "90 days", "All", "Custom"] {
-            app.descendants(matching: .any).matching(identifier: "snapshot.period").firstMatch.tap()
-            app.buttons[label].tap()
-            XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "snapshot.chart").firstMatch.exists)
+            app.segmentedControls["snapshot.period"].buttons[label].tap()
+            XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "snapshot.empty").firstMatch.exists)
         }
         XCTAssertTrue(app.datePickers["snapshot.custom.start"].exists)
         XCTAssertTrue(app.datePickers["snapshot.custom.end"].exists)
@@ -142,7 +141,7 @@ nonisolated final class FeatureTests: XCTestCase {
         app.tabBars.buttons.element(boundBy: 1).tap()
         let goal = element(app, prefix: "tracker.", name: "每月出社")
         XCTAssertTrue(goal.waitForExistence(timeout: 10)); goal.tap()
-        app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
+        app.buttons["tracker.menu"].tap()
         let position = app.descendants(matching: .any).matching(identifier: "card.textPosition").firstMatch
         for _ in 0..<15 { if position.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(position.isHittable); position.tap()
@@ -229,7 +228,7 @@ nonisolated final class FeatureTests: XCTestCase {
     @MainActor func testRecordedMapOpensEntry() {
         continueAfterFailure = false
         let app = app()
-        app.tabBars.buttons["Goals"].tap()
+        app.tabBars.buttons.element(boundBy: 1).tap()
         element(app, prefix: "tracker.", name: "TRAVEL").tap()
         let pin = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "location.")).firstMatch
         for _ in 0..<6 { if pin.isHittable { break }; app.swipeUp() }
@@ -571,7 +570,7 @@ nonisolated final class FeatureTests: XCTestCase {
             XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "entry.photos.count").firstMatch.value as? String, "9/10")
             XCTAssertFalse(app.buttons[first].exists)
             app.buttons["entry.cancel"].tap()
-            app.tabBars.buttons["Goals"].tap()
+            app.tabBars.buttons.element(boundBy: 1).tap()
             element(app, prefix: "tracker.", name: "SCORE").tap()
             let record = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "entry.", "Synthetic snapshot")).firstMatch
             // Drag in the List gutter, outside the interactive MapKit surface.

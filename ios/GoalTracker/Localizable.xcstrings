@@ -30,19 +30,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Goals"
+            "value": "Items"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "目標"
+            "value": "項目"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "目標"
+            "value": "項目"
           }
         }
       }
@@ -122,13 +122,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Create a tracker"
+            "value": "Create Item"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "建立追蹤項目"
+            "value": "建立項目"
           }
         },
         "ja": {
@@ -145,13 +145,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Add a snapshot"
+            "value": "Log Value"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "新增數值快照"
+            "value": "記錄數值"
           }
         },
         "ja": {
@@ -490,19 +490,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Completed"
+            "value": "Done"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "已記錄完成"
+            "value": "已完成"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "完了を記録済み"
+            "value": "完了"
           }
         }
       }
@@ -628,13 +628,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Edit tracker"
+            "value": "Edit Item"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "編輯追蹤項目"
+            "value": "編輯項目"
           }
         },
         "ja": {
@@ -881,13 +881,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Snapshot chart"
+            "value": "Value chart"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "數值快照圖表"
+            "value": "數值圖表"
           }
         },
         "ja": {
@@ -1180,19 +1180,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Partial period · excluded from success rate"
+            "value": "Partial · Not counted"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "部分期間，不納入達標率"
+            "value": "未滿週期・不計入"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "不完全な期間・達成率の対象外"
+            "value": "一部の期間・集計対象外"
           }
         }
       }
@@ -1203,19 +1203,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Full-period success rate"
+            "value": "Success Rate"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "完整期間達標率"
+            "value": "達標率"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "完全な期間の達成率"
+            "value": "達成率"
           }
         }
       }
@@ -1232,13 +1232,13 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "部分期間"
+            "value": "未滿週期"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "不完全な期間"
+            "value": "一部の期間"
           }
         }
       }
@@ -1272,19 +1272,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Tracker"
+            "value": "Item"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "追蹤項目"
+            "value": "項目"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "追跡項目"
+            "value": "項目"
           }
         }
       }
@@ -1640,13 +1640,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "New tracker"
+            "value": "New Item"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "新追蹤項目"
+            "value": "新增項目"
           }
         },
         "ja": {
@@ -2123,19 +2123,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Your data"
+            "value": "Data"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "你的資料"
+            "value": "資料"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "あなたのデータ"
+            "value": "データ"
           }
         }
       }
@@ -2146,13 +2146,13 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Trackers"
+            "value": "Items"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "追蹤項目數"
+            "value": "項目數"
           }
         },
         "ja": {
@@ -2215,19 +2215,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Export full backup"
+            "value": "Export Backup"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "匯出完整備份"
+            "value": "匯出備份"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "完全バックアップを書き出す"
+            "value": "バックアップを書き出す"
           }
         }
       }
@@ -2284,19 +2284,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "A full backup includes records, goal history and photos. Keep a copy somewhere safe. Backups are not encrypted."
+            "value": "Backups are not encrypted"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "完整備份包含紀錄、目標歷史與照片，請妥善保存。備份檔未加密。"
+            "value": "備份檔未加密"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "完全バックアップには記録、目標の履歴、写真が含まれます。安全な場所に保管してください。バックアップは暗号化されません。"
+            "value": "バックアップは暗号化されません"
           }
         }
       }
@@ -2629,19 +2629,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Enter a number with at most 28 digits, without grouping separators."
+            "value": "Enter up to 28 digits without grouping separators."
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "請輸入最多 28 位數字，不使用千分位符號。"
+            "value": "請輸入最多 28 位數字，不使用千分位符號"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "区切り文字を使わず、28桁以内の数値を入力してください。"
+            "value": "区切り文字なしで28桁以内の数値を入力"
           }
         }
       }
@@ -2652,19 +2652,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "This backup is damaged or uses an unsupported format. Your data was kept."
+            "value": "Backup damaged or unsupported. Your data is safe."
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "備份已損壞或格式不支援，原有資料已保留。"
+            "value": "備份損壞或格式不支援，資料未受影響"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "バックアップが破損しているか、非対応の形式です。元のデータは保持されています。"
+            "value": "バックアップが破損または非対応です。データは保持されています"
           }
         }
       }
@@ -2675,19 +2675,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "The backup exceeds the 100 MB limit."
+            "value": "Backup exceeds 100 MB."
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "備份超過 100 MB 上限。"
+            "value": "備份超過 100 MB"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "バックアップが100 MBの上限を超えています。"
+            "value": "バックアップが100 MBを超えています"
           }
         }
       }
@@ -2698,19 +2698,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Could not read this photo. Try a different image."
+            "value": "Couldn’t read this photo. Try another."
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "無法讀取照片，請換一張圖片。"
+            "value": "無法讀取照片，請換一張"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "写真を読み込めませんでした。別の画像をお試しください。"
+            "value": "写真を読み込めません。別の写真を選択"
           }
         }
       }
@@ -2721,19 +2721,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Could not complete this action. Your saved data was kept. Please try again."
+            "value": "Couldn’t complete. Your data is safe."
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "操作未完成，已儲存的資料會保留，請再試一次。"
+            "value": "無法完成，資料未受影響"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "操作できませんでした。保存済みのデータは保持されています。もう一度お試しください。"
+            "value": "操作できませんでした。データは保持されています"
           }
         }
       }
@@ -2744,19 +2744,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Too many reminders. Choose fewer weekdays or trackers."
+            "value": "Too many reminders. Choose fewer days or items."
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "提醒數量過多，請減少星期或項目。"
+            "value": "提醒過多，請減少星期或項目"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "リマインダーが多すぎます。曜日や項目を減らしてください。"
+            "value": "通知が多すぎます。曜日や項目を減らしてください"
           }
         }
       }
@@ -2767,19 +2767,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "This date already has a record. Edit that record instead."
+            "value": "This date has a record. Edit it instead."
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "這天已有紀錄，請編輯原紀錄。"
+            "value": "這天已有紀錄，請編輯原紀錄"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "この日にはすでに記録があります。その記録を編集してください。"
+            "value": "この日の記録を編集してください"
           }
         }
       }
@@ -2813,19 +2813,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Open the app to add your first tracker."
+            "value": "Open the app to add your first item."
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "開啟 App，新增第一個追蹤項目。"
+            "value": "開啟 App，新增第一個項目"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "Appを開いて最初の項目を追加しましょう。"
+            "value": "Appを開いて最初の項目を追加"
           }
         }
       }
@@ -2903,19 +2903,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Each record can have up to 10 photos. Remove photos before saving."
+            "value": "Up to 10 photos per record."
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "每筆紀錄最多 10 張照片，請先移除照片再儲存。"
+            "value": "每筆紀錄最多 10 張照片"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "写真は1件の記録につき10枚までです。保存前に写真を削除してください。"
+            "value": "1件の記録につき写真は10枚まで"
           }
         }
       }
@@ -3108,13 +3108,13 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "完成紀錄歷史"
+            "value": "完成紀錄"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "達成記録の履歴"
+            "value": "完了記録の履歴"
           }
         }
       }
@@ -3136,7 +3136,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "達成記録"
+            "value": "完了記録"
           }
         }
       }
@@ -3631,19 +3631,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "No completion goal"
+            "value": "No goal"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "尚未設定完成頻率目標"
+            "value": "尚未設定目標"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "達成頻度の目標がありません"
+            "value": "目標が未設定です"
           }
         }
       }
@@ -3653,19 +3653,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "No completion records in this period."
+            "value": "No completions in this period"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "這段期間沒有完成紀錄。"
+            "value": "這段期間尚無完成紀錄"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "この期間の達成記録はありません。"
+            "value": "この期間の完了記録はありません"
           }
         }
       }
@@ -3983,19 +3983,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Recorded completions"
+            "value": "Completions"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "已記錄的完成次數"
+            "value": "完成次數"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "記録した達成回数"
+            "value": "完了回数"
           }
         }
       }
@@ -4115,19 +4115,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Use Edit tracker in the menu to set a weekly or monthly goal."
+            "value": "Tap Edit to set a goal"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "從選單的「編輯目標」設定每週或每月的完成頻率。"
+            "value": "點「編輯」設定目標"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "メニューの「項目を編集」から毎週または毎月の達成頻度を設定できます。"
+            "value": "「編集」で目標を設定"
           }
         }
       }
@@ -4159,19 +4159,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Weekly recorded completions"
+            "value": "Weekly completions"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "每週完成紀錄次數"
+            "value": "每週完成次數"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "週ごとの達成記録回数"
+            "value": "週ごとの完了回数"
           }
         }
       }
@@ -4248,19 +4248,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Applies to new records only. You can change it for each record. Location is requested when you save."
+            "value": "New records only"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "僅套用至新紀錄，每筆皆可調整。儲存時才會要求取得位置。"
+            "value": "僅用於新紀錄"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "新しい記録にのみ適用され、記録ごとに変更できます。保存時に位置情報を要求します。"
+            "value": "新しい記録にのみ適用"
           }
         }
       }
@@ -4639,19 +4639,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Select tracker"
+            "value": "Select Item"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "選擇目標"
+            "value": "選擇項目"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "目標を選択"
+            "value": "項目を選択"
           }
         }
       }
@@ -4662,19 +4662,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Choose the tracker shown in this widget."
+            "value": "Choose the item shown in this widget."
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "選擇此小工具顯示的目標。"
+            "value": "選擇小工具顯示的項目"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "このウィジェットに表示する目標を選択します。"
+            "value": "ウィジェットに表示する項目を選択"
           }
         }
       }
@@ -4685,19 +4685,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "This tracker is unavailable. Edit the widget to choose another."
+            "value": "Item unavailable. Edit the widget to choose another."
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "此目標無法顯示，請編輯小工具選擇其他目標。"
+            "value": "項目無法顯示，請編輯小工具選擇其他項目"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "この目標は表示できません。ウィジェットを編集して別の目標を選んでください。"
+            "value": "項目を表示できません。ウィジェットを編集して別の項目を選択"
           }
         }
       }
@@ -4708,19 +4708,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Unavailable tracker"
+            "value": "Item unavailable"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "無法使用的目標"
+            "value": "項目無法顯示"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "利用できない目標"
+            "value": "項目を表示できません"
           }
         }
       }
@@ -5168,19 +5168,19 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "控制所有目標的時間與位置提醒，個別提醒可在目標中設定。通知依 iPhone 設定傳送。"
+            "value": "關閉後暫停所有提醒"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "すべての目標の時刻と場所のリマインダーを切り替えます。個別の設定は各目標で行えます。通知は iPhone の設定に従います。"
+            "value": "オフにするとすべての通知を停止"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Controls time and location reminders for all goals. Configure each reminder in its goal. Delivery follows your iPhone settings."
+            "value": "Turning off pauses all reminders"
           }
         }
       }
@@ -7119,19 +7119,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Achievement history"
+            "value": "Milestones"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "達成履歴"
+            "value": "マイルストーン"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "成就歷史"
+            "value": "里程碑"
           }
         }
       }
@@ -7142,19 +7142,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "No achievements yet."
+            "value": "No milestones yet"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "まだ達成履歴はありません。"
+            "value": "マイルストーンはまだありません"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "目前還沒有成就。"
+            "value": "尚無里程碑"
           }
         }
       }
@@ -7234,19 +7234,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Preparing map…"
+            "value": "Loading map…"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "地図を準備中…"
+            "value": "地図を読み込み中…"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "正在準備地圖⋯"
+            "value": "載入地圖中…"
           }
         }
       }
@@ -7257,19 +7257,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Could not prepare the map. Try again before exporting."
+            "value": "Couldn’t load the map."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "地図を準備できませんでした。画像を書き出す前に再試行してください。"
+            "value": "地図を読み込めません"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "無法準備地圖，請重試後再匯出圖片。"
+            "value": "無法載入地圖"
           }
         }
       }
@@ -7326,19 +7326,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Achievement"
+            "value": "Milestone"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "達成記録"
+            "value": "マイルストーン"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "成就"
+            "value": "里程碑"
           }
         }
       }
@@ -7372,19 +7372,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Share image"
+            "value": "Share"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "画像を共有"
+            "value": "共有"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "分享圖片"
+            "value": "分享"
           }
         }
       }
@@ -7418,19 +7418,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Could not create the image. Please try again."
+            "value": "Couldn’t create the image. Try again."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "画像を作成できませんでした。もう一度お試しください。"
+            "value": "画像を作成できません。再試行してください"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "無法產生圖片，請再試一次。"
+            "value": "無法產生圖片，請重試"
           }
         }
       }
@@ -7855,19 +7855,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Finite goal"
+            "value": "Finish"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "有限目標"
+            "value": "標記完成"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "期限のある目標"
+            "value": "完了にする"
           }
         }
       }
@@ -10053,6 +10053,98 @@
           "stringUnit": {
             "state": "translated",
             "value": "自動更新可讀取的資料"
+          }
+        }
+      }
+    },
+    "All records": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "All Records"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "全部紀錄"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "すべての記録"
+          }
+        }
+      }
+    },
+    "Recording": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Recording"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "記錄"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "記録"
+          }
+        }
+      }
+    },
+    "App": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "App"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "App"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "アプリ"
+          }
+        }
+      }
+    },
+    "Version": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Version"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "版本"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "バージョン"
           }
         }
       }

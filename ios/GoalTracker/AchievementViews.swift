@@ -2,66 +2,59 @@ import SwiftUI
 import Charts
 import MapKit
 import UIKit
-import LinkPresentation
 
 struct CompletedTab: View {
     let trackers: [Tracker]
     let now: Date
-
+    @Environment(\.dynamicTypeSize) private var typeSize
     var body: some View {
         NavigationStack {
-            let collections = trackers.compactMap { tracker -> CompletionCollection? in
-                let snapshots = CompletionEngine.snapshots(for: tracker, until: now)
-                guard !snapshots.isEmpty else { return nil }
-                return CompletionCollection(tracker: tracker, snapshots: snapshots,
-                                            completed: CompletionEngine.isCompleted(tracker: tracker, now: now))
-            }.sorted { $0.snapshots[0].achievedAt > $1.snapshots[0].achievedAt }
-            List {
-                if collections.isEmpty {
-                    Text(L.text("Achievements appear here when a goal is reached."))
-                        .foregroundStyle(.secondary).padding(.vertical)
+            let snapshots = trackers.flatMap { CompletionEngine.snapshots(for: $0, until: now) }
+                .sorted { ($0.achievedAt, $0.id) > ($1.achievedAt, $1.id) }
+            Group {
+                if snapshots.isEmpty {
+                    ContentUnavailableView(L.text("No achievements yet."), systemImage: "sparkles")
                         .accessibilityIdentifier("achievements.empty")
+                } else {
+                    ScrollView {
+                        LazyVGrid(columns: Array(repeating: GridItem(.flexible(), spacing: 12), count: typeSize.isAccessibilitySize ? 1 : 2), spacing: 12) {
+                            ForEach(snapshots) { snapshot in
+                                NavigationLink { AchievementDetail(snapshot: snapshot) } label: {
+                                    AchievementThumbnail(snapshot: snapshot)
+                                }.buttonStyle(.plain)
+                                    .accessibilityLabel(AchievementText.summary(snapshot))
+                                    .accessibilityIdentifier("achievements.tracker." + snapshot.trackerID.uuidString + "." + snapshot.id)
+                            }
+                        }.padding(16)
+                    }.accessibilityIdentifier("achievements.list")
                 }
-                collectionSection(collections.filter(\.completed), title: "Completed goals")
-                collectionSection(collections.filter { !$0.completed }, title: "Achievement history")
             }
+            .background(Color(uiColor: .systemGroupedBackground))
             .navigationTitle(L.text("Completed tab"))
-            .accessibilityIdentifier("achievements.list")
-        }
-    }
-
-    @ViewBuilder private func collectionSection(_ collections: [CompletionCollection], title: String) -> some View {
-        if !collections.isEmpty {
-            Section(L.text(title)) {
-                ForEach(collections) { collection in
-                    NavigationLink {
-                        List { CompletionHistoryView(tracker: collection.tracker) }
-                            .navigationTitle(collection.tracker.name)
-                    } label: {
-                        VStack(alignment: .leading, spacing: 6) {
-                            Text(collection.tracker.name).font(.headline)
-                            Text(AchievementText.value(collection.snapshots[0])).font(.body.monospacedDigit())
-                            Text(AchievementText.date(collection.snapshots[0])).font(.subheadline).foregroundStyle(.secondary)
-                        }.padding(.vertical, 4)
-                    }.accessibilityIdentifier("achievements.tracker." + collection.id.uuidString)
-                }
-            }
         }
     }
 }
 
-private struct CompletionCollection: Identifiable {
-    let tracker: Tracker
-    let snapshots: [AchievementSnapshot]
-    let completed: Bool
-    var id: UUID { tracker.id }
+private struct AchievementThumbnail: View {
+    let snapshot: AchievementSnapshot
+    @State private var mapImage: UIImage?
+    @Environment(\.colorScheme) private var colorScheme
+    var body: some View {
+        AchievementPoster(snapshot: snapshot, mapImage: mapImage, compact: true)
+            .task(id: snapshot.id + String(describing: colorScheme)) {
+                if snapshot.background == .map && !snapshot.locations.isEmpty {
+                    mapImage = try? await AchievementMap.image(locations: snapshot.locations, dark: colorScheme == .dark)
+                }
+            }
+    }
 }
 
 struct CompletionHistoryView: View {
     let tracker: Tracker
+    let now: Date
 
     var body: some View {
-        let snapshots = CompletionEngine.snapshots(for: tracker, until: Date())
+        let snapshots = CompletionEngine.snapshots(for: tracker, until: now)
         Section {
             if snapshots.isEmpty {
                 Text(L.text("No achievements yet.")).foregroundStyle(.secondary)
@@ -71,19 +64,15 @@ struct CompletionHistoryView: View {
                     NavigationLink {
                         AchievementDetail(snapshot: snapshot)
                     } label: {
-                        VStack(alignment: .leading, spacing: 6) {
+                        VStack(alignment: .leading, spacing: 4) {
                             Text(AchievementText.value(snapshot)).font(.headline.monospacedDigit())
-                            Text(AchievementText.date(snapshot)).font(.subheadline)
-                            Text(snapshot.manual ? L.text("Marked complete") : L.text("Goal reached"))
-                                .font(.caption).foregroundStyle(.secondary)
-                        }.padding(.vertical, 4)
+                            Text(AchievementText.date(snapshot)).font(.subheadline).foregroundStyle(.secondary)
+                        }.foregroundStyle(.primary).padding(.vertical, 4)
                     }.accessibilityIdentifier("achievement.open." + snapshot.id)
                 }
             }
         } header: {
             Text(L.text("Achievement history")).accessibilityIdentifier("achievement.history.header")
-        } footer: {
-            Text(L.text("Goal achievements reflect your current records and goal history."))
         }
     }
 }
@@ -91,8 +80,8 @@ struct CompletionHistoryView: View {
 struct AchievementDetail: View {
     let snapshot: AchievementSnapshot
     @Environment(\.colorScheme) private var colorScheme
-    @State private var share: AchievementSharePayload?
-    @State private var notice: String?
+    @State private var exportImage: UIImage?
+    @State private var error: String?
     @State private var mapImage: UIImage?
     @State private var mapLoading = false
     @State private var mapFailed = false
@@ -118,13 +107,6 @@ struct AchievementDetail: View {
                         Button(L.text("Retry")) { Task { await prepareMap() } }
                             .accessibilityIdentifier("achievement.map.retry")
                     }
-                    if let notice {
-                        Text(notice).font(.callout).accessibilityIdentifier("achievement.export.notice")
-                    }
-                    ViewThatFits(in: .horizontal) {
-                        HStack(spacing: 16) { exportButtons }
-                        VStack(alignment: .leading, spacing: 12) { exportButtons }
-                    }
                     #if DEBUG && targetEnvironment(simulator)
                     if ProcessInfo.processInfo.arguments.contains("--milestone-compare-layout") {
                         Toggle(L.text("Compare flat poster"), isOn: $flatAlternative)
@@ -137,13 +119,22 @@ struct AchievementDetail: View {
         .background(Color(uiColor: .systemGroupedBackground))
         .navigationTitle(L.text("Achievement"))
         .navigationBarTitleDisplayMode(.inline)
-        .sheet(item: $share) { payload in
-            AchievementShareSheet(image: payload.image, title: snapshot.name) { notice = L.text("Could not share the image. Please try again.") }
+        .toolbar {
+            ToolbarItem(placement: .topBarTrailing) {
+                if let exportImage {
+                    ShareLink(item: Image(uiImage: exportImage), preview: SharePreview(snapshot.name, image: Image(uiImage: exportImage))) {
+                        Label(L.text("Share image"), systemImage: "square.and.arrow.up")
+                    }.accessibilityIdentifier("achievement.share")
+                } else {
+                    Image(systemName: "square.and.arrow.up").foregroundStyle(.secondary)
+                        .accessibilityLabel(L.text("Share image")).accessibilityIdentifier("achievement.share.loading")
+                }
+            }
         }
+        .statusToast(message: $error, identifier: "achievement.export.error", autoDismiss: false)
+        .sensoryFeedback(.error, trigger: error) { _, error in error != nil }
         .task(id: snapshot.id + String(describing: colorScheme)) { await prepareMap() }
-        .onChange(of: notice) { _, value in
-            if let value { UIAccessibility.post(notification: .announcement, argument: value) }
-        }
+
     }
 
     @ViewBuilder private var poster: some View {
@@ -159,46 +150,25 @@ struct AchievementDetail: View {
     }
 
     private var relief: some View {
-        AchievementRelief(sensorEnabled: posterVisible && share == nil) { offset in
+        AchievementRelief(sensorEnabled: posterVisible) { offset in
             AchievementPoster(snapshot: snapshot, mapImage: mapImage, foregroundOffset: offset)
         }
     }
 
-    @ViewBuilder private var exportButtons: some View {
-        Button { export(copy: true) } label: {
-            Label(L.text("Copy image"), systemImage: "doc.on.doc")
-        }.buttonStyle(.bordered).controlSize(.large).accessibilityIdentifier("achievement.copy")
-        Button { export(copy: false) } label: {
-            Label(L.text("Share image"), systemImage: "square.and.arrow.up")
-        }.buttonStyle(.bordered).controlSize(.large).accessibilityIdentifier("achievement.share")
-    }
-
-    private func export(copy: Bool) {
-        guard !mapLoading, !mapFailed else {
-            notice = L.text("Wait for the map or retry before exporting.")
-            return
-        }
-        guard let image = AchievementExport.image(snapshot: snapshot, mapImage: mapImage, colorScheme: colorScheme) else {
-            notice = L.text("Could not create the image. Please try again.")
-            return
-        }
-        if copy {
-            UIPasteboard.general.image = image
-            notice = L.text("Image copied.")
-        } else {
-            notice = nil
-            share = AchievementSharePayload(image: image)
-        }
-    }
-
     private func prepareMap() async {
-        guard snapshot.background == .map, !snapshot.locations.isEmpty else { return }
-        mapLoading = true; mapFailed = false; mapImage = nil
-        defer { mapLoading = false }
-        do { mapImage = try await AchievementMap.image(locations: snapshot.locations, dark: colorScheme == .dark) }
-        catch is CancellationError { }
-        catch { mapFailed = true }
+        exportImage = nil
+        mapFailed = false
+        if snapshot.background == .map && !snapshot.locations.isEmpty {
+            mapLoading = true; mapImage = nil
+            defer { mapLoading = false }
+            do { mapImage = try await AchievementMap.image(locations: snapshot.locations, dark: colorScheme == .dark) }
+            catch is CancellationError { return }
+            catch { mapFailed = true; return }
+        }
+        exportImage = AchievementExport.image(snapshot: snapshot, mapImage: mapImage, colorScheme: colorScheme)
+        if exportImage == nil { error = L.text("Could not create the image. Please try again.") }
     }
+
 }
 
 /// Content-only, flat export surface. Always includes name/value/date/duration,
@@ -208,6 +178,7 @@ struct AchievementPoster: View {
     var mapImage: UIImage?
     var foregroundOffset = CGSize.zero
     var alternateLayout = false
+    var compact = false
     @Environment(\.colorSchemeContrast) private var contrast
 
     private var usesImage: Bool {
@@ -215,27 +186,27 @@ struct AchievementPoster: View {
     }
 
     var body: some View {
-        VStack(alignment: alternateLayout ? .leading : .trailing, spacing: 10) {
+        VStack(alignment: alternateLayout ? .leading : .trailing, spacing: compact ? 8 : 12) {
             Label(snapshot.manual ? L.text("Marked complete") : L.text("Goal reached"), systemImage: "checkmark.seal.fill")
-                .font(.headline)
-            Spacer(minLength: alternateLayout ? 40 : 130)
-            Text(snapshot.name).font(.largeTitle.weight(.bold))
+                .font(compact ? .caption : .headline)
+            Spacer(minLength: compact ? 24 : alternateLayout ? 40 : 130)
+            Text(snapshot.name).font(compact ? .headline : .largeTitle.weight(.bold))
                 .fixedSize(horizontal: false, vertical: true)
-            Text(AchievementText.value(snapshot)).font(.title.weight(.semibold).monospacedDigit())
+            Text(AchievementText.value(snapshot)).font((compact ? Font.title3 : Font.title).weight(.semibold).monospacedDigit())
                 .fixedSize(horizontal: false, vertical: true)
-            Text(AchievementText.date(snapshot)).font(.subheadline)
-            Text(L.text("Time to achieve") + " · " + AchievementText.duration(snapshot)).font(.subheadline)
+            Text(AchievementText.date(snapshot)).font(compact ? .caption : .subheadline)
+            if !compact { Text(L.text("Time to achieve") + " · " + AchievementText.duration(snapshot)).font(.subheadline) }
         }
         .multilineTextAlignment(alternateLayout ? .leading : .trailing)
         .foregroundStyle(usesImage ? Color.white : Color.primary)
-        .shadow(color: usesImage ? .black.opacity(0.9) : Color(uiColor: .secondarySystemGroupedBackground), radius: 1)
+        .shadow(color: usesImage ? .black.opacity(0.45) : Color(uiColor: .secondarySystemGroupedBackground), radius: 1)
         .shadow(color: usesImage ? .clear : Color(uiColor: .secondarySystemGroupedBackground), radius: 1)
         .offset(foregroundOffset)
-        .padding(24)
-        .frame(maxWidth: .infinity, minHeight: 390, alignment: .bottomTrailing)
+        .padding(compact ? 16 : 24)
+        .frame(maxWidth: .infinity, minHeight: compact ? 240 : 390, alignment: .bottomTrailing)
         .background {
             GeometryReader { geometry in
-                AchievementBackdrop(snapshot: snapshot, mapImage: mapImage)
+                AchievementBackdrop(snapshot: snapshot, mapImage: mapImage, compact: compact)
                     .frame(width: geometry.size.width, height: geometry.size.height)
                     .clipped()
                     .overlay {
@@ -247,8 +218,8 @@ struct AchievementPoster: View {
             }.accessibilityHidden(true)
         }
         .background(Color(uiColor: .secondarySystemGroupedBackground))
-        .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-        .overlay { RoundedRectangle(cornerRadius: 24).strokeBorder(.primary.opacity(contrast == .increased ? 0.5 : 0.1)) }
+        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .overlay { RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(.primary.opacity(contrast == .increased ? 0.5 : 0.1)) }
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(AchievementText.summary(snapshot))
         .accessibilityIdentifier("achievement.poster")
@@ -258,6 +229,7 @@ struct AchievementPoster: View {
 private struct AchievementBackdrop: View {
     let snapshot: AchievementSnapshot
     let mapImage: UIImage?
+    let compact: Bool
 
     var body: some View {
         switch snapshot.background {
@@ -271,10 +243,10 @@ private struct AchievementBackdrop: View {
         case .progress:
             ZStack {
                 if snapshot.target != nil {
-                    Circle().stroke(.primary.opacity(0.1), lineWidth: 24)
-                    Circle().trim(from: 0, to: 1).stroke(TrackerColors.accent.opacity(0.16), lineWidth: 24)
+                    Circle().stroke(.primary.opacity(0.1), lineWidth: compact ? 12 : 24)
+                    Circle().trim(from: 0, to: 1).stroke(TrackerColors.accent.opacity(0.16), lineWidth: compact ? 12 : 24)
                 }
-            }.padding(50)
+            }.padding(compact ? 24 : 50)
         case .plot:
             if snapshot.plot.isEmpty { empty("No records") }
             else {
@@ -317,11 +289,10 @@ enum AchievementText {
     }
 
     static func date(_ snapshot: AchievementSnapshot) -> String {
-        let formatter = DateFormatter()
-        formatter.locale = L.locale
-        formatter.timeZone = TimeZone(identifier: snapshot.timeZoneID) ?? .gmt
-        formatter.dateStyle = .medium; formatter.timeStyle = .short
-        return formatter.string(from: snapshot.achievedAt)
+        var calendar = Calendar(identifier: .gregorian)
+        calendar.timeZone = TimeZone(identifier: snapshot.timeZoneID) ?? .gmt
+        return DetailStyle.date(snapshot.achievedAt, calendar: calendar)
+
     }
 
     static func duration(_ snapshot: AchievementSnapshot) -> String {
@@ -361,39 +332,6 @@ enum AchievementText {
     }
 }
 
-private struct AchievementSharePayload: Identifiable {
-    let id = UUID()
-    let image: UIImage
-}
-
-private struct AchievementShareSheet: UIViewControllerRepresentable {
-    let image: UIImage
-    let title: String
-    let onFailure: @MainActor () -> Void
-    func makeUIViewController(context: Context) -> UIActivityViewController {
-        let controller = UIActivityViewController(activityItems: [AchievementActivityItem(image: image, title: title)], applicationActivities: nil)
-        controller.completionWithItemsHandler = { _, _, _, error in
-            if error != nil { Task { @MainActor in onFailure() } }
-        }
-        return controller
-    }
-    func updateUIViewController(_ controller: UIActivityViewController, context: Context) { }
-}
-
-@MainActor private final class AchievementActivityItem: NSObject, UIActivityItemSource {
-    let image: UIImage
-    let title: String
-    init(image: UIImage, title: String) { self.image = image; self.title = title }
-    func activityViewControllerPlaceholderItem(_ activityViewController: UIActivityViewController) -> Any { image }
-    func activityViewController(_ activityViewController: UIActivityViewController, itemForActivityType activityType: UIActivity.ActivityType?) -> Any? { image }
-    func activityViewControllerLinkMetadata(_ activityViewController: UIActivityViewController) -> LPLinkMetadata? {
-        let metadata = LPLinkMetadata(); metadata.title = title
-        metadata.imageProvider = NSItemProvider(object: image)
-        metadata.iconProvider = NSItemProvider(object: image)
-        return metadata
-    }
-}
-
 @MainActor private enum AchievementMap {
     static func image(locations: [RecordedLocation], dark: Bool) async throws -> UIImage {
         let points = locations.filter(\.isValid).prefix(50).map {
@@ -419,7 +357,7 @@ private struct AchievementShareSheet: UIViewControllerRepresentable {
             snapshot.image.draw(at: .zero)
             for point in points {
                 let pixel = snapshot.point(for: point.coordinate)
-                UIColor.systemTeal.setFill()
+                UIColor(TrackerColors.accent).setFill()
                 context.cgContext.fillEllipse(in: CGRect(x: pixel.x - 5, y: pixel.y - 5, width: 10, height: 10))
                 UIColor.white.setStroke()
                 context.cgContext.strokeEllipse(in: CGRect(x: pixel.x - 5, y: pixel.y - 5, width: 10, height: 10))
