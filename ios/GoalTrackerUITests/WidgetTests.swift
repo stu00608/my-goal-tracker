@@ -57,7 +57,7 @@ nonisolated final class WidgetTests: XCTestCase {
         XCTAssertEqual(numericField(app).value as? String, "Value")
         attach(app, "Widget record link opens new snapshot sheet")
         app.buttons["entry.cancel"].tap()
-        app.tabBars.buttons.element(boundBy: 2).tap()
+        app.tabBars.buttons.element(boundBy: 3).tap()
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 10))
         app.open(URL(string: "goaltracker://record/" + trackerID)!)
         _ = numericField(app)

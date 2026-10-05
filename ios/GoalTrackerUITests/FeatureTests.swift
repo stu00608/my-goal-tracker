@@ -175,7 +175,7 @@ nonisolated final class FeatureTests: XCTestCase {
         second.press(forDuration: 1, thenDragTo: first)
         XCTAssertLessThan(second.frame.minX, first.frame.minX)
         attach(reopened, "Grid reordered by long press drag")
-        reopened.tabBars.buttons.element(boundBy: 2).tap()
+        reopened.tabBars.buttons.element(boundBy: 3).tap()
         reopened.buttons["settings.homeLayout"].tap()
         reopened.buttons["List"].tap()
         reopened.tabBars.buttons.element(boundBy: 0).tap()
@@ -248,7 +248,7 @@ nonisolated final class FeatureTests: XCTestCase {
     @MainActor func testDefaultNumericInputModePersistsAndFallsBackForFirstRecord() {
         continueAfterFailure = false
         let app = app()
-        app.tabBars.buttons.element(boundBy: 2).tap()
+        app.tabBars.buttons.element(boundBy: 3).tap()
         app.buttons["settings.numericInputMode"].tap(); app.buttons["Change amount"].tap()
         attach(app, "Default numeric input preference")
         app.tabBars.buttons.element(boundBy: 0).tap()
@@ -274,7 +274,7 @@ nonisolated final class FeatureTests: XCTestCase {
     @MainActor func testLocationDefaultOnlyInitializesNewRecords() {
         continueAfterFailure = false
         let app = app()
-        app.tabBars.buttons.element(boundBy: 2).tap()
+        app.tabBars.buttons.element(boundBy: 3).tap()
         let preference = app.switches["settings.recordLocationDefault"]
         XCTAssertTrue(preference.waitForExistence(timeout: 10)); XCTAssertEqual(preference.value as? String, "0")
         preference.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
@@ -290,7 +290,7 @@ nonisolated final class FeatureTests: XCTestCase {
         app.buttons["entry.cancel"].tap()
         app.terminate()
         let reopened = self.app(reset: false)
-        reopened.tabBars.buttons.element(boundBy: 2).tap()
+        reopened.tabBars.buttons.element(boundBy: 3).tap()
         XCTAssertEqual(reopened.switches["settings.recordLocationDefault"].value as? String, "1")
         reopened.buttons["settings.homeLayout"].tap(); reopened.buttons["List"].tap()
         reopened.tabBars.buttons.element(boundBy: 0).tap()
@@ -317,11 +317,11 @@ nonisolated final class FeatureTests: XCTestCase {
         XCTAssertEqual(list.switches["entry.location"].value as? String, "1")
         list.buttons["entry.cancel"].tap()
         // A persisted record without coordinates stays OFF when the global default is ON.
-        list.tabBars.buttons.element(boundBy: 2).tap()
+        list.tabBars.buttons.element(boundBy: 3).tap()
         list.switches["settings.recordLocationDefault"].coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
         list.tabBars.buttons.element(boundBy: 0).tap()
         completion.tap()
-        list.tabBars.buttons.element(boundBy: 2).tap()
+        list.tabBars.buttons.element(boundBy: 3).tap()
         list.switches["settings.recordLocationDefault"].coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
         list.tabBars.buttons.element(boundBy: 0).tap()
         element(list, prefix: "tracker.", name: "DEFAULT COOK").tap()

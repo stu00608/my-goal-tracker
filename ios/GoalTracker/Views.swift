@@ -142,7 +142,7 @@ struct DailyCompletionButton: View {
     let onFailure: (String) -> Void
     @State private var checking = false
     @State private var verification: Task<Void, Never>?
-    @State private var pendingRemoval: Tracker?
+    @State private var pendingRemoval: (tracker: Tracker, entryID: UUID)?
     @State private var quickLocation = RecordLocationRecorder()
     private var done: Bool { tracker.entries.contains { $0.localDay == tracker.day(now) } }
     var body: some View {
@@ -160,13 +160,14 @@ struct DailyCompletionButton: View {
                 get: { pendingRemoval != nil }, set: { if !$0 { pendingRemoval = nil } }
             ), titleVisibility: .visible) {
                 Button(L.text("Undo completion"), role: .destructive) {
-                    guard let original = pendingRemoval else { return }
+                    guard let pending = pendingRemoval else { return }
+                    let original = pending.tracker
                     pendingRemoval = nil
                     guard store.trackers.first(where: { $0.id == original.id }) == original else {
                         onFailure(L.text("Records changed while checking. Try recording again.")); return
                     }
                     var candidate = original
-                    candidate.entries.removeAll { $0.localDay == original.day(Date()) }
+                    candidate.entries.removeAll { $0.id == pending.entryID }
                     store.perform { try store.save(candidate) }
                 }
                 Button(L.text("Cancel"), role: .cancel) { pendingRemoval = nil }
@@ -177,7 +178,7 @@ struct DailyCompletionButton: View {
         onBegin()
         let instant = Date(), day = original.day(instant)
         if let entry = original.entries.first(where: { $0.localDay == day }) {
-            if !entry.note.isEmpty || !entry.photos.isEmpty || entry.location != nil { pendingRemoval = original; return }
+            if !entry.note.isEmpty || !entry.photos.isEmpty || entry.location != nil { pendingRemoval = (original, entry.id); return }
             original.entries.removeAll { $0.localDay == day }
             store.perform { try store.save(original) }
             return
@@ -609,7 +610,7 @@ struct TrackerSummary: View {
                 ForEach(cells) { cell in
                     switch cell {
                     case .weekday(let index):
-                        Text(L.locale.calendar.veryShortStandaloneWeekdaySymbols[index - 1]).font(.caption).foregroundStyle(TrackerColors.secondaryText)
+                        Text(L.locale.calendar.veryShortStandaloneWeekdaySymbols[index - 1]).font(.caption).foregroundStyle(TrackerColors.secondaryText).accessibilityIdentifier(cell.id)
                     case .padding:
                         Color.clear.frame(height: 32).accessibilityHidden(true)
                     case .day(let date, let localDay):

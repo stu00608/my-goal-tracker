@@ -140,6 +140,39 @@ nonisolated enum L {
                         fixture[0] = score
                     }
                 }
+                if args.contains("--milestones-test-fixture") {
+                    score.createdAt = now.addingTimeInterval(-90 * 86400)
+                    score.entries = []
+                    score.put(Entry(occurredAt: now.addingTimeInterval(-60 * 86400), localDay: score.day(now.addingTimeInterval(-60 * 86400)), value: "16"))
+                    score.put(Entry(occurredAt: now.addingTimeInterval(-86400), localDay: score.day(now.addingTimeInterval(-86400)), value: "21", photos: photos))
+                    score.cardBackground = .progress
+                    if let flag = args.first(where: { $0.hasPrefix("--milestone-background=") }),
+                       let background = CardBackground(rawValue: String(flag.dropFirst("--milestone-background=".count))) { score.cardBackground = background }
+                    if let flag = args.first(where: { $0.hasPrefix("--milestone-corner=") }),
+                       let position = CardTextPosition(rawValue: String(flag.dropFirst("--milestone-corner=".count))) { score.cardTextPosition = position }
+                    score.ringStyle = args.contains("--milestone-fraction") ? .fraction : .percent
+                    score.showLastRecorded = !args.contains("--milestone-hide-date")
+                    var check = Tracker(name: "CHECK", kind: .daily)
+                    check.setFrequency(.weekly, target: 2, now: now)
+                    var grouped = Tracker(name: "GROUPED", kind: .daily)
+                    grouped.setFrequency(.weekly, target: 2, now: now)
+                    grouped.conditionGroups = [
+                        ConditionGroup(name: "Offices", combination: .any, conditions: [
+                            AchievementCondition(payload: .place(PlaceCondition(name: "Office A", location: RecordedLocation(latitude: 35.68, longitude: 139.76)))),
+                            AchievementCondition(payload: .place(PlaceCondition(name: "Office B", location: RecordedLocation(latitude: 34.69, longitude: 135.5))))]),
+                        ConditionGroup(name: "Schedule", combination: .all, conditions: [
+                            AchievementCondition(payload: .time(TimeCondition(startMinute: 0, endMinute: 0))),
+                            AchievementCondition(payload: .weekdays([1,2,3,4,5,6,7]))])]
+                    grouped.outerCombination = .all; grouped.gateSave = true
+                    var health = Tracker(name: "HEALTH", kind: .daily)
+                    health.conditionGroups = [ConditionGroup(name: "Movement and rest", conditions: [
+                        AchievementCondition(payload: .steps(HealthThreshold(comparison: .greater, threshold: "6000", window: .day))),
+                        AchievementCondition(payload: .sleep(HealthThreshold(comparison: .greater, threshold: "7", window: .day)))])]
+                    health.gateSave = true
+                    var manual = Tracker(name: "MANUAL", kind: .number)
+                    manual.lifecycle = .finite
+                    fixture = [score, check, grouped, health, manual]
+                }
                 try loaded.replace(fixture)
             }
             #endif

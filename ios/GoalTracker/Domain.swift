@@ -161,12 +161,14 @@ nonisolated struct Tracker: Codable, Identifiable, Equatable {
     var resolvedConditionGroups: [ConditionGroup] {
         if let conditionGroups { return conditionGroups }
         let legacy = conditions ?? []
-        // Legacy location lists allowed twenty leaves. Split without changing ALL/ANY truth tables.
+        // Derive stable group IDs from the tracker, independently of valid legacy leaf IDs.
         return stride(from: 0, to: legacy.count, by: ConditionGroup.limit).map { offset in
-            ConditionGroup(id: offset == 0 ? id : legacy[offset].id, combination: resolvedCombination,
-                           conditions: legacy[offset..<min(offset + ConditionGroup.limit, legacy.count)].map {
-                               AchievementCondition(id: $0.id, payload: .place($0))
-                           })
+            var bytes = id.uuid
+            withUnsafeMutableBytes(of: &bytes) { $0[15] ^= UInt8(truncatingIfNeeded: offset / ConditionGroup.limit) }
+            return ConditionGroup(id: UUID(uuid: bytes), combination: resolvedCombination,
+                                  conditions: legacy[offset..<min(offset + ConditionGroup.limit, legacy.count)].map {
+                                      AchievementCondition(id: $0.id, payload: .place($0))
+                                  })
         }
     }
     var resolvedOuterCombination: ConditionCombination { outerCombination ?? resolvedCombination }
@@ -362,6 +364,11 @@ nonisolated struct Backup: Codable, Equatable {
         }
     }
     private static func validateMetadata(_ t: Tracker, version: Int) throws {
+        if version < 3 {
+            guard t.conditionGroups == nil, t.outerCombination == nil, t.cardTextPosition == nil,
+                  t.showLastRecorded == nil, t.ringStyle == nil, t.lifecycle == nil, t.manualCompletion == nil,
+                  (t.conditions?.count ?? 0) <= 20 else { throw DataError.invalidBackup }
+        }
         guard (t.description?.count ?? 0) <= 10000,
               (t.photos?.count ?? 0) <= Entry.photoLimit,
               t.photos?.allSatisfy(validPhoto) != false else { throw DataError.invalidBackup }
@@ -403,7 +410,8 @@ nonisolated struct Backup: Codable, Equatable {
             }
         }
         if let completion = t.manualCompletion {
-            guard completion.manual, completion.trackerID == t.id, !completion.id.isEmpty, completion.id.count <= 120,
+            guard completion.manual, completion.trackerID == t.id, completion.kind == t.kind,
+                  !completion.id.isEmpty, completion.id.count <= 120,
                   validDate(completion.achievedAt), validDate(completion.startedAt), completion.startedAt <= completion.achievedAt,
                   !completion.name.isEmpty, completion.name.count <= 120, completion.unit.count <= 30,
                   (0...8).contains(completion.precision), TimeZone(identifier: completion.timeZoneID) != nil,

@@ -359,7 +359,7 @@ import SwiftData
             #expect(try AppStore(url: url).trackers == [original])
         }
         #expect(throws: (any Error).self) { try Backup(version: 1, trackers: [original]).validate() }
-        #expect(throws: DataError.unsupportedVersion) { try Backup(version: 3, trackers: [original]).validate() }
+        #expect(throws: DataError.unsupportedVersion) { try Backup(version: 4, trackers: [original]).validate() }
         var daily = tracker(); daily.entries = [Entry(occurredAt: daily.createdAt, localDay: daily.day(daily.createdAt), change: "1")]
         #expect(throws: (any Error).self) { try Backup(trackers: [daily]).validate() }
     }

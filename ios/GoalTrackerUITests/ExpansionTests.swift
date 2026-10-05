@@ -42,12 +42,12 @@ nonisolated final class ExpansionTests: XCTestCase {
         let reopened = launch(reset: false)
         XCTAssertTrue(reopened.staticTexts["18.375"].waitForExistence(timeout: 10))
     }
-    @MainActor func testSettingsIsThirdTabAndHasGlobalReminderControl() {
+    @MainActor func testSettingsIsRightmostTabAndHasGlobalReminderControl() {
         continueAfterFailure = false
         let app = launch()
-        XCTAssertEqual(app.tabBars.buttons.count, 3)
+        XCTAssertEqual(app.tabBars.buttons.count, 4)
         XCTAssertFalse(app.buttons["settings.open"].exists, "Settings has one primary route through its tab")
-        app.tabBars.buttons.element(boundBy: 2).tap()
+        app.tabBars.buttons.element(boundBy: 3).tap()
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["settings.done"].exists)
         let reminders = app.switches["settings.remindersEnabled"]
@@ -58,7 +58,7 @@ nonisolated final class ExpansionTests: XCTestCase {
         screenshot(app, "Settings tab and disabled global reminders")
         XCTAssertFalse(app.staticTexts["Private by default. Stored on this iPhone. No account or server."].exists)
     }
-    @MainActor func testLocationGateFailurePreservesDraftAndListCannotBypassIt() {
+    @MainActor func testConditionPreviewAndListCannotBypassSaveGate() {
         continueAfterFailure = false
         let app = launch(extra: ["--condition-gate=unmet", "-homeLayout", "list"])
         let complete = button(app, prefix: "complete.", text: "OFFICE")
@@ -69,15 +69,16 @@ nonisolated final class ExpansionTests: XCTestCase {
         XCTAssertTrue(complete.label.contains("Mark complete"))
         button(app, prefix: "tracker.", text: "OFFICE").tap()
         XCTAssertTrue(app.buttons["entry.save"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "conditions.overall").firstMatch.waitForExistence(timeout: 10))
         let note = app.textFields["entry.note"]
         for _ in 0..<6 { if note.isHittable { break }; app.swipeUp() }
-        XCTAssertTrue(note.waitForExistence(timeout: 10)); note.tap(); note.typeText("Office draft remains")
+        XCTAssertTrue(note.waitForExistence(timeout: 10)); note.tap(); note.typeText("Review before saving")
         app.buttons["entry.save"].tap()
         let error = app.staticTexts["editor.error"]
         XCTAssertTrue(error.waitForExistence(timeout: 10)); XCTAssertTrue(error.isHittable)
         XCTAssertTrue(error.label.contains("conditions"))
-        XCTAssertEqual(note.value as? String, "Office draft remains")
-        screenshot(app, "Unmet place gate preserves draft and visible inline notice")
+        XCTAssertEqual(note.value as? String, "Review before saving")
+        screenshot(app, "Condition preview and inline save failure")
         app.buttons["entry.cancel"].tap()
         XCTAssertTrue(complete.waitForExistence(timeout: 10))
         XCTAssertTrue(complete.label.contains("Mark complete"), "Failed gate cannot silently create a completion")
@@ -168,7 +169,7 @@ nonisolated final class ExpansionTests: XCTestCase {
                 let suffix = language + " " + appearance + (large ? " AX XXXL" : "")
                 XCTAssertTrue(button(app, prefix: "card.", text: "SCORE").waitForExistence(timeout: 10))
                 screenshot(app, "Goalooker overview " + suffix)
-                app.tabBars.buttons.element(boundBy: 2).tap()
+                app.tabBars.buttons.element(boundBy: 3).tap()
                 screenshot(app, "Settings native tab " + suffix)
                 app.tabBars.buttons.element(boundBy: 1).tap()
                 button(app, prefix: "tracker.", text: "SCORE").tap()

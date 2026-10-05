@@ -165,12 +165,14 @@ struct TrackerEditor: View {
                     Text(L.text("Higher is better")).tag(Direction.up); Text(L.text("Lower is better")).tag(Direction.down)
                 }
             }
-            Picker(L.text("Tracking style"), selection: $lifecycle) {
-                Text(L.text("Ongoing")).tag(TrackingLifecycle.ongoing)
-                Text(L.text("Finite goal")).tag(TrackingLifecycle.finite)
-            }.accessibilityIdentifier("tracker.lifecycle")
-            Text(L.text("Ongoing trackers keep a completion history. Finite goals gain a completed status when achieved."))
-                .font(.caption).foregroundStyle(.secondary)
+            VStack(alignment: .leading, spacing: 6) {
+                Picker(L.text("Tracking style"), selection: $lifecycle) {
+                    Text(L.text("Ongoing")).tag(TrackingLifecycle.ongoing)
+                    Text(L.text("Finite goal")).tag(TrackingLifecycle.finite)
+                }.accessibilityIdentifier("tracker.lifecycle")
+                Text(L.text("Ongoing trackers keep a completion history. Finite goals gain a completed status when achieved."))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
         }
     }
     private var goalSection: some View {
@@ -334,7 +336,7 @@ struct TrackerEditor: View {
                 }
         }.presentationDetents([.medium, .large])
     }
-    private var typeLocked: Bool { !(existing?.entries.isEmpty ?? true) || !(existing?.rules.isEmpty ?? true) }
+    private var typeLocked: Bool { !(existing?.entries.isEmpty ?? true) || !(existing?.rules.isEmpty ?? true) || existing?.manualCompletion != nil }
     private var progressEligible: Bool {
         guard goalEnabled else { return false }
         let now = Date()
