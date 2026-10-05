@@ -305,7 +305,7 @@ struct GoalProgressRing: View {
         ZStack {
             Circle().stroke(Color.primary.opacity(0.12), lineWidth: 12)
             Circle().trim(from: 0, to: min(max(fraction, 0), 1))
-                .stroke(monochrome ? Color.primary : TrackerColors.accent, style: StrokeStyle(lineWidth: 12, lineCap: .round))
+                .stroke(monochrome ? Color.primary.opacity(0.35) : TrackerColors.accent, style: StrokeStyle(lineWidth: 12, lineCap: .round))
                 .rotationEffect(.degrees(-90))
         }
         .padding(6)
