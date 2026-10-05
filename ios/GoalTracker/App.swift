@@ -177,6 +177,14 @@ nonisolated enum L {
                     manual.lifecycle = .finite
                     fixture = [score, check, grouped, health, manual]
                 }
+                if args.contains("--checkbox-card-layout"), fixture.count >= 5 {
+                    fixture[2].name = "每月出社"; fixture[2].kind = .daily
+                    fixture[2].setFrequency(.monthly, target: 7, now: now)
+                    fixture[2].entries = [Entry(occurredAt: now, localDay: fixture[2].day(now), location: RecordedLocation(latitude: 35.68, longitude: 139.76))]
+                    fixture[4].name = "測試早安"; fixture[4].rules = []
+                    fixture[4].setFrequency(.weekly, target: 4, now: now)
+                    fixture[4].conditions = nil; fixture[4].gateSave = false
+                }
                 try loaded.replace(fixture)
             }
             #endif

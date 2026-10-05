@@ -75,10 +75,10 @@ struct TrackerCardSurface<Backdrop: View>: View {
                 }
                 .frame(minHeight: dynamicTypeSize.isAccessibilitySize && !fillsHeight ? max(minimumHeight, accessibleRingHeight) : minimumHeight)
             } else {
-                TrackerCardLabel(row: row, now: now, locale: locale, text: text, showsDailyStatus: showsDailyStatus)
+                TrackerCardLabel(row: row, now: now, locale: locale, text: text, showsDailyStatus: showsDailyStatus,
+                                     reservesDailyControl: row.kind == .daily && !showsDailyStatus && !row.resolvedTextPosition.isTop)
                     .padding(CardLayout.textInset)
                     .padding(.bottom, row.resolvedBackground == .map && !row.resolvedTextPosition.isTop ? 18 : 0)
-                    .padding(.trailing, row.kind == .daily && !showsDailyStatus && !row.resolvedTextPosition.isTop ? 44 : 0)
                     .frame(maxWidth: .infinity, maxHeight: fillsHeight ? .infinity : nil, alignment: row.resolvedTextPosition.alignment)
                     .fixedSize(horizontal: false, vertical: !fillsHeight)
                     .frame(minHeight: minimumHeight, alignment: row.resolvedTextPosition.alignment)
@@ -104,6 +104,8 @@ struct TrackerCardLabel: View {
     var compact = false
     var monochrome = false
     var showsDailyStatus = true
+    var reservesDailyControl = false
+    @ScaledMetric(relativeTo: .title2) private var dailyControlTextInset = 32
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.colorScheme) private var colorScheme
     private var hasImage: Bool { !monochrome && (row.hasPhoto || row.resolvedBackground == .map && row.locations?.isEmpty == false) }
@@ -131,6 +133,8 @@ struct TrackerCardLabel: View {
                 .lineLimit(row.resolvedBackground == .progress ? compact ? 1 : 2 : dynamicTypeSize.isAccessibilitySize && !compact ? nil : compact ? 2 : 3)
                 .minimumScaleFactor(0.8)
                 .fixedSize(horizontal: false, vertical: true)
+            // Checkbox title/date use the full chosen corner. Only the value row shares space with its control.
+            if row.kind == .daily && row.resolvedBackground != .progress { recordedDate }
             // Progress has one centered number; other backgrounds keep the raw value.
             if row.resolvedBackground != .progress {
                 HStack(alignment: .firstTextBaseline, spacing: 6) {
@@ -139,12 +143,9 @@ struct TrackerCardLabel: View {
                         .fixedSize(horizontal: false, vertical: true)
                         .accessibilityIdentifier("progress." + row.id.uuidString)
                     if row.kind == .daily && showsDailyStatus { dailyStatus }
-                }
+                }.padding(.trailing, reservesDailyControl ? dailyControlTextInset : 0)
             } else if row.kind == .daily && showsDailyStatus { dailyStatus }
-            if row.resolvedShowLastRecorded, let date = row.lastRecordedDate {
-                Text(date.formatted(Date.FormatStyle(locale: locale, calendar: row.tracker.calendar, timeZone: row.tracker.calendar.timeZone).month().day()))
-                    .font(.caption2).lineLimit(compact ? 1 : row.resolvedBackground == .progress ? 2 : nil)
-            }
+            if row.kind != .daily || row.resolvedBackground == .progress { recordedDate }
         }
         .multilineTextAlignment(row.resolvedBackground == .progress ? .center : position.textAlignment)
         .foregroundStyle(foreground)
@@ -153,6 +154,12 @@ struct TrackerCardLabel: View {
         .shadow(color: hasImage || monochrome ? .clear : Color(uiColor: .secondarySystemGroupedBackground), radius: 0, x: 1.5)
         .shadow(color: hasImage || monochrome ? .clear : Color(uiColor: .secondarySystemGroupedBackground), radius: 0, y: -1.5)
         .shadow(color: hasImage || monochrome ? .clear : Color(uiColor: .secondarySystemGroupedBackground), radius: 0, y: 1.5)
+    }
+    @ViewBuilder private var recordedDate: some View {
+        if row.resolvedShowLastRecorded, let date = row.lastRecordedDate {
+            Text(date.formatted(Date.FormatStyle(locale: locale, calendar: row.tracker.calendar, timeZone: row.tracker.calendar.timeZone).month().day()))
+                .font(.caption2).lineLimit(compact ? 1 : row.resolvedBackground == .progress ? 2 : nil)
+        }
     }
     private var dailyStatus: some View {
         Image(systemName: completed ? "checkmark.circle.fill" : "circle")

@@ -114,6 +114,22 @@ nonisolated final class FeatureTests: XCTestCase {
         XCTAssertTrue(app.datePickers["snapshot.custom.end"].exists)
         attach(app, "Empty chart remains visible in custom range")
     }
+    @MainActor func testCheckboxCornerKeepsTitleAlignedAndValueBesideControl() {
+        continueAfterFailure = false
+        let app = app(language: "zh-Hant", appearance: "dark", extraArguments: ["--goalooker-test-fixture", "--checkbox-card-layout"])
+        let morning = element(app, prefix: "card.", name: "測試早安")
+        XCTAssertTrue(morning.waitForExistence(timeout: 10))
+        attach(app, "Checkbox map and empty card use full corner width")
+        let toggle = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "complete.", "測試早安")).firstMatch
+        XCTAssertTrue(toggle.exists); toggle.tap()
+        let checked = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", "取消完成"), object: toggle)
+        XCTAssertEqual(XCTWaiter.wait(for: [checked], timeout: 10), .completed)
+        XCTAssertFalse(app.buttons["entry.save"].exists)
+        attach(app, "Checkbox value and direct control update together")
+        morning.tap()
+        XCTAssertTrue(app.buttons["entry.save"].waitForExistence(timeout: 10))
+    }
+
     @MainActor func testGridTileDimensionsIgnoreLongContent() {
         continueAfterFailure = false
         for extra in [[], ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryXXXL"]] {

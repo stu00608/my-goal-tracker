@@ -53,10 +53,16 @@ struct DashboardView: View {
                     recordLocationByDefault: recordLocationByDefault,
                     cancelForPresentation: cancelForPresentation,
                     onEditor: onRecord, onBegin: onBegin, onFailure: onFailure)
-                    .padding(6)
+                    .tint(completionTint(row))
+                    .padding(.trailing, CardLayout.dailyControlInset)
+                    .padding(.bottom, CardLayout.dailyControlInset + (row.resolvedBackground == .map && row.locations?.isEmpty == false ? 18 : 0))
             }
         }
         .modifier(TrackerReorderInteraction(id: tracker.id, active: active, onReorder: onReorder))
+    }
+    private func completionTint(_ row: WidgetRow) -> Color {
+        guard row.hasPhoto, let thumbnail = row.thumbnail else { return TrackerColors.accent }
+        return CardImageContrast.prefersLightText(thumbnail, position: .bottomTrailing) ? .white : .black
     }
 }
 
