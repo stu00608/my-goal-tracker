@@ -24,6 +24,8 @@ DEVELOPER_DIR=/Applications/Xcode.app/Contents/Developer python3 scripts/dev.py 
 python3 scripts/dev.py doctor
 python3 scripts/dev.py devices
 python3 scripts/dev.py build
+python3 scripts/dev.py test --unit-only --device <simulator-udid>
+# 本機需要完整 UI/E2E 時才執行：
 python3 scripts/dev.py test --device <simulator-udid>
 python3 scripts/dev.py run --device <simulator-udid>
 python3 scripts/dev.py screenshot --device <simulator-udid>
@@ -42,7 +44,11 @@ python3 scripts/dev.py screenshot --device <simulator-udid>
 錯誤輸出與測試結果保存在本 worktree 的 `.artifacts/`；DerivedData 在 `.build/`。
 沒有 app 時 CI 的 iOS job 是 skipped，不是 app 驗證通過。
 
-CI 的 iOS job 最長執行 60 分鐘，完整執行 App 與 Widget 兩個 scheme 的測試。
+CI 不執行 UI/E2E，也不排程夜間 E2E；保留 repository checks、`GoalTrackerTests` 原生單元／資料測試
+及 `GoalTrackerWithWidget` App／Widget 編譯，iOS job 上限 25 分鐘。
+`test --unit-only` 明確選取單元 target，仍拒絕空測試、失敗、跳過或不完整結果。
+UI/E2E 留在本機，依變更風險執行受影響流程；單純修改按鈕不重跑整套。
+資料遷移、跨功能流程或無法縮小的回歸才需要完整本機套件。CI 通過不代表 UI／Widget 互動已驗收。
 成功時只上傳 JSON 測試摘要，保留 7 天；失敗時上傳完整 `.xcresult` 與 logs，保留 1 天。
 完整執行 log 可在 Actions 頁查看；本機仍保存完整結果，CI 保留政策不影響本機證據。
 

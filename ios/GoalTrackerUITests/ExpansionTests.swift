@@ -42,12 +42,12 @@ nonisolated final class ExpansionTests: XCTestCase {
         let reopened = launch(reset: false)
         XCTAssertTrue(reopened.staticTexts["18.375"].waitForExistence(timeout: 10))
     }
-    @MainActor func testSettingsIsThirdTabAndHasGlobalReminderControl() {
+    @MainActor func testSettingsIsRightmostTabAndHasGlobalReminderControl() {
         continueAfterFailure = false
         let app = launch()
-        XCTAssertEqual(app.tabBars.buttons.count, 3)
+        XCTAssertEqual(app.tabBars.buttons.count, 4)
         XCTAssertFalse(app.buttons["settings.open"].exists, "Settings has one primary route through its tab")
-        app.tabBars.buttons.element(boundBy: 2).tap()
+        app.tabBars.buttons.element(boundBy: 3).tap()
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["settings.done"].exists)
         let reminders = app.switches["settings.remindersEnabled"]
@@ -58,7 +58,7 @@ nonisolated final class ExpansionTests: XCTestCase {
         screenshot(app, "Settings tab and disabled global reminders")
         XCTAssertFalse(app.staticTexts["Private by default. Stored on this iPhone. No account or server."].exists)
     }
-    @MainActor func testLocationGateFailurePreservesDraftAndListCannotBypassIt() {
+    @MainActor func testConditionPreviewAndListCannotBypassSaveGate() {
         continueAfterFailure = false
         let app = launch(extra: ["--condition-gate=unmet", "-homeLayout", "list"])
         let complete = button(app, prefix: "complete.", text: "OFFICE")
@@ -69,15 +69,16 @@ nonisolated final class ExpansionTests: XCTestCase {
         XCTAssertTrue(complete.label.contains("Mark complete"))
         button(app, prefix: "tracker.", text: "OFFICE").tap()
         XCTAssertTrue(app.buttons["entry.save"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "conditions.overall").firstMatch.waitForExistence(timeout: 10))
         let note = app.textFields["entry.note"]
         for _ in 0..<6 { if note.isHittable { break }; app.swipeUp() }
-        XCTAssertTrue(note.waitForExistence(timeout: 10)); note.tap(); note.typeText("Office draft remains")
+        XCTAssertTrue(note.waitForExistence(timeout: 10)); note.tap(); note.typeText("Review before saving")
         app.buttons["entry.save"].tap()
         let error = app.staticTexts["editor.error"]
         XCTAssertTrue(error.waitForExistence(timeout: 10)); XCTAssertTrue(error.isHittable)
         XCTAssertTrue(error.label.contains("conditions"))
-        XCTAssertEqual(note.value as? String, "Office draft remains")
-        screenshot(app, "Unmet place gate preserves draft and visible inline notice")
+        XCTAssertEqual(note.value as? String, "Review before saving")
+        screenshot(app, "Condition preview and inline save failure")
         app.buttons["entry.cancel"].tap()
         XCTAssertTrue(complete.waitForExistence(timeout: 10))
         XCTAssertTrue(complete.label.contains("Mark complete"), "Failed gate cannot silently create a completion")
@@ -137,7 +138,7 @@ nonisolated final class ExpansionTests: XCTestCase {
         let office = button(app, prefix: "tracker.", text: "OFFICE")
         for _ in 0..<8 { if office.isHittable { break }; app.swipeUp() }
         office.tap(); app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
-        let condition = button(app, prefix: "tracker.condition.", text: "Office A")
+        let condition = button(app, prefix: "conditions.editor.leaf.", text: "Office A")
         for _ in 0..<12 { if condition.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(condition.waitForExistence(timeout: 10)); condition.tap()
         let map = app.descendants(matching: .any).matching(identifier: "condition.map").firstMatch
@@ -147,7 +148,7 @@ nonisolated final class ExpansionTests: XCTestCase {
         for _ in 0..<6 { if relation.isHittable { break }; app.swipeUp() }
         relation.buttons["Outside"].tap()
         app.buttons["condition.confirm"].tap()
-        let combination = app.buttons["tracker.conditions.combination"]
+        let combination = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "conditions.editor.combination.")).firstMatch
         XCTAssertTrue(combination.waitForExistence(timeout: 10)); combination.tap()
         app.buttons["All conditions"].tap()
         screenshot(app, "Multiple location conditions and ALL combination")
@@ -168,7 +169,7 @@ nonisolated final class ExpansionTests: XCTestCase {
                 let suffix = language + " " + appearance + (large ? " AX XXXL" : "")
                 XCTAssertTrue(button(app, prefix: "card.", text: "SCORE").waitForExistence(timeout: 10))
                 screenshot(app, "Goalooker overview " + suffix)
-                app.tabBars.buttons.element(boundBy: 2).tap()
+                app.tabBars.buttons.element(boundBy: 3).tap()
                 screenshot(app, "Settings native tab " + suffix)
                 app.tabBars.buttons.element(boundBy: 1).tap()
                 button(app, prefix: "tracker.", text: "SCORE").tap()
@@ -191,7 +192,7 @@ nonisolated final class ExpansionTests: XCTestCase {
                 let office = button(app, prefix: "tracker.", text: "OFFICE")
                 for _ in 0..<8 { if office.isHittable { break }; app.swipeUp() }
                 office.tap(); app.buttons["tracker.menu"].tap(); app.buttons[edit].tap()
-                let place = button(app, prefix: "tracker.condition.", text: "Office A")
+                let place = button(app, prefix: "conditions.editor.leaf.", text: "Office A")
                 for _ in 0..<18 { if place.isHittable { break }; app.swipeUp() }
                 XCTAssertTrue(place.waitForExistence(timeout: 10))
                 screenshot(app, "Tracker location conditions " + suffix)
@@ -209,7 +210,7 @@ nonisolated final class ExpansionTests: XCTestCase {
         let office = button(app, prefix: "tracker.", text: "OFFICE")
         for _ in 0..<8 { if office.isHittable { break }; app.swipeUp() }
         office.tap(); app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
-        let place = button(app, prefix: "tracker.condition.", text: "Office A")
+        let place = button(app, prefix: "conditions.editor.leaf.", text: "Office A")
         for _ in 0..<12 { if place.isHittable { break }; app.swipeUp() }
         place.tap()
         XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "condition.map").firstMatch.waitForExistence(timeout: 10))
@@ -242,7 +243,11 @@ nonisolated final class ExpansionTests: XCTestCase {
         conversion.buttons["entry.orphan.confirm"].firstMatch.tap()
         XCTAssertTrue(conversion.waitForNonExistence(timeout: 10), "Confirmation must dismiss the conversion alert")
         XCTAssertTrue(anchor.waitForNonExistence(timeout: 10))
+        // Reopen the detail after removal so a recycled List viewport cannot hide the retained row.
+        app.navigationBars["SCORE"].buttons["BackButton"].tap()
+        button(app, prefix: "tracker.", text: "SCORE").tap()
         let retained = button(app, prefix: "entry.", text: "Derived change")
+        for _ in 0..<12 { if retained.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(retained.waitForExistence(timeout: 10)); retained.tap()
         let display = app.descendants(matching: .any).matching(identifier: "entry.value.scrubber").firstMatch
         XCTAssertTrue(display.waitForExistence(timeout: 10)); display.tap()
@@ -256,7 +261,7 @@ nonisolated final class ExpansionTests: XCTestCase {
         let app = launch(extra: ["--goalooker-clipping-fixture"])
         let card = button(app, prefix: "card.", text: "SCORE")
         XCTAssertTrue(card.waitForExistence(timeout: 10))
-        XCTAssertTrue((card.value as? String)?.contains("outside the chart bounds") == true)
+        XCTAssertFalse((card.value as? String)?.contains("outside the chart bounds") == true)
         screenshot(app, "Exact bounds exclude collapsed huge value from overview")
         app.tabBars.buttons.element(boundBy: 1).tap()
         button(app, prefix: "tracker.", text: "SCORE").tap()

@@ -12,6 +12,7 @@ nonisolated enum L {
         let preferred = Locale.preferredLanguages.first ?? "en"
         return preferred.hasPrefix("ja") ? "ja" : preferred.hasPrefix("zh") ? "zh-Hant" : "en"
     }
+    static var firstWeekday: Int { defaults.integer(forKey: "firstWeekday") == 2 ? 2 : 1 }
     static var locale: Locale { Locale(identifier: language) }
     static func text(_ key: String) -> String {
         let bundle = Bundle.main.path(forResource: language, ofType: "lproj").flatMap(Bundle.init(path:)) ?? .main
@@ -52,6 +53,7 @@ nonisolated enum L {
                     L.defaults.removeObject(forKey: "recordLocationByDefault")
                     L.defaults.removeObject(forKey: "numericInputMode")
                     L.defaults.removeObject(forKey: "remindersEnabled")
+                    L.defaults.removeObject(forKey: "firstWeekday")
                 }
                 let directory = URL.applicationSupportDirectory.appendingPathComponent("UITests", isDirectory: true)
                 try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
@@ -137,6 +139,52 @@ nonisolated enum L {
                         score.put(Entry(occurredAt: now.addingTimeInterval(-3600), localDay: score.day(now), change: "0.25", note: "Derived change"))
                         fixture[0] = score
                     }
+                }
+                if args.contains("--milestones-test-fixture") {
+                    score.createdAt = now.addingTimeInterval(-90 * 86400)
+                    score.entries = []
+                    score.put(Entry(occurredAt: now.addingTimeInterval(-60 * 86400), localDay: score.day(now.addingTimeInterval(-60 * 86400)), value: "16"))
+                    score.put(Entry(occurredAt: now.addingTimeInterval(-86400), localDay: score.day(now.addingTimeInterval(-86400)), value: "21", photos: photos))
+                    score.cardBackground = .progress
+                    if let flag = args.first(where: { $0.hasPrefix("--milestone-background=") }),
+                       let background = CardBackground(rawValue: String(flag.dropFirst("--milestone-background=".count))) { score.cardBackground = background }
+                    if let flag = args.first(where: { $0.hasPrefix("--milestone-corner=") }),
+                       let position = CardTextPosition(rawValue: String(flag.dropFirst("--milestone-corner=".count))) { score.cardTextPosition = position }
+                    score.ringStyle = args.contains("--milestone-fraction") ? .fraction : .percent
+                    score.showLastRecorded = !args.contains("--milestone-hide-date")
+                    var check = Tracker(name: "CHECK", kind: .daily)
+                    check.setFrequency(.weekly, target: 2, now: now)
+                    if args.contains("--milestone-long-checkbox") {
+                        check.name = "CHECK — 一週兩次 · long daily goal with no overlap"
+                        check.cardTextPosition = .bottomLeading
+                    }
+                    var grouped = Tracker(name: "GROUPED", kind: .daily)
+                    grouped.setFrequency(.weekly, target: 2, now: now)
+                    grouped.conditionGroups = [
+                        ConditionGroup(name: "Offices", combination: .any, conditions: [
+                            AchievementCondition(payload: .place(PlaceCondition(name: "Office A", location: RecordedLocation(latitude: 35.68, longitude: 139.76)))),
+                            AchievementCondition(payload: .place(PlaceCondition(name: "Office B", location: RecordedLocation(latitude: 34.69, longitude: 135.5))))]),
+                        ConditionGroup(name: "Schedule", combination: .all, conditions: [
+                            AchievementCondition(payload: .time(TimeCondition(startMinute: 0, endMinute: 0))),
+                            AchievementCondition(payload: .weekdays([1,2,3,4,5,6,7]))])]
+                    grouped.outerCombination = .all; grouped.gateSave = true
+                    var health = Tracker(name: "HEALTH", kind: .daily)
+                    health.conditionGroups = [ConditionGroup(name: "Movement and rest", conditions: [
+                        AchievementCondition(payload: .steps(HealthThreshold(comparison: .greater, threshold: "6000", window: .day))),
+                        AchievementCondition(payload: .sleep(HealthThreshold(comparison: .greater, threshold: "7", window: .day)))])]
+                    health.gateSave = true
+                    var manual = Tracker(name: "MANUAL", kind: .number)
+                    manual.lifecycle = .finite
+                    fixture = [score, check, grouped, health, manual]
+                }
+                if args.contains("--checkbox-card-layout"), fixture.count >= 5 {
+                    fixture[2].name = "每月出社"; fixture[2].kind = .daily
+                    fixture[2].setFrequency(.monthly, target: 7, now: now)
+                    fixture[2].entries = [Entry(occurredAt: now, localDay: fixture[2].day(now), location: RecordedLocation(latitude: 35.68, longitude: 139.76))]
+                    fixture[4].name = "測試早安"; fixture[4].rules = []
+                    fixture[4].setFrequency(.weekly, target: 4, now: now)
+                    fixture[4].conditions = nil; fixture[4].gateSave = false
+                    if args.contains("--checkbox-map-top-left") { fixture[2].cardTextPosition = .topLeading }
                 }
                 try loaded.replace(fixture)
             }

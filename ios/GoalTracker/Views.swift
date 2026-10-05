@@ -19,22 +19,15 @@ struct RootView: View {
     private func screen(at date: Date) -> some View {
         TabView(selection: $selected) {
             NavigationStack {
-                trackerList(today: true, at: date).safeAreaInset(edge: .top, spacing: 0) {
-                    if let gateNotice {
-                        Text(gateNotice).font(.callout).foregroundStyle(.red)
-                            .frame(maxWidth: .infinity, alignment: .leading).padding().background(.background)
-                            .accessibilityIdentifier("home.conditions.error")
-                    }
-                }
+                trackerList(today: true, at: date)
+                    .statusToast(message: statusMessage, identifier: "home.conditions.error", autoDismiss: store.error == nil)
             }.id(todayNavigationID).tabItem { Label(L.text("Today"), systemImage: "checkmark.circle") }.tag(0)
-            NavigationStack { trackerList(today: false, at: date) }.id(goalsNavigationID).tabItem { Label(L.text("Goals"), systemImage: "chart.xyaxis.line") }.tag(1)
-            SettingsView().tabItem { Label(L.text("Settings"), systemImage: "gearshape") }.tag(2)
+            NavigationStack { trackerList(today: false, at: date).statusToast(message: statusMessage, identifier: "home.conditions.error", autoDismiss: store.error == nil) }.id(goalsNavigationID).tabItem { Label(L.text("Goals"), systemImage: "chart.xyaxis.line") }.tag(1)
+            CompletedTab(trackers: store.trackers, now: date).tabItem { Label(L.text("Completed tab"), systemImage: "sparkles") }.tag(2)
+            SettingsView(now: date).tabItem { Label(L.text("Settings"), systemImage: "gearshape") }.tag(3)
         }
         .environment(\.editMode, $editMode)
         .onChange(of: selected) { _, _ in gateNotice = nil }
-        .onChange(of: gateNotice) { _, notice in
-            if let notice { UIAccessibility.post(notification: .announcement, argument: notice) }
-        }
         .task(id: store.trackers) {
             do { try await Reminders.sync(store.trackers) }
             catch is CancellationError { }
@@ -50,16 +43,19 @@ struct RootView: View {
         }
         .sheet(isPresented: $creating) { TrackerEditor() }
         .sheet(item: $entryTracker) { t in EntryEditor(tracker: t, existing: t.entries.first { $0.localDay == t.day(Date()) && t.kind == .daily }) }
-        .alert(L.text("Action failed"), isPresented: Binding(get: { store.error != nil }, set: { if !$0 { store.error = nil } })) {
-            Button(L.text("OK"), role: .cancel) { store.error = nil }
-        } message: { Text(store.error ?? "") }
+
+    }
+    private var statusMessage: Binding<String?> {
+        Binding(get: { gateNotice ?? store.error }, set: { value in gateNotice = value; if value == nil { store.error = nil } })
     }
     private func trackerList(today: Bool, at date: Date) -> some View {
         let active = store.trackers.filter { !$0.archived }
         return Group {
             if today && homeLayout != "list" && !active.isEmpty {
                 DashboardView(trackers: store.trackers, now: date,
-                              onRecord: { entryTracker = $0 }, onReorder: reorder)
+                              onRecord: { entryTracker = $0 }, onReorder: reorder,
+                              cancelForPresentation: entryTracker != nil || creating || selected != 0,
+                              onBegin: { gateNotice = nil }, onFailure: { gateNotice = $0 })
             } else {
                 List {
                     if active.isEmpty {
@@ -76,7 +72,7 @@ struct RootView: View {
                                     TrackerSummary(tracker: tracker, now: date).frame(maxWidth: .infinity, alignment: .leading)
                                 }.buttonStyle(.borderless).accessibilityIdentifier("tracker." + tracker.id.uuidString)
                             } else {
-                                NavigationLink { TrackerDetail(id: tracker.id) } label: { TrackerSummary(tracker: tracker, now: date) }
+                                NavigationLink { TrackerDetail(id: tracker.id, now: date) } label: { TrackerSummary(tracker: tracker, now: date) }
                                     .accessibilityIdentifier("tracker." + tracker.id.uuidString)
                             }
                             if today && tracker.kind == .daily {
@@ -128,7 +124,7 @@ struct RootView: View {
     }
 }
 
-private struct DailyCompletionButton: View {
+struct DailyCompletionButton: View {
     @Environment(AppStore.self) private var store
     let tracker: Tracker
     let now: Date
@@ -139,6 +135,8 @@ private struct DailyCompletionButton: View {
     let onFailure: (String) -> Void
     @State private var checking = false
     @State private var verification: Task<Void, Never>?
+    @State private var pendingRemoval: (tracker: Tracker, entryID: UUID)?
+    @State private var quickLocation = RecordLocationRecorder()
     private var done: Bool { tracker.entries.contains { $0.localDay == tracker.day(now) } }
     var body: some View {
         Button(action: toggle) {
@@ -149,21 +147,36 @@ private struct DailyCompletionButton: View {
         }.buttonStyle(.borderless).disabled(checking)
             .accessibilityLabel(L.text(checking ? "Checking record conditions" : done ? "Undo completion" : "Mark complete") + ": " + tracker.name)
             .accessibilityIdentifier("complete." + tracker.id.uuidString)
-            .onDisappear { verification?.cancel() }
-            .onChange(of: cancelForPresentation) { _, cancel in if cancel { verification?.cancel() } }
+            .onDisappear { verification?.cancel(); quickLocation.cancel() }
+            .onChange(of: cancelForPresentation) { _, cancel in if cancel { verification?.cancel(); quickLocation.cancel() } }
+            .confirmationDialog(L.text("Cancel this completion and its attachments?"), isPresented: Binding(
+                get: { pendingRemoval != nil }, set: { if !$0 { pendingRemoval = nil } }
+            ), titleVisibility: .visible) {
+                Button(L.text("Undo completion"), role: .destructive) {
+                    guard let pending = pendingRemoval else { return }
+                    let original = pending.tracker
+                    pendingRemoval = nil
+                    guard store.trackers.first(where: { $0.id == original.id }) == original else {
+                        onFailure(L.text("Records changed while checking. Try recording again.")); return
+                    }
+                    var candidate = original
+                    candidate.entries.removeAll { $0.id == pending.entryID }
+                    store.perform { try store.save(candidate) }
+                }
+                Button(L.text("Cancel"), role: .cancel) { pendingRemoval = nil }
+            } message: { Text(L.text("The record, notes and photos for today will be removed.")) }
     }
     private func toggle() {
         guard !checking, var original = store.trackers.first(where: { $0.id == tracker.id }) else { return }
         onBegin()
         let instant = Date(), day = original.day(instant)
         if let entry = original.entries.first(where: { $0.localDay == day }) {
-            if !entry.note.isEmpty || !entry.photos.isEmpty || entry.location != nil { onEditor(original); return }
+            if !entry.note.isEmpty || !entry.photos.isEmpty || entry.location != nil { pendingRemoval = (original, entry.id); return }
             original.entries.removeAll { $0.localDay == day }
             store.perform { try store.save(original) }
             return
         }
-        if recordLocationByDefault { onEditor(original); return }
-        guard original.requiresLocationGate else {
+        guard original.requiresConditionGate || recordLocationByDefault else {
             original.put(Entry(occurredAt: instant, localDay: day))
             store.perform { try store.save(original) }
             return
@@ -175,29 +188,26 @@ private struct DailyCompletionButton: View {
             do {
                 try await RecordConditions.verify(tracker: snapshot)
                 try Task.checkCancellation()
+                if recordLocationByDefault {
+                    quickLocation.draft = RecordLocationDraft(existing: nil, defaultEnabled: true)
+                    await quickLocation.resolveForSave()
+                    try Task.checkCancellation()
+                    // A location prompt can suspend across a time-condition boundary.
+                    try await RecordConditions.verify(tracker: snapshot)
+                }
                 guard store.trackers.first(where: { $0.id == snapshot.id }) == snapshot else {
                     onFailure(L.text("Records changed while checking. Try recording again.")); return
                 }
                 var candidate = snapshot
                 let instant = Date()
-                candidate.put(Entry(occurredAt: instant, localDay: candidate.day(instant)))
+                var entry = Entry(occurredAt: instant, localDay: candidate.day(instant))
+                if recordLocationByDefault { entry.location = quickLocation.draft.applying(to: nil) }
+                candidate.put(entry)
                 try store.save(candidate)
             } catch is CancellationError { }
             catch {
                 if !Task.isCancelled {
-                    if let condition = error as? ConditionError {
-                        let key: String
-                        switch condition.key {
-                        case "Your location does not meet the conditions. Your draft was kept.":
-                            key = "Your location does not meet the conditions. No record was saved."
-                        case "Your location is too uncertain or stale. Try again in a moment. Your draft was kept.":
-                            key = "Your location is too uncertain or stale. No record was saved."
-                        case "Could not verify your location. Your draft was kept.":
-                            key = "Could not verify your location. No record was saved."
-                        default: key = condition.key
-                        }
-                        onFailure(L.text(key))
-                    } else { onFailure(L.error(error)) }
+                    onFailure(L.error(error))
                 }
             }
         }
@@ -209,15 +219,21 @@ struct TrackerSummary: View {
     var now = Date()
     var body: some View {
         VStack(alignment: .leading, spacing: 5) {
-            Text(tracker.name).font(.headline)
+            HStack(alignment: .firstTextBaseline) {
+                Text(tracker.name).font(.headline)
+                if CompletionEngine.isCompleted(tracker: tracker, now: now) {
+                    Image(systemName: "checkmark.seal.fill").foregroundStyle(TrackerColors.accent)
+                        .accessibilityLabel(L.text("Completed goal"))
+                }
+            }
             if tracker.kind == .number {
                 if let v = tracker.resolvedEntries.last(where: { $0.occurredAt <= now })?.value.flatMap(Numbers.decimal) {
                     Text(Numbers.display(v, precision: tracker.precision, locale: L.locale) + (tracker.unit.isEmpty ? "" : " " + tracker.unit)).font(.title3.monospacedDigit()).foregroundStyle(.primary)
-                } else { Text(L.text("No snapshots yet")).foregroundStyle(TrackerColors.secondaryText) }
+                } else { Text(L.text("No records yet")).foregroundStyle(TrackerColors.secondaryText) }
             } else if let rule = tracker.rule(at: now) {
                 Text("\(tracker.count(in: tracker.interval(now, period: rule.period))) / \(rule.target) · " + L.text(rule.period == .weekly ? "This week" : "This month"))
                     .foregroundStyle(TrackerColors.secondaryText).monospacedDigit().accessibilityIdentifier("progress." + tracker.id.uuidString)
-            } else { Text(L.text("Completion record")).foregroundStyle(TrackerColors.secondaryText) }
+            } else { Text(L.text(tracker.entries.contains { $0.localDay == tracker.day(now) && $0.occurredAt <= now } ? "Today is recorded" : "No record today")).foregroundStyle(TrackerColors.secondaryText) }
         }.padding(.vertical, 2)
     }
 }
@@ -225,6 +241,7 @@ struct TrackerSummary: View {
 @MainActor struct TrackerDetail: View {
     @Environment(AppStore.self) private var store
     let id: UUID
+    let now: Date
     @State private var editing = false
     @State private var addEntry = false
     @State private var selectedEntry: Entry?
@@ -236,10 +253,12 @@ struct TrackerSummary: View {
     @State private var initializedRange = false
     @State private var month = Date()
     @State private var deleteTracker = false
+    @State private var reopenCompletion = false
+    @State private var completing = false
+    @State private var completionTask: Task<Void, Never>?
+    @AppStorage("firstWeekday", store: L.defaults) private var firstWeekday = 1
     private var tracker: Tracker? { store.trackers.first { $0.id == id } }
     var body: some View {
-        TimelineView(.everyMinute) { _ in
-        let now = Date()
         Group {
             if let t = tracker {
                 List {
@@ -248,6 +267,25 @@ struct TrackerSummary: View {
                     if t.kind == .number { numeric(t, now: now) }
                     else { CompletionProgressView(tracker: t, now: now) { daily(t) } }
                     locations(t)
+                    CompletionHistoryView(tracker: t)
+                    if t.resolvedLifecycle == .finite {
+                        Section(L.text("Goal status")) {
+                            if CompletionEngine.isCompleted(tracker: t, now: now) {
+                                Label(L.text("Completed goal"), systemImage: "checkmark.seal.fill")
+                                if t.manualCompletion != nil {
+                                    Button(L.text("Reopen goal")) { reopenCompletion = true }
+                                        .accessibilityIdentifier("tracker.reopen")
+                                } else {
+                                    Text(L.text("Create a new goal or switch to ongoing tracking to keep going."))
+                                        .font(.caption).foregroundStyle(.secondary)
+                                }
+                            } else if t.rules.isEmpty {
+                                Button(L.text("Complete goal")) { completeManually(t) }
+                                    .disabled(completing).accessibilityIdentifier("tracker.complete")
+                                if completing { ProgressView(L.text("Checking record conditions")) }
+                            } else { Label(L.text("In progress"), systemImage: "circle.dotted") }
+                        }
+                    }
                     if !t.rules.isEmpty {
                         Section(L.text("Goal history")) {
                             ForEach(t.rules.sorted { $0.effectiveAt > $1.effectiveAt }) { rule in
@@ -287,6 +325,7 @@ struct TrackerSummary: View {
                         Button(L.text("Delete tracker"), role: .destructive) { deleteTracker = true }
                     }
                 }
+                .statusToast(message: Binding(get: { store.error }, set: { store.error = $0 }), identifier: "detail.error", autoDismiss: false)
                 .navigationTitle(t.name).navigationBarTitleDisplayMode(.inline)
                 .environment(\.timeZone, t.calendar.timeZone)
                 .environment(\.calendar, t.calendar)
@@ -314,11 +353,37 @@ struct TrackerSummary: View {
                     EntryEditor(tracker: t, existing: t.entries.first { $0.id == selection.id } ?? selection)
                 }
                 .fullScreenCover(item: $photoPreview) { PhotoViewer(photos: $0.photos, initialIndex: $0.index) }
+                .onDisappear { completionTask?.cancel() }
+                .confirmationDialog(L.text("Reopen this goal?"), isPresented: $reopenCompletion, titleVisibility: .visible) {
+                    Button(L.text("Reopen goal"), role: .destructive) {
+                        store.perform {
+                            guard var current = tracker else { return }
+                            current.manualCompletion = nil
+                            try store.save(current)
+                        }
+                    }
+                    Button(L.text("Cancel"), role: .cancel) { }
+                } message: { Text(L.text("The manual completion card will be removed. Your records stay unchanged.")) }
                 .confirmationDialog(L.text("Delete this tracker and all its records?"), isPresented: $deleteTracker, titleVisibility: .visible) {
                     Button(L.text("Delete tracker"), role: .destructive) { store.perform { try store.remove(id) } }
                 }
             } else { ContentUnavailableView(L.text("Tracker removed"), systemImage: "archivebox") }
         }
+    }
+    private func completeManually(_ original: Tracker) {
+        guard !completing else { return }
+        completing = true
+        completionTask = Task {
+            defer { completing = false }
+            do {
+                try await RecordConditions.verify(tracker: original)
+                try Task.checkCancellation()
+                guard tracker == original else { throw ConditionError("Records changed while checking. Try recording again.") }
+                var candidate = original
+                candidate.manualCompletion = CompletionEngine.manualSnapshot(tracker: original, now: Date())
+                try store.save(candidate)
+            } catch is CancellationError { }
+            catch { store.error = L.error(error) }
         }
     }
     @ViewBuilder private func content(_ t: Tracker) -> some View {
@@ -522,7 +587,7 @@ struct TrackerSummary: View {
     }
     private func metric(_ key: String, _ value: String) -> some View { LabeledContent(L.text(key), value: value).monospacedDigit() }
     private func daily(_ t: Tracker) -> some View {
-        let cells = CompletionCalendarCell.month(for: t, containing: month)
+        let cells = CompletionCalendarCell.month(for: t, containing: month, firstWeekday: firstWeekday)
         let completed = Set(t.entries.map(\.localDay))
         let history = t.frequencyHistory(until: Date())
         let full = history.filter { !$0.3 && $0.0.end <= Date() }
@@ -537,7 +602,7 @@ struct TrackerSummary: View {
                 ForEach(cells) { cell in
                     switch cell {
                     case .weekday(let index):
-                        Text(L.locale.calendar.veryShortStandaloneWeekdaySymbols[(index + 1) % 7]).font(.caption).foregroundStyle(TrackerColors.secondaryText)
+                        Text(L.locale.calendar.veryShortStandaloneWeekdaySymbols[index - 1]).font(.caption).foregroundStyle(TrackerColors.secondaryText).accessibilityIdentifier(cell.id)
                     case .padding:
                         Color.clear.frame(height: 32).accessibilityHidden(true)
                     case .day(let date, let localDay):

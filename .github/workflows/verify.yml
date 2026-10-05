@@ -36,12 +36,15 @@ jobs:
     needs: repository
     if: needs.repository.outputs.has_app == 'true'
     runs-on: macos-26
-    timeout-minutes: 60
+    # CI covers native units and compilation. UI/E2E runs locally when needed.
+    timeout-minutes: 25
     steps:
       - uses: actions/checkout@v7
       - run: python3 scripts/dev.py doctor
-      - run: python3 scripts/dev.py test
-      - run: python3 scripts/dev.py test --scheme GoalTrackerWithWidget
+      - name: Native unit and data tests
+        run: python3 scripts/dev.py test --unit-only
+      - name: Compile App and Widget
+        run: python3 scripts/dev.py build --scheme GoalTrackerWithWidget
       - name: Upload test summaries
         uses: actions/upload-artifact@v7
         if: success()

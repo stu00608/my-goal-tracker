@@ -38,7 +38,7 @@ Personal Team、手機配對與本機 signing 設定由 Xcode 管理，不放進
 ```sh
 python3 scripts/dev.py doctor
 python3 scripts/dev.py build
-python3 scripts/dev.py test
+python3 scripts/dev.py test --unit-only
 python3 scripts/dev.py run
 python3 scripts/dev.py run --scheme GoalTrackerWithWidget
 open ios/GoalTracker.xcodeproj

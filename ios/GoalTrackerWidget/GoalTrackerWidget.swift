@@ -89,26 +89,20 @@ struct Provider: AppIntentTimelineProvider {
         if let row = entry.row, row.resolvedBackground == .map {
             let locations = Array((row.locations ?? []).filter(\.isValid).suffix(24))
             if !locations.isEmpty {
-                async let light = mapImage(locations, dark: false)
-                async let dark = mapImage(locations, dark: true)
+                async let light = mapImage(locations, textPosition: row.resolvedTextPosition, dark: false)
+                async let dark = mapImage(locations, textPosition: row.resolvedTextPosition, dark: true)
                 entry.mapImages[row.id] = await CardMapImages(light: light, dark: dark)
             }
         }
         return entry
     }
-    @MainActor private func mapImage(_ locations: [RecordedLocation], dark: Bool) async -> Data? {
+    @MainActor private func mapImage(_ locations: [RecordedLocation], textPosition: CardTextPosition, dark: Bool) async -> Data? {
         let options = MKMapSnapshotter.Options()
         options.size = CGSize(width: 320, height: 320)
         options.traitCollection = UITraitCollection(userInterfaceStyle: dark ? .dark : .light)
         options.pointOfInterestFilter = .excludingAll
-        var rect = MKMapRect.null
-        for location in locations {
-            let point = MKMapPoint(CLLocationCoordinate2D(latitude: location.latitude, longitude: location.longitude))
-            guard point.x.isFinite && point.y.isFinite else { return nil }
-            let radius = 500 / max(MKMetersPerMapPointAtLatitude(location.latitude), 0.01)
-            rect = rect.union(MKMapRect(x: point.x - radius, y: point.y - radius, width: radius * 2, height: radius * 2))
-        }
-        options.mapRect = rect.insetBy(dx: -rect.width * 0.15, dy: -rect.height * 0.15)
+        guard let rect = CardMapFraming.rect(locations: locations, textPosition: textPosition) else { return nil }
+        options.mapRect = rect
         let snapshotter = MKMapSnapshotter(options: options)
         // A failed/offline preview must not hold up the entire Widget timeline.
         let timeout = Task { @MainActor in
@@ -144,19 +138,27 @@ struct GoalWidgetView: View {
     }
     var body: some View {
         GeometryReader { geometry in
-            ZStack(alignment: .bottomTrailing) {
+            ZStack {
                 if let row = entry.row {
                     backdrop(row).frame(width: geometry.size.width, height: geometry.size.height).clipped()
                         .allowsHitTesting(false).accessibilityHidden(true)
-                    TrackerCardLabel(row: row, now: entry.date, locale: locale, text: text, compact: true, monochrome: monochrome)
-                        .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
-                        .padding(16).padding(.bottom, row.resolvedBackground == .map && !monochrome ? 18 : 0)
+                    if row.resolvedBackground == .progress {
+                        TrackerCardLabel(row: row, now: entry.date, locale: locale, text: text, compact: true, monochrome: monochrome)
+                            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+                            .frame(width: CardLayout.ringTextWidth(in: geometry.size))
+                            .frame(width: geometry.size.width, height: geometry.size.height)
+                    } else {
+                        TrackerCardLabel(row: row, now: entry.date, locale: locale, text: text, compact: true, monochrome: monochrome)
+                            .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+                            .padding(CardLayout.textInset)
+                            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: row.resolvedTextPosition.alignment)
+                    }
                 } else {
                     Text(text(entry.selectedID == nil ? "Open the app to add your first tracker." : "This tracker is unavailable. Edit the widget to choose another."))
                         .font(.caption).foregroundStyle(.primary).padding(16)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
-            }.frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .bottomTrailing)
+            }.frame(maxWidth: .infinity, maxHeight: .infinity)
         }
         .containerBackground(Color(uiColor: .secondarySystemGroupedBackground), for: .widget)
         .widgetURL(entry.row?.recordURL ?? URL(string: "goaltracker://today"))
@@ -164,63 +166,42 @@ struct GoalWidgetView: View {
     }
     @ViewBuilder private func backdrop(_ row: WidgetRow) -> some View {
         if row.resolvedBackground == .plot || row.resolvedBackground == .progress {
-            TrackerCardBackdrop(row: row, text: text, now: entry.date, monochrome: monochrome)
-                .opacity(monochrome ? 0.45 : 1)
+            TrackerCardBackdrop(row: row, text: text, now: entry.date, locale: locale, monochrome: monochrome)
         } else {
             let images = entry.mapImages[row.id]
             let photo = row.resolvedBackground == .photo || row.resolvedBackground == .trackerPhoto
             let data = photo ? row.thumbnail : colorScheme == .dark ? images?.dark : images?.light
             if let data, let image = UIImage(data: data) {
                 if #available(iOS 18, *) {
-                    if photo && renderingMode == .accented {
+                    if renderingMode == .accented {
                         GeometryReader { geometry in
-                            Image(uiImage: accentedPhoto(image, size: geometry.size))
+                            Image(uiImage: CardAccentedPhoto.make(image, size: geometry.size, position: row.resolvedTextPosition, increasedContrast: contrast == .increased))
                                 .renderingMode(.original).resizable().widgetAccentedRenderingMode(.fullColor)
                                 .scaledToFill().frame(width: geometry.size.width, height: geometry.size.height)
                         }
                     } else {
                         Image(uiImage: image).resizable().widgetAccentedRenderingMode(.desaturated).scaledToFill()
                             .opacity(monochrome ? 0.22 : 1)
-                            .overlay { if photo { CardPhotoReadabilityGradient(monochrome: monochrome) } }
+                            .overlay {
+                                if photo {
+                                    CardPhotoReadabilityGradient(position: row.resolvedTextPosition, monochrome: monochrome,
+                                                                 lightText: CardImageContrast.prefersLightText(data, position: row.resolvedTextPosition))
+                                }
+                            }
                     }
                 } else {
                     Image(uiImage: image).resizable().scaledToFill()
-                        .overlay { if photo { CardPhotoReadabilityGradient(monochrome: monochrome) } }
+                        .overlay {
+                            if photo {
+                                CardPhotoReadabilityGradient(position: row.resolvedTextPosition, monochrome: monochrome,
+                                                             lightText: CardImageContrast.prefersLightText(data, position: row.resolvedTextPosition))
+                            }
+                        }
                 }
-            } else { TrackerCardBackdrop(row: row, text: text, now: entry.date, monochrome: monochrome).opacity(monochrome ? 0.45 : 1) }
+            } else { TrackerCardBackdrop(row: row, text: text, now: entry.date, locale: locale, monochrome: monochrome) }
         }
     }
 
-    /// Accented mode tints SwiftUI gradients white and maps desaturated luminance to alpha.
-    /// Flatten the crop and dark gradient into a display-only image so white labels stay readable.
-    private func accentedPhoto(_ image: UIImage, size: CGSize) -> UIImage {
-        guard size.width > 0, size.height > 0, image.size.width > 0, image.size.height > 0 else { return image }
-        let format = UIGraphicsImageRendererFormat()
-        format.scale = 320 / max(size.width, size.height)
-        format.opaque = true
-        format.preferredRange = .standard
-        return UIGraphicsImageRenderer(size: size, format: format).image { renderer in
-            let context = renderer.cgContext
-            let bounds = CGRect(origin: .zero, size: size)
-            let scale = max(size.width / image.size.width, size.height / image.size.height)
-            let cropSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
-            image.draw(in: CGRect(x: (size.width - cropSize.width) / 2, y: (size.height - cropSize.height) / 2,
-                                  width: cropSize.width, height: cropSize.height))
-            // Preserve the photo's luminance without introducing color into tinted or clear modes.
-            context.setBlendMode(.saturation)
-            context.setFillColor(UIColor.black.cgColor)
-            context.fill(bounds)
-            context.setBlendMode(.normal)
-            let colors = [UIColor.black.withAlphaComponent(0).cgColor,
-                          UIColor.black.withAlphaComponent(0.1).cgColor,
-                          UIColor.black.withAlphaComponent(contrast == .increased ? 0.88 : 0.7).cgColor,
-                          UIColor.black.withAlphaComponent(contrast == .increased ? 0.94 : 0.84).cgColor]
-            if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors as CFArray,
-                                         locations: [0, 0.35, 0.6, 1]) {
-                context.drawLinearGradient(gradient, start: .zero, end: CGPoint(x: 0, y: size.height), options: [])
-            }
-        }
-    }
 }
 
 @main struct GoalTrackerWidget: Widget {

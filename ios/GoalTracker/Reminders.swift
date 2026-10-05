@@ -18,7 +18,7 @@ struct ReminderScheduleEditor: View {
                 if enabled {
                     DatePicker(L.text("Time"), selection: $time, displayedComponents: .hourAndMinute)
                         .accessibilityIdentifier("reminder.time")
-                    ForEach(1...7, id: \.self) { day in
+                    ForEach(WeekdayOrder.days(starting: L.firstWeekday), id: \.self) { day in
                         Toggle(L.locale.calendar.weekdaySymbols[day - 1], isOn: Binding(
                             get: { weekdays.contains(day) },
                             set: { if $0 { weekdays.insert(day) } else { weekdays.remove(day) }; update() }
@@ -78,7 +78,7 @@ struct ReminderScheduleEditor: View {
                     content: content(t, body: t.kind == .daily ? "A moment to record your day." : "Any progress to capture?"),
                     trigger: UNCalendarNotificationTrigger(dateMatching: parts, repeats: true)))
             }
-            if let rule = t.rule(at: now), let due = rule.deadline, !t.achieved(rule) {
+            if let rule = t.rule(at: now), let due = rule.deadline, t.achievement(for: rule, now: now) == nil {
                 var parts = t.calendar.dateComponents([.year, .month, .day], from: due)
                 parts.timeZone = t.calendar.timeZone; parts.hour = r.hour; parts.minute = r.minute
                 if let date = t.calendar.date(from: parts), date > now {
@@ -334,27 +334,29 @@ struct ReminderScheduleEditor: View {
     private func evaluate(monitor: CLMonitor, event: CLMonitor.Event?, primeOnly: Bool) async {
         guard active, Reminders.enabled else { return }
         let token = revision
-        let now = Date()
         for t in ConditionPlan.eligible(trackers) {
             if let event, !t.resolvedConditions.contains(where: { ConditionCenter($0.location).identifier == event.identifier }) { continue }
             let signature = ConditionPlan.signature(t)
             let key = t.id.uuidString
             var transition = history[key] ?? ConditionTransition(signature: signature)
             if primeOnly && transition.signature == signature && transition.aggregate != nil { continue }
-            var states: [ConditionState] = []
-            for condition in t.resolvedConditions {
-                let id = ConditionCenter(condition.location).identifier
+            var native: [String: ConditionRegionFact] = [:]
+            let places = t.resolvedConditionGroups.flatMap(\.conditions).filter { $0.place != nil }
+            for id in Set(places.compactMap { $0.place.map { ConditionCenter($0.location).identifier } }) {
                 let last = event?.identifier == id ? event : await monitor.record(for: id)?.lastEvent
-                guard let last else { states.append(.unknown); continue }
-                var inside: ConditionState
-                switch last.state { case .satisfied: inside = .met; case .unsatisfied: inside = .unmet; default: inside = .unknown }
-                if !eventUsable(last) { inside = .unknown }
-                states.append(ConditionPlan.state(inside: inside, date: last.date, relation: condition.relation, now: now))
+                if let last {
+                    let inside: ConditionState = eventUsable(last) ? (last.state == .satisfied ? .met : .unmet) : .unknown
+                    native[id] = ConditionRegionFact(inside: inside, date: last.date)
+                }
             }
             guard revision == token, active, Reminders.enabled else { return }
+            // Time and weekday leaves use the live clock after the monitor awaits, never the event's date.
+            let now = Date()
+            let facts = ConditionPlan.facts(t, regions: native, now: now)
             // Every initial relevant native state must be known before ANY or ALL can prime.
-            let aggregate = ConditionEvaluation.aggregate(states, combination: t.resolvedCombination)
-            let shouldNotify = transition.observe(aggregate, signature: signature, now: now, initialStatesKnown: !states.contains(.unknown))
+            let aggregate = ConditionEvaluation.status(tracker: t, facts: facts, now: now).state
+            let shouldNotify = transition.observe(aggregate, signature: signature, now: now,
+                initialStatesKnown: !facts.places.values.contains(.unknown))
             history[key] = transition
             // Only a fresh delivered native event may trigger, never a cached startup snapshot.
             if !primeOnly, let event, ConditionPlan.mayNotify(transition: shouldNotify,
@@ -365,17 +367,22 @@ struct ReminderScheduleEditor: View {
                 let pending = await center.pendingNotificationRequests()
                 guard revision == token, active, Reminders.enabled,
                       settings.authorizationStatus == .authorized || settings.authorizationStatus == .provisional else { continue }
+                let deliveryTime = Date()
+                let deliveryFacts = ConditionPlan.facts(t, regions: native, now: deliveryTime)
+                guard ConditionEvaluation.status(tracker: t, facts: deliveryFacts, now: deliveryTime).state == .met,
+                      ConditionPlan.mayNotify(transition: shouldNotify, eventState: eventUsable(event) ? .met : .unknown,
+                        eventDate: event.date, now: deliveryTime, enabled: Reminders.enabled, authorized: active) else { continue }
                 let identifier = Reminders.conditionIdentifier(t.id)
                 let plannedCount = (try? Reminders.requests(trackers).count) ?? 60
                 guard Reminders.hasCapacity(planned: plannedCount, pending: pending.map(\.identifier), adding: identifier) else { continue }
                 do {
                     try await center.add(UNNotificationRequest(identifier: identifier,
-                        content: Reminders.content(t, body: "Your location conditions are met. A moment to record?"), trigger: nil))
+                        content: Reminders.content(t, body: "Your achievement conditions are met. A moment to record?"), trigger: nil))
                     guard revision == token, active, Reminders.enabled else {
                         center.removePendingNotificationRequests(withIdentifiers: [identifier])
                         center.removeDeliveredNotifications(withIdentifiers: [identifier]); continue
                     }
-                    history[key]?.delivered(at: now)
+                    history[key]?.delivered(at: deliveryTime)
                 } catch {
                     failureKey = "Could not deliver the location reminder. Check notification settings."
                 }

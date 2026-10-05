@@ -31,12 +31,16 @@ struct TrackerEditor: View {
     @State private var photoTask: Task<Void, Never>?
     @State private var loadingPhotos = false
     @State private var reminder: Reminder?
-    @State private var conditions: [PlaceCondition] = []
+    @State private var groups: [ConditionGroup] = [ConditionGroup()]
+    @State private var editingCondition: ConditionEditorSelection?
+    @State private var deletingGroup: ConditionGroup?
     @State private var combination = ConditionCombination.any
     @State private var gateSave = false
     @State private var remindWhenMet = false
-    @State private var conditionPresentation: TrackerConditionPresentation?
-    @State private var conditionRemoval: PlaceCondition?
+    @State private var textPosition = CardTextPosition.bottomTrailing
+    @State private var showLastRecorded = true
+    @State private var ringStyle = RingProgressStyle.percent
+    @State private var lifecycle = TrackingLifecycle.finite
     @State private var notificationAuthorized = true
     @State private var runtime = ConditionReminders.shared
     @State private var error: String?
@@ -45,6 +49,8 @@ struct TrackerEditor: View {
     @FocusState private var focusedField: Field?
     @State private var initialized = false
     @State private var keyboard = EditorKeyboardControl()
+
+    private var healthKeys: Set<HealthFactKey> { Set(groups.flatMap(\.conditions).compactMap(\.healthKey)) }
 
     var body: some View {
         NavigationStack {
@@ -62,29 +68,24 @@ struct TrackerEditor: View {
                         Text(L.text("Location map")).tag(CardBackground.map)
                         if progressEligible { Text(L.text("Goal progress")).tag(CardBackground.progress) }
                     }.accessibilityIdentifier("tracker.cardBackground")
+                    CardPresentationEditor(textPosition: $textPosition, showLastRecorded: $showLastRecorded,
+                                           ringStyle: $ringStyle, background: cardBackground)
                 }
-                conditionsSection
+                AchievementConditionEditor(groups: $groups, outerCombination: $combination, gateSave: $gateSave, editing: $editingCondition, deleting: $deletingGroup)
+                if !healthKeys.isEmpty {
+                    Section { HealthConnectionView(keys: healthKeys, onFailure: { error = $0 }) }
+                }
                 notificationsSection
             }
-            .safeAreaInset(edge: .top, spacing: 0) {
-                if let error {
-                    Text(error).font(.callout).foregroundStyle(.red)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .padding(.horizontal).padding(.vertical, 8).background(.background)
-                        .accessibilityIdentifier("editor.error")
-                }
-            }
-            .onChange(of: error) { _, message in
-                if let message { UIAccessibility.post(notification: .announcement, argument: message) }
-            }
             .disabled(busy)
+            .statusToast(message: $error, identifier: "editor.error", autoDismiss: false)
             .scrollDismissesKeyboard(.interactively)
             .background(EditorKeyboardDismissal(keyboard: keyboard) { focusedField = nil })
             .navigationTitle(L.text(existing == nil ? "New tracker" : "Edit tracker"))
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) {
-                    Button(L.text("Cancel")) { endEditing(); photoTask?.cancel(); dismiss() }.disabled(busy)
+                    Button(L.text("Cancel")) { endEditing(); photoTask?.cancel(); dismiss() }.disabled(busy).accessibilityIdentifier("tracker.cancel")
                 }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(L.text("Save"), action: save)
@@ -100,33 +101,38 @@ struct TrackerEditor: View {
                 let settings = await UNUserNotificationCenter.current().notificationSettings()
                 notificationAuthorized = settings.authorizationStatus != .denied
             }
-            .onChange(of: kind) { _, _ in endEditing(); resetInvalidBackground() }
+            .onChange(of: kind) { _, kind in endEditing(); if existing == nil { lifecycle = kind == .daily ? .ongoing : .finite }; resetInvalidBackground() }
             .onChange(of: goalEnabled) { _, _ in resetInvalidBackground() }
             .onChange(of: target) { _, _ in resetInvalidBackground() }
             .onChange(of: period) { _, _ in endEditing(); frequency = min(frequency, period == .weekly ? 7 : 31) }
+            .onChange(of: groups) { _, _ in if !supportsConditionReminders { remindWhenMet = false } }
             .onChange(of: selections) { _, items in importPhotos(items) }
             .onDisappear { photoTask?.cancel() }
             .fullScreenCover(item: $photoPresentation) { selection in
                 PhotoViewer(photos: selection.photos, initialIndex: selection.initialIndex)
             }
+            .confirmationDialog(L.text("Delete this group and its conditions?"), isPresented: Binding(get: { deletingGroup != nil }, set: { if !$0 { deletingGroup = nil } }), titleVisibility: .visible) {
+                Button(L.text("Delete group"), role: .destructive) {
+                    if let group = deletingGroup, groups.count > 1 { groups.removeAll { $0.id == group.id } }
+                    if groups.allSatisfy({ $0.conditions.isEmpty }) { gateSave = false }
+                    deletingGroup = nil
+                }.accessibilityIdentifier("conditions.editor.confirmDelete")
+                Button(L.text("Cancel"), role: .cancel) { deletingGroup = nil }
+                    .accessibilityIdentifier("conditions.editor.cancelDelete")
+            }
             .sheet(item: $photoRemoval) { removalSheet($0) }
-            .sheet(item: $conditionPresentation) { presentation in
-                ConditionEditor(existing: presentation.condition) { condition in
-                    if let index = conditions.firstIndex(where: { $0.id == condition.id }) { conditions[index] = condition }
-                    else { conditions.append(condition) }
+            .sheet(item: $editingCondition) { selection in
+                AchievementLeafEditor(existing: selection.condition, kind: selection.kind) { payload in
+                    guard let group = groups.firstIndex(where: { $0.id == selection.groupID }) else { return }
+                    if let old = selection.condition,
+                       let leaf = groups[group].conditions.firstIndex(where: { $0.id == old.id }) {
+                        groups[group].conditions[leaf].payload = payload
+                    } else if groups[group].conditions.count < ConditionGroup.limit {
+                        groups[group].conditions.append(AchievementCondition(payload: payload))
+                    }
                 }
             }
-            .confirmationDialog(L.text("Remove this location condition?"), isPresented: Binding(
-                get: { conditionRemoval != nil }, set: { if !$0 { conditionRemoval = nil } }
-            ), titleVisibility: .visible) {
-                Button(L.text("Remove condition"), role: .destructive) {
-                    guard let conditionRemoval else { return }
-                    conditions.removeAll { $0.id == conditionRemoval.id }
-                    if conditions.isEmpty { gateSave = false; remindWhenMet = false }
-                    self.conditionRemoval = nil
-                }
-                Button(L.text("Cancel"), role: .cancel) { conditionRemoval = nil }
-            } message: { Text(conditionRemoval?.name ?? "") }
+
         }
     }
 
@@ -176,6 +182,14 @@ struct TrackerEditor: View {
                     Text(L.text("Higher is better")).tag(Direction.up); Text(L.text("Lower is better")).tag(Direction.down)
                 }
             }
+            VStack(alignment: .leading, spacing: 6) {
+                Picker(L.text("Tracking style"), selection: $lifecycle) {
+                    Text(L.text("Ongoing")).tag(TrackingLifecycle.ongoing)
+                    Text(L.text("Finite goal")).tag(TrackingLifecycle.finite)
+                }.accessibilityIdentifier("tracker.lifecycle")
+                Text(L.text("Ongoing trackers keep a completion history. Finite goals gain a completed status when achieved."))
+                    .font(.caption).foregroundStyle(.secondary)
+            }
         }
     }
     private var goalSection: some View {
@@ -218,40 +232,9 @@ struct TrackerEditor: View {
             Text(L.text("Chart bounds change the view only. Original values and precision are kept."))
         }
     }
-    private var conditionsSection: some View {
-        Section {
-            ForEach(conditions) { condition in
-                Button {
-                    endEditing(); conditionPresentation = TrackerConditionPresentation(condition: condition)
-                } label: {
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(condition.name).foregroundStyle(.primary)
-                        Text(L.text(condition.relation == .inside ? "Inside 200 m" : "Outside 200 m"))
-                            .font(.caption).foregroundStyle(.secondary)
-                    }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
-                }.accessibilityIdentifier("tracker.condition.\(condition.id.uuidString)")
-                    .swipeActions(allowsFullSwipe: false) {
-                        Button(L.text("Remove"), role: .destructive) { conditionRemoval = condition }
-                    }
-                    .accessibilityAction(named: L.text("Remove condition")) { conditionRemoval = condition }
-            }
-            Button {
-                endEditing(); conditionPresentation = TrackerConditionPresentation(condition: nil)
-            } label: { Label(L.text("Add location condition"), systemImage: "plus") }
-                .accessibilityIdentifier("tracker.conditions.add")
-            if conditions.count > 1 {
-                Picker(L.text("Combine conditions"), selection: $combination) {
-                    Text(L.text("Any condition")).tag(ConditionCombination.any)
-                    Text(L.text("All conditions")).tag(ConditionCombination.all)
-                }.accessibilityIdentifier("tracker.conditions.combination")
-            }
-            Toggle(L.text("Require conditions to save a record"), isOn: $gateSave)
-                .disabled(conditions.isEmpty).accessibilityIdentifier("tracker.conditions.gate")
-        } header: { Text(L.text("Location conditions")) } footer: {
-            Text(L.text(conditions.isEmpty
-                ? "Add a place to require a location check or enable a condition reminder."
-                : "New records and changes to a record’s number or date require a fresh location check. Notes and photos can still be edited."))
-        }
+    private var supportsConditionReminders: Bool {
+        let leaves = groups.flatMap(\.conditions)
+        return leaves.contains { $0.place != nil } && !leaves.contains { $0.isHealth }
     }
     private var notificationsSection: some View {
         Section {
@@ -262,7 +245,11 @@ struct TrackerEditor: View {
             }.accessibilityIdentifier("tracker.reminders.schedule")
             VStack(alignment: .leading, spacing: 8) {
                 Toggle(L.text("Remind me when conditions are met"), isOn: $remindWhenMet)
-                    .disabled(conditions.isEmpty).accessibilityIdentifier("tracker.conditions.remind")
+                    .disabled(!supportsConditionReminders).accessibilityIdentifier("tracker.conditions.remind")
+                if !supportsConditionReminders {
+                    Text(L.text("Condition reminders require a location condition and cannot include health conditions. Time and weekday conditions are checked when a location event occurs."))
+                        .font(.caption).foregroundStyle(.secondary)
+                }
                 if !Reminders.enabled {
                     Text(L.text("All reminders are off in Settings. Your tracker choices are kept.")).font(.caption).foregroundStyle(.secondary)
                 } else if !notificationAuthorized {
@@ -277,7 +264,7 @@ struct TrackerEditor: View {
                     .accessibilityIdentifier("tracker.reminders.settings")
             }
         } header: { Text(L.text("Reminders")) } footer: {
-            Text(L.text("Location reminders need Always location access. They never create records automatically."))
+            Text(L.text("Condition reminders use location events and need Always location access. They never create records automatically."))
         }
     }
     private var photoSection: some View {
@@ -314,8 +301,8 @@ struct TrackerEditor: View {
         PhotosPicker(selection: $selections, maxSelectionCount: max(1, Entry.photoLimit - photos.count),
                      selectionBehavior: .ordered, matching: .images, preferredItemEncoding: .current) {
             Label(L.text("Add photos"), systemImage: "plus")
-                .labelStyle(.titleAndIcon).frame(minHeight: 44)
-        }.buttonStyle(.borderless).disabled(loadingPhotos || photos.count == Entry.photoLimit)
+                .frame(minHeight: 44)
+        }.labelStyle(.titleAndIcon).buttonStyle(.borderless).disabled(loadingPhotos || photos.count == Entry.photoLimit)
             .simultaneousGesture(TapGesture().onEnded { endEditing() }).accessibilityIdentifier("tracker.photos")
     }
     private func photoTile(_ photo: DraftPhoto) -> some View {
@@ -366,7 +353,7 @@ struct TrackerEditor: View {
                 }
         }.presentationDetents([.medium, .large])
     }
-    private var typeLocked: Bool { !(existing?.entries.isEmpty ?? true) || !(existing?.rules.isEmpty ?? true) }
+    private var typeLocked: Bool { !(existing?.entries.isEmpty ?? true) || !(existing?.rules.isEmpty ?? true) || existing?.manualCompletion != nil }
     private var progressEligible: Bool {
         guard goalEnabled else { return false }
         let now = Date()
@@ -386,7 +373,8 @@ struct TrackerEditor: View {
         description = t.description ?? ""; website = t.website ?? ""
         photos = (t.photos ?? []).map { DraftPhoto(data: $0) }
         axisLower = t.axisLower ?? ""; axisUpper = t.axisUpper ?? ""
-        reminder = t.reminder; conditions = t.resolvedConditions; combination = t.resolvedCombination
+        reminder = t.reminder; groups = t.resolvedConditionGroups.isEmpty ? [ConditionGroup()] : t.resolvedConditionGroups; combination = t.resolvedOuterCombination
+        textPosition = t.resolvedTextPosition; showLastRecorded = t.showLastRecorded ?? true; ringStyle = t.resolvedRingStyle; lifecycle = t.resolvedLifecycle
         gateSave = t.gateSave == true; remindWhenMet = t.remindWhenMet == true
         if let rule = t.rules.max(by: { $0.effectiveAt < $1.effectiveAt }) {
             goalEnabled = true; target = rule.target; due = rule.deadline ?? due; period = rule.period; frequency = Int(rule.target) ?? 2
@@ -416,16 +404,19 @@ struct TrackerEditor: View {
         let id = existing?.id ?? newTracker.id
         var t = store.trackers.first { $0.id == id } ?? existing ?? newTracker
         guard description.count <= 10000 else { throw ConditionError("The description can contain up to 10,000 characters.") }
-        guard conditions.allSatisfy({ !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0.name.count <= 120 && $0.location.isValid }),
-              Set(conditions.map(\.id)).count == conditions.count else { throw ConditionError("Choose a valid place for every condition.") }
-        guard !(gateSave || remindWhenMet) || !conditions.isEmpty else { throw ConditionError("Add a place before enabling location conditions.") }
+        let configuredGroups = groups.count == 1 && groups[0].conditions.isEmpty ? [] : groups
+        guard configuredGroups.allSatisfy({ !$0.conditions.isEmpty }) else { throw ConditionError("Add at least one condition to every group.") }
+        guard !(gateSave || remindWhenMet) || !configuredGroups.isEmpty else { throw ConditionError("Add an achievement condition first.") }
+        guard !remindWhenMet || supportsConditionReminders else { throw ConditionError("Condition reminders require a location condition without health conditions.") }
         if reminder?.weekdays.isEmpty == true { throw ConditionError("Choose at least one weekday.") }
         t.name = name.trimmingCharacters(in: .whitespacesAndNewlines); t.kind = kind; t.unit = unit; t.precision = precision; t.direction = direction
         t.description = description.isEmpty ? nil : description; t.website = try TrackerFields.website(website)
         t.photos = photos.isEmpty ? nil : photos.map(\.data)
         if kind == .number { (t.axisLower, t.axisUpper) = try TrackerFields.axis(lower: axisLower, upper: axisUpper, locale: L.locale) }
         else { t.axisLower = nil; t.axisUpper = nil }
-        t.conditions = conditions.isEmpty ? nil : conditions; t.conditionCombination = conditions.isEmpty ? nil : combination
+        t.conditions = nil; t.conditionCombination = nil
+        t.conditionGroups = configuredGroups.isEmpty ? nil : configuredGroups; t.outerCombination = configuredGroups.isEmpty ? nil : combination
+        t.cardTextPosition = textPosition; t.showLastRecorded = showLastRecorded; t.ringStyle = ringStyle; t.lifecycle = lifecycle
         t.gateSave = gateSave; t.remindWhenMet = remindWhenMet; t.reminder = reminder
         try applyGoal(to: &t, now: Date())
         t.cardBackground = cardBackground == .progress && !GoalProgress.available(for: t, now: Date()) ? .plot : cardBackground
@@ -479,8 +470,4 @@ private struct TrackerPhotoPresentation: Identifiable {
     let id = UUID()
     let photos: [Data]
     let initialIndex: Int
-}
-private struct TrackerConditionPresentation: Identifiable {
-    let id = UUID()
-    let condition: PlaceCondition?
 }

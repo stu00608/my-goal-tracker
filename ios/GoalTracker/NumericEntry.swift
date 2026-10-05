@@ -114,7 +114,7 @@ nonisolated enum NumericEntry {
     }
 
     static func requiresGate(in tracker: Tracker, for entry: Entry, editing id: UUID?) -> Bool {
-        guard tracker.requiresLocationGate else { return false }
+        guard tracker.requiresConditionGate else { return false }
         guard let id, let old = tracker.entries.first(where: { $0.id == id }) else { return true }
         return old.value != entry.value || old.change != entry.change || old.occurredAt != entry.occurredAt || old.localDay != entry.localDay
     }

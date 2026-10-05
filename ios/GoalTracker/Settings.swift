@@ -25,6 +25,7 @@ nonisolated struct ExportNameGenerator {
 }
 
 struct SettingsView: View {
+    let now: Date
     @Environment(AppStore.self) private var store
     @AppStorage("appearance") private var appearance = "system"
     @AppStorage("language") private var language = "system"
@@ -32,6 +33,7 @@ struct SettingsView: View {
     @AppStorage("recordLocationByDefault", store: L.defaults) private var recordLocationByDefault = false
     @AppStorage("numericInputMode", store: L.defaults) private var numericInputMode = NumericEntryMode.direct.rawValue
     @AppStorage("remindersEnabled", store: L.defaults) private var remindersEnabled = true
+    @AppStorage("firstWeekday", store: L.defaults) private var firstWeekday = 1
     @State private var syncingReminders = false
     @State private var exportNames = ExportNameGenerator()
     @State private var exportFilename = ""
@@ -60,6 +62,10 @@ struct SettingsView: View {
                         Text(L.text("New value")).tag(NumericEntryMode.direct.rawValue)
                         Text(L.text("Change amount")).tag(NumericEntryMode.change.rawValue)
                     }.accessibilityIdentifier("settings.numericInputMode")
+                    Picker(L.text("First day of week"), selection: $firstWeekday) {
+                        Text(L.text("Sunday")).tag(1)
+                        Text(L.text("Monday")).tag(2)
+                    }.accessibilityIdentifier("settings.firstWeekday")
                     VStack(alignment: .leading, spacing: 8) {
                         Toggle(L.text("Record location by default"), isOn: $recordLocationByDefault)
                             .accessibilityIdentifier("settings.recordLocationDefault")
@@ -95,16 +101,16 @@ struct SettingsView: View {
                 }
                 if store.trackers.contains(where: \.archived) {
                     Section(L.text("Archived")) {
-                        ForEach(store.trackers.filter(\.archived)) { t in NavigationLink(t.name) { TrackerDetail(id: t.id) } }
+                        ForEach(store.trackers.filter(\.archived)) { t in NavigationLink(t.name) { TrackerDetail(id: t.id, now: now) } }
                     }
                 }
-                if let error { Section { Text(error).foregroundStyle(.red) } }
                 Section(L.text("About")) {
                     Text(L.text("Goalooker - 過路客")).font(.headline)
                     Text(L.text("Small daily steps leave a visible trace. Explore your own orbit, one record at a time."))
                         .font(.footnote).foregroundStyle(TrackerColors.secondaryText)
                 }
             }
+            .statusToast(message: $error, identifier: "settings.error", autoDismiss: false)
             .navigationTitle(L.text("Settings"))
             .onChange(of: remindersEnabled) { _, enabled in
                 Task {

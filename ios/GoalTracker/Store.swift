@@ -24,13 +24,25 @@ import UIKit
         container = try ModelContainer(for: Ledger.self, configurations: config)
         context = ModelContext(container); context.autosaveEnabled = false
         if let existing = try context.fetch(FetchDescriptor<Ledger>()).first {
-            row = existing; trackers = try Backup.decode(existing.payload).trackers
+            let decoded = try Backup.decode(existing.payload)
+            if decoded.version < 3 {
+                let directory = url?.deletingLastPathComponent() ?? URL.applicationSupportDirectory
+                let safetyCopy = directory.appendingPathComponent("Ledger-v2-premigration.json")
+                if !FileManager.default.fileExists(atPath: safetyCopy.path) {
+                    try existing.payload.write(to: safetyCopy, options: [.atomic, .completeFileProtection])
+                }
+            }
+            row = existing
+            trackers = decoded.version < 3 ? decoded.trackers.map { tracker in var copy = tracker; copy.migrateConditions(); return copy } : decoded.trackers
         } else {
             row = Ledger(payload: try Backup(trackers: []).encoded())
             context.insert(row); try context.save(); trackers = []
         }
     }
-    func replace(_ candidate: [Tracker]) throws {
+    func replace(_ supplied: [Tracker]) throws {
+        // Reject ambiguous dual schemas before normalization, then preserve legacy semantics in v3 keys.
+        try Backup(trackers: supplied).validate()
+        let candidate = supplied.map { tracker in var copy = tracker; copy.migrateConditions(); return copy }
         // Validate raw events, derived overflow and metadata before touching the persisted document.
         let data = try Backup(trackers: candidate).encoded()
         // Validate the whole active configuration on every entry path, including unarchive and restore.
@@ -69,6 +81,7 @@ import UIKit
     }
     func restore(_ data: Data) throws {
         let b = try Backup.decode(data)
-        try replace(b.trackers)
+        let restored = b.version < 3 ? b.trackers.map { tracker in var copy = tracker; copy.migrateConditions(); return copy } : b.trackers
+        try replace(restored)
     }
 }

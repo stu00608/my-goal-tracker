@@ -6,6 +6,87 @@ nonisolated enum Direction: String, Codable, CaseIterable { case up, down }
 nonisolated enum Period: String, Codable, CaseIterable { case weekly, monthly, deadline }
 nonisolated enum NumericEntryError: Error, Equatable { case missingBaseline, orphanedChange(UUID) }
 
+nonisolated enum CardTextPosition: String, Codable, CaseIterable {
+    case topLeading, topTrailing, bottomLeading, bottomTrailing, hidden
+    static func available(for background: CardBackground) -> [Self] {
+        background == .map ? [.topLeading, .topTrailing, .hidden] : allCases
+    }
+    func resolved(for background: CardBackground) -> Self {
+        guard background == .map else { return self }
+        switch self { case .bottomLeading: return .topLeading; case .bottomTrailing: return .topTrailing; default: return self }
+    }
+}
+nonisolated enum RingProgressStyle: String, Codable, CaseIterable { case percent, fraction }
+nonisolated enum TrackingLifecycle: String, Codable, CaseIterable { case ongoing, finite }
+nonisolated enum WeekdayOrder {
+    static func days(starting firstWeekday: Int) -> [Int] {
+        let first = firstWeekday == 2 ? 2 : 1
+        return (0..<7).map { (first - 1 + $0) % 7 + 1 }
+    }
+}
+nonisolated enum HealthWindow: String, Codable, CaseIterable, Hashable { case day, week, month }
+nonisolated enum ThresholdComparison: String, Codable, CaseIterable { case greater, less }
+nonisolated struct TimeCondition: Codable, Equatable {
+    var startMinute: Int
+    var endMinute: Int
+}
+nonisolated struct HealthThreshold: Codable, Equatable {
+    var comparison: ThresholdComparison
+    var threshold: String
+    var window: HealthWindow
+}
+nonisolated enum ConditionPayload: Codable, Equatable {
+    case place(PlaceCondition)
+    case time(TimeCondition)
+    case weekdays([Int])
+    case steps(HealthThreshold)
+    case sleep(HealthThreshold)
+}
+nonisolated struct AchievementCondition: Codable, Identifiable, Equatable {
+    var id = UUID()
+    var payload: ConditionPayload
+    var place: PlaceCondition? { if case .place(let p) = payload { p } else { nil } }
+    var isHealth: Bool { switch payload { case .steps, .sleep: true; default: false } }
+}
+nonisolated struct ConditionGroup: Codable, Identifiable, Equatable {
+    static let limit = 10
+    var id = UUID()
+    var name: String?
+    var combination = ConditionCombination.all
+    var conditions: [AchievementCondition] = []
+}
+nonisolated struct AchievementPlotPoint: Codable, Equatable {
+    var date: Date
+    var value: String
+}
+/// Automatic achievements are derived from source records; only explicit manual completion is persisted.
+nonisolated struct AchievementSnapshot: Codable, Identifiable, Equatable {
+    var id: String
+    var trackerID: UUID
+    var ruleID: UUID?
+    var evidenceEntryID: UUID?
+    var periodStart: Date?
+    var achievedAt: Date
+    var startedAt: Date
+    var name: String
+    var kind: TrackerKind
+    var unit: String
+    var precision: Int
+    var value: String?
+    var target: String?
+    var timeZoneID: String
+    var background: CardBackground
+    var thumbnail: Data?
+    var plot: [AchievementPlotPoint] = []
+    var locations: [RecordedLocation] = []
+    var manual = false
+}
+nonisolated struct NumericAchievement: Equatable {
+    var evidenceEntryID: UUID
+    var achievedAt: Date
+    var value: String
+}
+
 nonisolated enum CardBackground: String, Codable, CaseIterable { case plot, photo, trackerPhoto, map, progress }
 nonisolated struct RecordedLocation: Codable, Equatable {
     var latitude: Double
@@ -76,9 +157,46 @@ nonisolated struct Tracker: Codable, Identifiable, Equatable {
     var conditionCombination: ConditionCombination?
     var gateSave: Bool?
     var remindWhenMet: Bool?
-    var resolvedConditions: [PlaceCondition] { conditions ?? [] }
+    var conditionGroups: [ConditionGroup]?
+    var outerCombination: ConditionCombination?
+    var cardTextPosition: CardTextPosition?
+    var showLastRecorded: Bool?
+    var ringStyle: RingProgressStyle?
+    var lifecycle: TrackingLifecycle?
+    var manualCompletion: AchievementSnapshot?
+    var resolvedTextPosition: CardTextPosition { cardTextPosition ?? .bottomTrailing }
+    var resolvedRingStyle: RingProgressStyle { ringStyle ?? .percent }
+    var resolvedLifecycle: TrackingLifecycle { lifecycle ?? (kind == .daily ? .ongoing : .finite) }
+    var resolvedConditionGroups: [ConditionGroup] {
+        if let conditionGroups { return conditionGroups }
+        let legacy = conditions ?? []
+        // Derive stable group IDs from the tracker, independently of valid legacy leaf IDs.
+        return stride(from: 0, to: legacy.count, by: ConditionGroup.limit).map { offset in
+            var bytes = id.uuid
+            withUnsafeMutableBytes(of: &bytes) { $0[15] ^= UInt8(truncatingIfNeeded: offset / ConditionGroup.limit) }
+            return ConditionGroup(id: UUID(uuid: bytes), combination: resolvedCombination,
+                                  conditions: legacy[offset..<min(offset + ConditionGroup.limit, legacy.count)].map {
+                                      AchievementCondition(id: $0.id, payload: .place($0))
+                                  })
+        }
+    }
+    var resolvedOuterCombination: ConditionCombination { outerCombination ?? resolvedCombination }
+    var resolvedConditions: [PlaceCondition] { resolvedConditionGroups.flatMap(\.conditions).compactMap(\.place) }
+    var requiresConditionGate: Bool { gateSave == true && !resolvedConditionGroups.isEmpty }
+    var supportsConditionReminders: Bool {
+        let leaves = resolvedConditionGroups.flatMap(\.conditions)
+        return leaves.contains { $0.place != nil } && !leaves.contains { $0.isHealth }
+    }
+    mutating func migrateConditions() {
+        if conditionGroups == nil, conditions?.isEmpty != false, gateSave == true { gateSave = false }
+        if conditionGroups == nil, conditions?.isEmpty == false {
+            conditionGroups = resolvedConditionGroups
+            outerCombination = resolvedCombination
+        }
+        conditions = nil; conditionCombination = nil
+    }
     var resolvedCombination: ConditionCombination { conditionCombination ?? .any }
-    var requiresLocationGate: Bool { gateSave == true && !resolvedConditions.isEmpty }
+    var requiresLocationGate: Bool { requiresConditionGate }
     var resolvedCardBackground: CardBackground { cardBackground ?? .plot }
 
     var calendar: Calendar {
@@ -136,13 +254,18 @@ nonisolated struct Tracker: Codable, Identifiable, Equatable {
             return date >= interval.start && date < interval.end
         }.map(\.localDay)).count
     }
-    func achieved(_ rule: GoalRule) -> Bool {
-        guard let target = Numbers.decimal(rule.target), let deadline = rule.deadline else { return false }
-        return resolvedEntries.contains {
-            guard $0.occurredAt <= deadline, let v = $0.value.flatMap(Numbers.decimal) else { return false }
-            return rule.direction == .up ? v >= target : v <= target
-        }
+    /// Preserve the existing "ever reached before the deadline" rule, including historical evidence.
+    /// Future evidence is excluded. If evidence predates this goal, the goal is achieved at its effective time.
+    func achievement(for rule: GoalRule, now: Date = Date()) -> NumericAchievement? {
+        guard kind == .number, rule.effectiveAt <= now,
+              let target = Numbers.decimal(rule.target), let deadline = rule.deadline,
+              let entry = resolvedEntries.first(where: {
+                  guard $0.occurredAt <= min(now, deadline), let value = $0.value.flatMap(Numbers.decimal) else { return false }
+                  return rule.direction == .up ? value >= target : value <= target
+              }), let value = entry.value else { return nil }
+        return NumericAchievement(evidenceEntryID: entry.id, achievedAt: max(rule.effectiveAt, entry.occurredAt), value: value)
     }
+    func achieved(_ rule: GoalRule) -> Bool { achievement(for: rule) != nil }
     func frequencyHistory(until now: Date) -> [(DateInterval, Int, Int, Bool)] {
         guard kind == .daily, let initial = rules.min(by: { $0.effectiveAt < $1.effectiveAt }) else { return [] }
         var cursor = interval(max(createdAt, initial.effectiveAt), period: initial.period).start
@@ -203,14 +326,14 @@ nonisolated enum DataError: Error { case invalidNumber, invalidBackup, unsupport
 
 nonisolated struct Backup: Codable, Equatable {
     var format = "my-goal-tracker"
-    var version = 2
+    var version = 3
     var exportedAt = Date()
     var trackers: [Tracker]
 
     func validate() throws {
         guard Self.validDate(exportedAt) else { throw DataError.invalidBackup }
         guard format == "my-goal-tracker" else { throw DataError.invalidBackup }
-        guard version == 1 || version == 2 else { throw DataError.unsupportedVersion }
+        guard (1...3).contains(version) else { throw DataError.unsupportedVersion }
         guard trackers.count <= 1000, Set(trackers.map(\.id)).count == trackers.count else { throw DataError.invalidBackup }
         var entryIDs = Set<UUID>()
         var ruleIDs = Set<UUID>()
@@ -218,7 +341,7 @@ nonisolated struct Backup: Codable, Equatable {
             guard !t.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, t.name.count <= 120, t.unit.count <= 30,
                   (0...8).contains(t.precision), TimeZone(identifier: t.timeZoneID) != nil, Self.validDate(t.createdAt),
                   t.entries.count <= 100000, t.rules.count <= 10000 else { throw DataError.invalidBackup }
-            try Self.validateMetadata(t)
+            try Self.validateMetadata(t, version: version)
             var days = Set<String>()
             for e in t.entries {
                 guard entryIDs.insert(e.id).inserted, t.date(for: e.localDay) != nil, e.note.count <= 10000,
@@ -249,7 +372,11 @@ nonisolated struct Backup: Codable, Equatable {
             }
         }
     }
-    private static func validateMetadata(_ t: Tracker) throws {
+    private static func validateMetadata(_ t: Tracker, version: Int) throws {
+        if version < 3 {
+            guard t.conditionGroups == nil, t.outerCombination == nil, t.cardTextPosition == nil,
+                  t.showLastRecorded == nil, t.ringStyle == nil, t.lifecycle == nil, t.manualCompletion == nil else { throw DataError.invalidBackup }
+        }
         guard (t.description?.count ?? 0) <= 10000,
               (t.photos?.count ?? 0) <= Entry.photoLimit,
               t.photos?.allSatisfy(validPhoto) != false else { throw DataError.invalidBackup }
@@ -264,8 +391,46 @@ nonisolated struct Backup: Codable, Equatable {
         if let lower = t.axisLower.flatMap(Numbers.decimal), let upper = t.axisUpper.flatMap(Numbers.decimal), lower >= upper {
             throw DataError.invalidBackup
         }
+        guard (t.conditions?.count ?? 0) <= 20,
+              t.conditionGroups == nil || t.conditions == nil && t.conditionCombination == nil else { throw DataError.invalidBackup }
+        let groups = t.resolvedConditionGroups
+        guard groups.count <= ConditionGroup.limit, Set(groups.map(\.id)).count == groups.count,
+              groups.allSatisfy({ ($0.name?.count ?? 0) <= 120 && (1...ConditionGroup.limit).contains($0.conditions.count) }),
+              t.gateSave != true || !groups.isEmpty || (version < 3 && t.conditionGroups == nil),
+              t.remindWhenMet != true || !groups.isEmpty,
+              t.remindWhenMet != true || t.supportsConditionReminders else { throw DataError.invalidBackup }
+        let leaves = groups.flatMap(\.conditions)
+        guard Set(leaves.map(\.id)).count == leaves.count else { throw DataError.invalidBackup }
+        for leaf in leaves {
+            switch leaf.payload {
+            case .place(let place):
+                guard !place.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty,
+                      place.name.count <= 120, place.location.isValid else { throw DataError.invalidBackup }
+            case .time(let time):
+                guard (0..<1440).contains(time.startMinute), (0..<1440).contains(time.endMinute) else { throw DataError.invalidBackup }
+            case .weekdays(let days):
+                guard !days.isEmpty, days.count <= 7, Set(days).count == days.count,
+                      days.allSatisfy({ (1...7).contains($0) }) else { throw DataError.invalidBackup }
+            case .steps(let threshold), .sleep(let threshold):
+                guard Numbers.isCanonical(threshold.threshold), let value = Numbers.decimal(threshold.threshold), value >= 0 else { throw DataError.invalidBackup }
+                if case .steps = leaf.payload {
+                    guard !threshold.threshold.contains("."), value <= 1_000_000_000 else { throw DataError.invalidBackup }
+                } else { guard value <= 24 * 31 else { throw DataError.invalidBackup } }
+            }
+        }
+        if let completion = t.manualCompletion {
+            guard completion.manual, completion.trackerID == t.id, completion.kind == t.kind,
+                  !completion.id.isEmpty, completion.id.count <= 120,
+                  validDate(completion.achievedAt), validDate(completion.startedAt), completion.startedAt <= completion.achievedAt,
+                  !completion.name.isEmpty, completion.name.count <= 120, completion.unit.count <= 30,
+                  (0...8).contains(completion.precision), TimeZone(identifier: completion.timeZoneID) != nil,
+                  completion.value.map(Numbers.isCanonical) != false, completion.target.map(Numbers.isCanonical) != false,
+                  completion.thumbnail.map(validPhoto) != false, completion.plot.count <= 50, completion.locations.count <= 50,
+                  completion.plot.allSatisfy({ validDate($0.date) && Numbers.isCanonical($0.value) }),
+                  completion.locations.allSatisfy(\.isValid) else { throw DataError.invalidBackup }
+        }
         let conditions = t.resolvedConditions
-        guard conditions.count <= 20, Set(conditions.map(\.id)).count == conditions.count,
+        guard conditions.count <= 100, Set(conditions.map(\.id)).count == conditions.count,
               conditions.allSatisfy({ !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0.name.count <= 120 && $0.location.isValid }),
               t.remindWhenMet != true || !conditions.isEmpty else { throw DataError.invalidBackup }
     }
@@ -284,8 +449,13 @@ nonisolated struct Backup: Codable, Equatable {
     }
     func encoded() throws -> Data {
         try validate()
+        var document = self
+        if document.version >= 3 {
+            document.trackers = trackers.map { tracker in var copy = tracker; copy.migrateConditions(); return copy }
+        }
+        try document.validate()
         let e = JSONEncoder(); e.outputFormatting = [.sortedKeys]
-        let data = try e.encode(self)
+        let data = try e.encode(document)
         guard data.count <= 100_000_000 else { throw DataError.tooLarge }
         return data
     }

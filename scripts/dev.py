@@ -89,7 +89,16 @@ def check():
     print("Repository checks passed. Native app acceptance is separate.")
 
 
-def xcode(action, device=None, scheme="GoalTracker"):
+def test_selection(action, scheme, unit_only):
+    if not unit_only:
+        return []
+    if action != "test" or scheme != "GoalTracker":
+        raise ValueError("--unit-only requires test with the GoalTracker scheme.")
+    return ["-only-testing:GoalTrackerTests"]
+
+
+def xcode(action, device=None, scheme="GoalTracker", unit_only=False):
+    selection = test_selection(action, scheme, unit_only)
     if not (PROJECT / "project.pbxproj").is_file():
         raise ValueError("App project not created: ios/GoalTracker.xcodeproj")
     ARTIFACTS.mkdir(exist_ok=True)
@@ -99,7 +108,7 @@ def xcode(action, device=None, scheme="GoalTracker"):
             "-destination", "platform=iOS Simulator,id=" + device if device else "generic/platform=iOS Simulator",
             "-derivedDataPath", DERIVED, "-resultBundlePath", result_path,
             *(["CODE_SIGNING_ALLOWED=YES", "CODE_SIGN_IDENTITY=-", "DEVELOPMENT_TEAM="]
-              if scheme == "GoalTrackerWithWidget" else ["CODE_SIGNING_ALLOWED=NO"]), action]
+              if scheme == "GoalTrackerWithWidget" else ["CODE_SIGNING_ALLOWED=NO"]), *selection, action]
     log = ARTIFACTS / (action + "-" + stamp + ".log")
     print("+ " + shlex.join([str(arg) for arg in args]), flush=True)
     with log.open("w", encoding="utf-8") as output:
@@ -124,7 +133,9 @@ def main():
     parser.add_argument("command", choices=["setup", "check", "doctor", "devices", "build", "test", "run", "screenshot"])
     parser.add_argument("--device", help="Exact Simulator UDID; does not erase or delete the device")
     parser.add_argument("--scheme", choices=["GoalTracker", "GoalTrackerWithWidget"], default="GoalTracker")
+    parser.add_argument("--unit-only", action="store_true", help="Run native unit/data tests without UI/E2E (GoalTracker test only)")
     args = parser.parse_args()
+    test_selection(args.command, args.scheme, args.unit_only)
     if args.command == "setup":
         for key, value in [("core.hooksPath", ".githooks"), ("pull.ff", "only"), ("fetch.prune", "true")]:
             run("git", "config", "--local", key, value)
@@ -144,7 +155,7 @@ def main():
         udid = phone["udid"]
         print("Using Simulator:", phone["name"], udid, flush=True)
         if args.command == "test":
-            xcode("test", udid, args.scheme)
+            xcode("test", udid, args.scheme, args.unit_only)
         elif args.command == "run":
             xcode("build", udid, args.scheme)
             if phone["state"] != "Booted":

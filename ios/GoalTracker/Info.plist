@@ -39,5 +39,7 @@
 		<key>GoalookerCondition</key>
 		<string>Use precise location to check whether you are inside or outside your chosen place.</string>
 	</dict>
+	<key>NSHealthShareUsageDescription</key>
+	<string>Read your steps and sleep duration to check the achievement conditions you choose. Goalooker does not write health data.</string>
 </dict>
 </plist>

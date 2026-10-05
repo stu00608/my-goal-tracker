@@ -22,6 +22,7 @@ struct ConditionEditor: View {
                 if mapFirst { mapSection; searchSection }
                 else { searchSection; mapSection }
             }
+            .statusToast(message: Binding(get: { search.error.map(L.text) }, set: { if $0 == nil { search.error = nil } }), identifier: "condition.search.error")
             .scrollDismissesKeyboard(.interactively)
             .background(EditorKeyboardDismissal(keyboard: keyboard, dismiss: endEditing))
             .navigationTitle(L.text("Place"))
@@ -68,9 +69,6 @@ struct ConditionEditor: View {
                         if !suggestion.subtitle.isEmpty { Text(suggestion.subtitle).font(.caption).foregroundStyle(.secondary) }
                     }.frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
                 }.accessibilityIdentifier("condition.search.result")
-            }
-            if let error = search.error {
-                Text(L.text(error)).foregroundStyle(.red).accessibilityIdentifier("condition.search.error")
             }
         } header: { Text(L.text("Place")) }
     }
