@@ -8,6 +8,9 @@ struct AchievementConditionEditor: View {
     @Binding var editing: ConditionEditorSelection?
     @Binding var deleting: ConditionGroup?
     @State private var initialized = false
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var healthAccess = HealthConditionAccess()
+    let onConnectHealth: () -> Void
 
     var body: some View {
         Section {
@@ -18,8 +21,25 @@ struct AchievementConditionEditor: View {
                 Text(L.text("All groups")).tag(ConditionCombination.all)
                 Text(L.text("Any group")).tag(ConditionCombination.any)
             }.disabled(groups.count <= 1).accessibilityIdentifier("tracker.conditions.outerCombination")
+            if healthAccess.needsConnection {
+                Button(action: onConnectHealth) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "heart.fill").foregroundStyle(.pink).accessibilityHidden(true)
+                        Text(L.text("Connect Apple Health for more conditions"))
+                            .font(.subheadline.weight(.semibold)).multilineTextAlignment(.leading)
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right").font(.caption).accessibilityHidden(true)
+                    }.frame(minHeight: 44)
+                }.buttonStyle(.borderless).accessibilityIdentifier("conditions.healthSetup")
+            }
         } header: { Text(L.text("Achievement conditions")) } footer: {
             Text(L.text("New records and changes to a record’s number or date check the current conditions. Notes and photos can still be edited."))
+        }
+        .task(id: String(describing: scenePhase) + String(HealthConditions.shared.revision)) {
+            guard scenePhase == .active else { return }
+            do { healthAccess = try await HealthConditions.shared.conditionAccess() }
+            catch is CancellationError { }
+            catch { if healthAccess.steps != .requested && healthAccess.sleep != .requested { healthAccess = HealthConditionAccess(steps: .requestNeeded, sleep: .requestNeeded) } }
         }
         .onAppear {
             guard !initialized else { return }
@@ -84,11 +104,14 @@ struct AchievementConditionEditor: View {
             Text(L.text("Add at least one condition to this group.")).font(.caption).foregroundStyle(.secondary)
         }
         Menu {
-            ForEach(ConditionLeafKind.allCases) { kind in
+            ForEach(ConditionLeafKind.available(healthAccess: healthAccess)) { kind in
                 Button(L.text(kind.title)) { editing = ConditionEditorSelection(groupID: group.id, condition: nil, kind: kind) }
                     .accessibilityIdentifier("conditions.editor.add." + kind.rawValue)
             }
-        } label: { Label(L.text("Add condition"), systemImage: "plus") }
+        } label: {
+            Label(L.text("Add condition"), systemImage: "plus")
+                .frame(maxWidth: .infinity, alignment: .leading).frame(minHeight: 44).contentShape(Rectangle())
+        }
             .buttonStyle(.borderless)
             .disabled(group.conditions.count >= ConditionGroup.limit).accessibilityIdentifier("conditions.editor.addCondition." + group.id.uuidString)
         Button(L.text("Delete group"), role: .destructive) {
@@ -127,6 +150,15 @@ struct ConditionEditorSelection: Identifiable {
 enum ConditionLeafKind: String, Identifiable, CaseIterable {
     case place, time, weekdays, steps, sleep
     var id: String { rawValue }
+    static func available(healthAccess: HealthConditionAccess) -> [Self] {
+        allCases.filter {
+            switch $0 {
+            case .steps: healthAccess.steps == .requested
+            case .sleep: healthAccess.sleep == .requested
+            default: true
+            }
+        }
+    }
     var title: String {
         switch self { case .place: "Place"; case .time: "Time range"; case .weekdays: "Weekdays"; case .steps: "Steps"; case .sleep: "Sleep" }
     }
@@ -227,9 +259,6 @@ struct AchievementLeafEditor: View {
             Picker(L.text("Calendar period"), selection: $window) {
                 ForEach(HealthWindow.allCases, id: \.self) { Text(ConditionLabels.window($0)).tag($0) }
             }.accessibilityIdentifier("condition.health.window")
-            HealthConnectionView(keys: [HealthFactKey(metric: kind == .sleep ? .sleep : .steps, window: window)], onFailure: { error = $0 })
-        } footer: {
-            Text(L.text("Strict comparison: equality does not meet the condition. Uses readable Apple Health data from the calendar period’s start through now."))
         }
     }
     private func clockBinding(_ minutes: Binding<Int>) -> Binding<Date> {

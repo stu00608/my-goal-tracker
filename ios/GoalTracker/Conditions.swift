@@ -116,7 +116,7 @@ nonisolated enum ConditionEvaluation {
             let key = HealthFactKey(metric: condition.isSleep ? .sleep : .steps, window: threshold.window)
             guard let fact = facts.health[key] else {
                 return ConditionLeafStatus(id: condition.id, state: .unknown, loading: facts.loadingHealth.contains(key),
-                    detail: facts.loadingHealth.contains(key) ? nil : "Health data updates automatically. Set up access in this tracker’s settings.")
+                    detail: facts.loadingHealth.contains(key) ? nil : "Connect Apple Health in Settings.")
             }
             guard let start = HealthConditionEvaluation.start(window: key.window, calendar: tracker.calendar, now: now),
                   start == fact.start, (0...300).contains(now.timeIntervalSince(fact.through)) else {
@@ -162,8 +162,9 @@ nonisolated extension AchievementCondition {
     static func verify(tracker: Tracker) async throws {
         try Task.checkCancellation()
         guard tracker.requiresConditionGate else { return }
-        if let fixture = previewFixture(tracker: tracker) {
-            try ConditionEvaluation.requireMet(ConditionEvaluation.status(tracker: tracker, facts: fixture, now: Date()).state)
+        let previewNow = Date()
+        if let fixture = previewFixture(tracker: tracker, now: previewNow) {
+            try ConditionEvaluation.requireMet(ConditionEvaluation.status(tracker: tracker, facts: fixture, now: previewNow).state)
             return
         }
         var facts = ConditionFacts()
@@ -184,9 +185,9 @@ nonisolated extension AchievementCondition {
         try ConditionEvaluation.requireMet(ConditionEvaluation.status(tracker: tracker, facts: facts, now: Date()).state)
     }
     static func status(tracker: Tracker, now: Date = Date(), facts: ConditionFacts = ConditionFacts()) -> ConditionStatus {
-        ConditionEvaluation.status(tracker: tracker, facts: previewFixture(tracker: tracker) ?? facts, now: now)
+        ConditionEvaluation.status(tracker: tracker, facts: previewFixture(tracker: tracker, now: now) ?? facts, now: now)
     }
-    static func previewFixture(tracker: Tracker) -> ConditionFacts? {
+    static func previewFixture(tracker: Tracker, now: Date = Date()) -> ConditionFacts? {
         #if DEBUG && targetEnvironment(simulator)
         let args = ProcessInfo.processInfo.arguments
         if args.contains("--uitesting"), let argument = args.first(where: { $0.hasPrefix("--condition-gate=") }) {
@@ -194,7 +195,10 @@ nonisolated extension AchievementCondition {
             let state: ConditionState = value == "met" ? .met : value == "unmet" ? .unmet : .unknown
             var facts = ConditionFacts()
             for condition in tracker.resolvedConditionGroups.flatMap(\.conditions) where condition.place != nil || condition.isHealth {
-                facts.fixtureStates[condition.id] = state
+                if args.contains("--condition-health-values"), let key = condition.healthKey,
+                   let start = HealthConditionEvaluation.start(window: key.window, calendar: tracker.calendar, now: now) {
+                    facts.health[key] = HealthFact(start: start, through: now, value: key.metric == .steps ? 5000 : 21600)
+                } else { facts.fixtureStates[condition.id] = state }
             }
             return facts
         }

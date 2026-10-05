@@ -30,6 +30,7 @@ struct EntryEditor: View {
     @State private var saveTask: Task<Void, Never>?
     @State private var saving = false
     @State private var gatePending = false
+    @State private var conditionPreview = ConditionPreview()
     @State private var draftEntry = Entry(occurredAt: Date(), localDay: "")
     @State private var pendingMutation: PendingEntryMutation?
     @State private var confirmingOrphan = false
@@ -42,6 +43,11 @@ struct EntryEditor: View {
     var body: some View {
         NavigationStack {
             Form {
+                if currentTracker.requiresConditionGate && conditionPreview.status(for: currentTracker).state != .met {
+                    Section { ConditionGateWarning() }
+                        .listRowBackground(Color.clear)
+                        .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 0, trailing: 0))
+                }
                 Section {
                     VStack(alignment: .leading, spacing: 16) {
                         if tracker.kind == .number {
@@ -70,7 +76,10 @@ struct EntryEditor: View {
                     .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
                     .disabled(saving)
                 if currentTracker.requiresConditionGate {
-                    Section(L.text("Achievement conditions")) { ConditionStatusView(tracker: currentTracker, onFailure: { error = $0 }) }
+                    Section(L.text("Achievement conditions")) {
+                        ConditionStatusView(tracker: currentTracker, snapshot: conditionPreview.status(for: currentTracker),
+                                            preview: conditionPreview, onFailure: { error = $0 })
+                    }
                 }
                 Section {
                     DatePicker(L.text("Date"), selection: Binding(get: { date }, set: { endEditing(); date = $0; dateEdited = true }), in: ...Date(), displayedComponents: tracker.kind == .number ? [.date, .hourAndMinute] : [.date])
@@ -102,6 +111,7 @@ struct EntryEditor: View {
                     Section { Button(L.text("Delete record"), role: .destructive) { deleting = true }.accessibilityIdentifier("entry.delete").disabled(saving) }
                 }
             }
+            .modifier(ConditionPreviewUpdates(preview: conditionPreview, tracker: currentTracker))
             .statusToast(message: $error, identifier: "editor.error", autoDismiss: false)
             .scrollDismissesKeyboard(.interactively)
             .background(EditorKeyboardDismissal(keyboard: keyboard) { valueFocused = false; noteFocused = false })

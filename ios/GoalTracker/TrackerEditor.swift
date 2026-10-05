@@ -33,6 +33,7 @@ struct TrackerEditor: View {
     @State private var reminder: Reminder?
     @State private var groups: [ConditionGroup] = [ConditionGroup()]
     @State private var editingCondition: ConditionEditorSelection?
+    @State private var healthSettings = false
     @State private var deletingGroup: ConditionGroup?
     @State private var combination = ConditionCombination.any
     @State private var gateSave = false
@@ -49,8 +50,6 @@ struct TrackerEditor: View {
     @FocusState private var focusedField: Field?
     @State private var initialized = false
     @State private var keyboard = EditorKeyboardControl()
-
-    private var healthKeys: Set<HealthFactKey> { Set(groups.flatMap(\.conditions).compactMap(\.healthKey)) }
 
     var body: some View {
         NavigationStack {
@@ -71,10 +70,7 @@ struct TrackerEditor: View {
                     CardPresentationEditor(textPosition: $textPosition, showLastRecorded: $showLastRecorded,
                                            ringStyle: $ringStyle, background: cardBackground)
                 }
-                AchievementConditionEditor(groups: $groups, outerCombination: $combination, gateSave: $gateSave, editing: $editingCondition, deleting: $deletingGroup)
-                if !healthKeys.isEmpty {
-                    Section { HealthConnectionView(keys: healthKeys, onFailure: { error = $0 }) }
-                }
+                AchievementConditionEditor(groups: $groups, outerCombination: $combination, gateSave: $gateSave, editing: $editingCondition, deleting: $deletingGroup, onConnectHealth: { endEditing(); healthSettings = true })
                 notificationsSection
             }
             .disabled(busy)
@@ -120,6 +116,7 @@ struct TrackerEditor: View {
                 Button(L.text("Cancel"), role: .cancel) { deletingGroup = nil }
                     .accessibilityIdentifier("conditions.editor.cancelDelete")
             }
+            .sheet(isPresented: $healthSettings) { HealthSettingsSheet() }
             .sheet(item: $photoRemoval) { removalSheet($0) }
             .sheet(item: $editingCondition) { selection in
                 AchievementLeafEditor(existing: selection.condition, kind: selection.kind) { payload in

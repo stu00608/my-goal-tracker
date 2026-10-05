@@ -62,9 +62,20 @@ nonisolated enum HealthConditionEvaluation {
 
 nonisolated enum HealthAccessSetup: Equatable { case checking, requestNeeded, requested, unavailable }
 
+nonisolated struct HealthConditionAccess {
+    var steps = HealthAccessSetup.checking
+    var sleep = HealthAccessSetup.checking
+    var needsConnection: Bool {
+        steps != .requested && sleep != .requested && (steps == .requestNeeded || sleep == .requestNeeded)
+    }
+}
+
 // Read-only, foreground subscriptions. No background delivery or persisted health facts.
 @MainActor @Observable final class HealthConditions {
     static let shared = HealthConditions()
+    static let supportedKeys: Set<HealthFactKey> = [
+        HealthFactKey(metric: .steps, window: .day), HealthFactKey(metric: .sleep, window: .day)
+    ]
     private let store = HKHealthStore()
     private(set) var revision = 0
     @ObservationIgnored private var fixtureRequestedMetrics: Set<HealthMetric> = []
@@ -75,13 +86,23 @@ nonisolated enum HealthAccessSetup: Equatable { case checking, requestNeeded, re
         #if DEBUG && targetEnvironment(simulator)
         let args = ProcessInfo.processInfo.arguments
         if args.contains("--uitesting"), let flag = args.first(where: { $0.hasPrefix("--health-setup=") }) {
-            return flag.hasSuffix("needed") && !Set(keys.map(\.metric)).isSubset(of: fixtureRequestedMetrics) ? .requestNeeded : .requested
+            var processed = fixtureRequestedMetrics
+            if flag.hasSuffix("steps-only") { processed.insert(.steps) }
+            if flag.hasSuffix("needed") || flag.hasSuffix("steps-only") {
+                return Set(keys.map(\.metric)).isSubset(of: processed) ? .requested : .requestNeeded
+            }
+            return .requested
         }
         #endif
         guard HKHealthStore.isHealthDataAvailable() else { return .unavailable }
         let status = try await store.statusForAuthorizationRequest(toShare: [], read: types(keys))
         try Task.checkCancellation()
         switch status { case .shouldRequest: return .requestNeeded; case .unnecessary: return .requested; default: return .requestNeeded }
+    }
+    func conditionAccess() async throws -> HealthConditionAccess {
+        let steps = try await setup(keys: [HealthFactKey(metric: .steps, window: .day)])
+        let sleep = try await setup(keys: [HealthFactKey(metric: .sleep, window: .day)])
+        return HealthConditionAccess(steps: steps, sleep: sleep)
     }
     func observe(keys: Set<HealthFactKey>, owner: UUID) {
         stopObserving(owner: owner)
@@ -109,7 +130,7 @@ nonisolated enum HealthAccessSetup: Equatable { case checking, requestNeeded, re
     func connect(keys: Set<HealthFactKey>) async throws {
         guard !keys.isEmpty else { return }
         #if DEBUG && targetEnvironment(simulator)
-        if ProcessInfo.processInfo.arguments.contains("--uitesting"), ProcessInfo.processInfo.arguments.contains("--health-setup=needed") {
+        if ProcessInfo.processInfo.arguments.contains("--uitesting"), ProcessInfo.processInfo.arguments.contains(where: { $0 == "--health-setup=needed" || $0 == "--health-setup=steps-only" }) {
             fixtureRequestedMetrics.formUnion(keys.map(\.metric)); revision &+= 1; return
         }
         #endif
@@ -135,7 +156,7 @@ nonisolated enum HealthAccessSetup: Equatable { case checking, requestNeeded, re
                 // This is a sheet-needed check, never a read-permission check. It cannot prompt.
                 let request = try await store.statusForAuthorizationRequest(toShare: [], read: types([key]))
                 guard request == .unnecessary else {
-                    fact.issue = "Set up Apple Health in this tracker’s settings."; facts[key] = fact; continue
+                    fact.issue = "Connect Apple Health in Settings."; facts[key] = fact; continue
                 }
                 try Task.checkCancellation()
                 let predicate = HKQuery.predicateForSamples(withStart: start, end: now, options: [])

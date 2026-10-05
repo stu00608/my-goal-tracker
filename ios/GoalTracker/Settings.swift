@@ -34,6 +34,7 @@ struct SettingsView: View {
     @AppStorage("numericInputMode", store: L.defaults) private var numericInputMode = NumericEntryMode.direct.rawValue
     @AppStorage("remindersEnabled", store: L.defaults) private var remindersEnabled = true
     @AppStorage("firstWeekday", store: L.defaults) private var firstWeekday = 1
+    @State private var healthSettings = false
     @State private var syncingReminders = false
     @State private var exportNames = ExportNameGenerator()
     @State private var exportFilename = ""
@@ -74,6 +75,15 @@ struct SettingsView: View {
                     }
                 }
                 Section {
+                    Button { healthSettings = true } label: {
+                        HStack {
+                            Label(L.text("Apple Health"), systemImage: "heart.fill").foregroundStyle(.primary)
+                            Spacer()
+                            Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
+                        }.frame(minHeight: 44)
+                    }.accessibilityIdentifier("settings.health")
+                }
+                Section {
                     Toggle(L.text("Enable reminders"), isOn: $remindersEnabled)
                         .disabled(syncingReminders).accessibilityIdentifier("settings.remindersEnabled")
                 } header: { Text(L.text("Reminders")) } footer: {
@@ -112,6 +122,7 @@ struct SettingsView: View {
             }
             .statusToast(message: $error, identifier: "settings.error", autoDismiss: false)
             .navigationTitle(L.text("Settings"))
+            .sheet(isPresented: $healthSettings) { HealthSettingsSheet() }
             .onChange(of: remindersEnabled) { _, enabled in
                 Task {
                     syncingReminders = true; defer { syncingReminders = false }

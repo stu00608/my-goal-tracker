@@ -237,4 +237,18 @@ import Testing
         #expect(t.resolvedConditionGroups.flatMap(\.conditions).map(\.id) == ids)
         #expect(try Backup.decode(Backup(trackers: [t]).encoded()).trackers == [t])
     }
+    @Test @MainActor func healthConditionChoicesFollowGlobalSetup() {
+        for state in [HealthAccessSetup.checking, .requestNeeded, .unavailable] {
+            let access = HealthConditionAccess(steps: state, sleep: state)
+            #expect(ConditionLeafKind.available(healthAccess: access) == [.place, .time, .weekdays])
+            #expect(access.needsConnection == (state == .requestNeeded))
+        }
+        let ready = HealthConditionAccess(steps: .requested, sleep: .requested)
+        #expect(ConditionLeafKind.available(healthAccess: ready) == ConditionLeafKind.allCases)
+        for access in [HealthConditionAccess(steps: .requested, sleep: .requestNeeded), HealthConditionAccess(steps: .requestNeeded, sleep: .requested)] {
+            #expect(!access.needsConnection)
+            #expect(ConditionLeafKind.available(healthAccess: access) == [.place, .time, .weekdays, access.steps == .requested ? .steps : .sleep])
+        }
+    }
+
 }

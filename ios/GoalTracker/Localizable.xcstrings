@@ -9086,7 +9086,7 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "不符合條件"
+            "value": "條件未達成"
           }
         }
       }
@@ -10053,6 +10053,121 @@
           "stringUnit": {
             "state": "translated",
             "value": "自動更新可讀取的資料"
+          }
+        }
+      }
+    },
+    "Connect Apple Health in Settings.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connect Apple Health in Settings."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "設定からAppleヘルスケアに接続してください。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "請到設定連接 Apple 健康。"
+          }
+        }
+      }
+    },
+    "Connect Apple Health for more conditions": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Connect Apple Health for more conditions"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Appleヘルスケアに接続して条件を追加"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "連接 Apple 健康，使用更多條件"
+          }
+        }
+      }
+    },
+    "Goalooker only reads health data. It never writes to Apple Health.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Goalooker only reads health data. It never writes to Apple Health."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Goalookerは健康データを読み取るだけで、Appleヘルスケアには書き込みません。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Goalooker 只會讀取健康資料，不會寫入 Apple 健康。"
+          }
+        }
+      }
+    },
+    "Use steps and sleep to check your goal conditions.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Use steps and sleep to check your goal conditions."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "歩数と睡眠データを達成条件の判定に使います。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "使用步數與睡眠資料判定達成條件。"
+          }
+        }
+      }
+    },
+    "Every day": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Every day"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每天"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "毎日"
           }
         }
       }

@@ -30,6 +30,15 @@ nonisolated final class MilestoneFlows: XCTestCase {
         }
         XCTAssertTrue(item.exists); XCTAssertTrue(item.isHittable)
     }
+    @MainActor private func revealFromAbove(_ app: XCUIApplication, _ item: XCUIElement) {
+        // This field is known to precede the currently visible condition rows. Lazy Form
+        // rows can be absent from the AX tree; search upward instead of toward the bottom.
+        for _ in 0..<15 {
+            if item.exists && item.isHittable { return }
+            app.swipeDown()
+        }
+        XCTAssertTrue(item.exists); XCTAssertTrue(item.isHittable)
+    }
     @MainActor private func capture(_ app: XCUIApplication, _ name: String) {
         let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
     }
@@ -88,7 +97,7 @@ nonisolated final class MilestoneFlows: XCTestCase {
     @MainActor func testGroupedGatePreviewAndFreshSave() {
         let app = launch(extra: ["--condition-gate=unmet"])
         button(app, prefix: "card.", name: "GROUPED").tap()
-        let overall = element(app, "conditions.overall")
+        let overall = element(app, "conditions.warning")
         XCTAssertTrue(overall.waitForExistence(timeout: 10))
         XCTAssertTrue(overall.label.contains("Conditions not met"))
         capture(app, "Live grouped conditions before input")
@@ -106,19 +115,18 @@ nonisolated final class MilestoneFlows: XCTestCase {
     @MainActor func testHealthUnknownIsVisibleBeforeInput() {
         let app = launch()
         let card = button(app, prefix: "card.", name: "HEALTH"); reveal(app, card); card.tap()
-        XCTAssertTrue(element(app, "conditions.overall").waitForExistence(timeout: 10))
-        XCTAssertTrue(element(app, "conditions.overall").label.contains("Cannot determine yet"))
-        // Exercise the actual asynchronous HealthKit read/status result, with no gate override.
-        // A completed read must appear immediately, before the next minute-clock tick.
+        XCTAssertTrue(element(app, "conditions.warning").waitForExistence(timeout: 10))
+        // Actual asynchronous HealthKit read/status, without a gate/authorization fixture.
         let readResult = app.descendants(matching: .any).matching(NSPredicate(
-            format: "identifier BEGINSWITH %@ AND (label CONTAINS %@ OR label CONTAINS %@ OR label CONTAINS %@ OR label CONTAINS %@)",
-            "conditions.leaf.", "Set up Apple Health", "No readable samples yet",
-            "Could not read Apple Health data", "Apple Health is unavailable" )).firstMatch
-        XCTAssertTrue(readResult.waitForExistence(timeout: 10), "Fresh async Health results must not wait for a minute tick")
+            format: "identifier BEGINSWITH %@ AND value == %@", "conditions.leaf.", "Unknown")).firstMatch
+        XCTAssertTrue(readResult.waitForExistence(timeout: 10), "Fresh async state must appear before the next minute tick")
+        XCTAssertFalse(element(app, "conditions.overall").exists)
         XCTAssertFalse(app.buttons["conditions.connectHealth"].exists)
         XCTAssertFalse(app.buttons["conditions.refresh"].exists)
-        capture(app, "Health unknown without permanent connection or refresh actions")
-        XCTAssertFalse(app.alerts.firstMatch.exists, "Opening a record must not implicitly request permission")
+        XCTAssertFalse(app.staticTexts["Cannot determine yet"].exists)
+        XCTAssertFalse(app.staticTexts["Read at"].exists)
+        capture(app, "Health unknown uses concise right-hand symbols without an implicit request")
+        XCTAssertFalse(app.alerts.firstMatch.exists)
     }
     @MainActor func testHealthSetupConnectsDuringEditingAndRemovesObsoleteButton() {
         for (language, dark, large) in [("en", false, false), ("ja", true, false), ("zh-Hant", true, true)] {
@@ -126,26 +134,113 @@ nonisolated final class MilestoneFlows: XCTestCase {
             openGoal(app, "HEALTH")
             app.buttons["tracker.menu"].tap()
             app.buttons[language == "ja" ? "項目を編集" : language == "zh-Hant" ? "編輯追蹤項目" : "Edit tracker"].tap()
-            let connection = app.buttons["health.connect"]; reveal(app, connection)
-            capture(app, "Health connection belongs to tracker setup " + language)
-            connection.tap()
-            XCTAssertTrue(element(app, "health.configured").waitForExistence(timeout: 10))
-            XCTAssertFalse(connection.exists)
-            capture(app, "Configured health automatic readable data status " + language)
-            app.buttons["health.manage"].tap()
-            capture(app, "Health read access guidance " + language)
+            let name = app.textFields["tracker.name"]; reveal(app, name); name.tap(); name.typeText(" draft")
+            app.buttons["tracker.keyboard.done"].tap()
+            let add = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "conditions.editor.addCondition.")).firstMatch
+            let stepsTitle = language == "ja" ? "歩数" : language == "zh-Hant" ? "步數" : "Steps"
+            let sleepTitle = language == "ja" ? "睡眠" : language == "zh-Hant" ? "睡眠" : "Sleep"
+            let timeTitle = language == "ja" ? "時間帯" : language == "zh-Hant" ? "時間範圍" : "Time range"
+            reveal(app, add); add.tap()
+            capture(app, "Native condition menu before connection " + language)
+            XCTAssertFalse(app.buttons[stepsTitle].exists)
+            XCTAssertFalse(app.buttons[sleepTitle].exists)
+            XCTAssertTrue(app.buttons[timeTitle].waitForExistence(timeout: 5))
+            app.buttons[timeTitle].tap()
+            app.buttons["condition.cancel"].tap()
+            let prompt = app.buttons["conditions.healthSetup"]; reveal(app, prompt)
+            capture(app, "Unconfigured choices hide Health and show one setup cue " + language)
+            prompt.tap()
+            XCTAssertTrue(app.buttons["health.connect"].waitForExistence(timeout: 10))
+            capture(app, "Shared global Health settings sheet before connecting " + language)
+            app.buttons["health.done"].tap()
+            revealFromAbove(app, name); XCTAssertEqual(name.value as? String, "HEALTH draft")
+            reveal(app, prompt); prompt.tap()
+            let connect = app.buttons["health.connect"]; reveal(app, connect); connect.tap()
+            XCTAssertTrue(app.buttons["tracker.cancel"].waitForExistence(timeout: 10))
+            XCTAssertFalse(prompt.exists)
+            XCTAssertFalse(app.buttons["health.connect"].exists)
+            XCTAssertFalse(app.buttons["health.manage"].exists)
+            XCTAssertFalse(element(app, "health.configured").exists)
+            reveal(app, add); add.tap()
+            XCTAssertTrue(app.buttons[stepsTitle].waitForExistence(timeout: 5))
+            XCTAssertTrue(app.buttons[sleepTitle].exists)
+            app.buttons[stepsTitle].tap()
+            XCTAssertTrue(element(app, "condition.health.threshold").waitForExistence(timeout: 10))
+            XCTAssertFalse(app.buttons["health.connect"].exists)
+            XCTAssertFalse(app.staticTexts[language == "ja" ? "Appleヘルスケア" : language == "zh-Hant" ? "Apple 健康" : "Apple Health"].exists)
+            capture(app, "Health condition editor contains only condition inputs " + language)
+            app.buttons["condition.cancel"].tap()
+            revealFromAbove(app, name); XCTAssertEqual(name.value as? String, "HEALTH draft")
+            app.buttons["tracker.cancel"].tap()
+            app.tabBars.buttons.element(boundBy: 3).tap()
+            let settings = app.buttons["settings.health"]; reveal(app, settings); settings.tap()
+            XCTAssertTrue(element(app, "health.accessGuidance").waitForExistence(timeout: 10))
+            XCTAssertFalse(app.buttons["health.connect"].exists)
+            capture(app, "Health introduction and access management live in global Settings " + language)
             app.terminate()
         }
     }
+    @MainActor func testPreviouslyConfiguredStepsDoNotRepeatHealthIntroduction() {
+        let app = launch(extra: ["--health-setup=steps-only"])
+        openGoal(app, "HEALTH"); app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
+        let add = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "conditions.editor.addCondition.")).firstMatch
+        reveal(app, add); add.tap()
+        XCTAssertTrue(app.buttons["Steps"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["Sleep"].exists)
+        XCTAssertFalse(app.buttons["conditions.healthSetup"].exists)
+        capture(app, "Existing step setup keeps choices without repeated Health introduction")
+        app.buttons["Steps"].tap(); app.buttons["condition.cancel"].tap(); app.buttons["tracker.cancel"].tap()
+        app.tabBars.buttons.element(boundBy: 3).tap()
+        let settings = app.buttons["settings.health"]; reveal(app, settings); settings.tap()
+        XCTAssertTrue(app.buttons["health.connect"].waitForExistence(timeout: 10))
+        capture(app, "Additional health access stays in global settings")
+    }
     @MainActor func testAccessibleHealthGuidanceUsesAvailableHeight() {
         let app = launch(extra: ["--health-setup=configured"], dark: true, large: true)
-        openGoal(app, "HEALTH")
-        app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
-        let manage = app.buttons["health.manage"]; reveal(app, manage); manage.tap()
-        let title = app.navigationBars["Manage health access"]
+        app.tabBars.buttons.element(boundBy: 3).tap()
+        let settings = app.buttons["settings.health"]; reveal(app, settings); settings.tap()
+        let title = app.navigationBars["Apple Health"]
         XCTAssertTrue(title.waitForExistence(timeout: 10))
         XCTAssertLessThan(title.frame.minY, app.frame.height * 0.25)
-        capture(app, "AX health access guidance opens at full available sheet height")
+        let done = app.buttons["health.done"]
+        XCTAssertTrue(done.isHittable)
+        capture(app, "AX global Health settings use available sheet height")
+        // Use the native toolbar target; AX bounds and rounded hit regions differ.
+        done.tap()
+        XCTAssertFalse(app.buttons["health.done"].exists)
+        XCTAssertTrue(app.tabBars.buttons.element(boundBy: 3).exists)
+    }
+    @MainActor func testCompactConditionStatesAcrossLocalesAndThemes() {
+        for language in ["en", "ja", "zh-Hant"] {
+            for dark in [false, true] {
+                let state = language == "en" ? "unmet" : language == "ja" ? "met" : "unknown"
+                let app = launch(extra: ["--condition-gate=" + state], language: language, dark: dark, large: language == "zh-Hant")
+                button(app, prefix: "card.", name: "GROUPED").tap()
+                let leaf = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "conditions.leaf.")).firstMatch
+                XCTAssertTrue(leaf.waitForExistence(timeout: 10))
+                XCTAssertFalse(element(app, "conditions.overall").exists)
+                if state == "met" { XCTAssertFalse(element(app, "conditions.warning").exists) }
+                else {
+                    let warning = element(app, "conditions.warning")
+                    XCTAssertTrue(warning.waitForExistence(timeout: 10))
+                    XCTAssertLessThan(warning.frame.minY, leaf.frame.minY)
+                }
+                capture(app, "Compact condition status " + language + (dark ? " dark " : " light ") + state)
+                reveal(app, leaf)
+                capture(app, "Right-hand leaf symbols without repeated result prose " + language + (dark ? " dark" : " light"))
+                app.buttons["entry.cancel"].tap(); app.terminate()
+            }
+        }
+    }
+    @MainActor func testCompactHealthMeasurementsRemainVisible() {
+        let app = launch(extra: ["--condition-gate=unmet", "--condition-health-values"])
+        let card = button(app, prefix: "card.", name: "HEALTH"); reveal(app, card); card.tap()
+        let steps = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "conditions.leaf.", "5,000 steps")).firstMatch
+        let sleep = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "conditions.leaf.", "6.00 hours")).firstMatch
+        XCTAssertTrue(steps.waitForExistence(timeout: 10))
+        XCTAssertTrue(sleep.exists)
+        XCTAssertFalse(app.staticTexts["Condition not met"].exists)
+        capture(app, "Readable numeric Health values remain beside concise condition requirements")
     }
     @MainActor func testToastDoesNotShiftGridAndIsDismissible() {
         for language in ["en", "ja", "zh-Hant"] {
@@ -362,7 +457,7 @@ nonisolated final class MilestoneFlows: XCTestCase {
     @MainActor func testConditionPreviewRemainsResponsiveAcrossMinuteUpdates() {
         let app = launch(extra: ["--condition-gate=unmet"])
         button(app, prefix: "card.", name: "GROUPED").tap()
-        XCTAssertTrue(element(app, "conditions.overall").waitForExistence(timeout: 10))
+        XCTAssertTrue(element(app, "conditions.warning").waitForExistence(timeout: 10))
         capture(app, "Condition preview before minute updates")
         // Two real minute boundaries catch the observed native TimelineView/List layout loop.
         for _ in 0..<3 { RunLoop.current.run(until: Date().addingTimeInterval(41)) }
