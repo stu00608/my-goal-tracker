@@ -77,11 +77,8 @@ nonisolated struct GoalProgress: Codable, Equatable {
         let baselineEntry = entries.last(where: { $0.occurredAt <= rule.effectiveAt }) ?? first
         guard let baselineString = baselineEntry.value, let currentString = last.value,
               let baseline = Numbers.decimal(baselineString), let current = Numbers.decimal(currentString) else { return nil }
-        // Match deadline achievement, including a hit followed by rollback, excluding future events.
-        let achieved = entries.contains {
-            guard let value = $0.value.flatMap(Numbers.decimal) else { return false }
-            return rule.direction == .up ? value >= target : value <= target
-        }
+        // One evidence predicate for rings, reminders and achievement history.
+        let achieved = tracker.achievement(for: rule, now: now) != nil
         let fraction: Double
         if achieved || target == baseline { fraction = 1 }
         else {
@@ -210,15 +207,21 @@ nonisolated struct WidgetRow: Codable, Identifiable {
     var axisLower: String?
     var axisUpper: String?
     var lastRecordedAt: Date?
+    var lastRecordedDay: String?
+    var textPosition: CardTextPosition?
+    var showLastRecorded: Bool?
+    var ringStyle: RingProgressStyle?
 
     init(_ t: Tracker, now: Date) {
         let sorted = t.resolvedEntries.filter { $0.occurredAt <= now }
         id = t.id; name = t.name; kind = t.kind; value = sorted.last?.value
         unit = t.unit; precision = t.precision; timeZoneID = t.timeZoneID
         background = t.resolvedCardBackground
+        textPosition = t.cardTextPosition; showLastRecorded = t.showLastRecorded; ringStyle = t.ringStyle
         axisLower = t.axisLower; axisUpper = t.axisUpper
         progress = GoalProgress.current(for: t, now: now)
-        lastRecordedAt = sorted.last(where: { $0.value.flatMap(Numbers.decimal)?.isNaN == false })?.occurredAt
+        let lastRecorded = sorted.last
+        lastRecordedAt = lastRecorded?.occurredAt; lastRecordedDay = lastRecorded?.localDay
         let week = t.interval(now, period: .weekly)
         let month = t.interval(now, period: .monthly)
         completedDays = t.kind == .daily ? Array(Set(t.entries.compactMap { entry -> String? in
@@ -262,6 +265,63 @@ nonisolated struct WidgetRow: Codable, Identifiable {
         }
     }
     var resolvedBackground: CardBackground { background ?? .plot }
+    var resolvedTextPosition: CardTextPosition { textPosition ?? .bottomTrailing }
+    var resolvedShowLastRecorded: Bool { showLastRecorded ?? true }
+    var resolvedRingStyle: RingProgressStyle { ringStyle ?? .percent }
+    var lastRecordedDate: Date? {
+        lastRecordedDay.flatMap { tracker.date(for: $0) } ?? lastRecordedAt
+    }
+    func valueText(at now: Date, locale: Locale, text: (String) -> String) -> String {
+        if kind == .number {
+            guard let value = value.flatMap(Numbers.decimal) else { return text("No snapshots yet") }
+            return Numbers.display(value, precision: precision, locale: locale) + (unit.isEmpty ? "" : " " + unit)
+        }
+        let t = tracker
+        guard let rule = t.rule(at: now) else { return text("Completion record") }
+        return "\(t.count(in: t.interval(now, period: rule.period))) / \(rule.target)"
+    }
+    func ringText(at now: Date, locale: Locale) -> String? {
+        guard let progress = currentProgress(at: now) else { return nil }
+        if resolvedRingStyle == .percent {
+            return progress.fraction.formatted(.percent.precision(.fractionLength(0)).locale(locale))
+        }
+        guard let current = Numbers.decimal(progress.current), let target = Numbers.decimal(progress.target) else { return nil }
+        let digits = kind == .daily ? 0 : precision
+        return Numbers.display(current, precision: digits, locale: locale) + " / " + Numbers.display(target, precision: digits, locale: locale)
+    }
+    /// Independent of visible text preferences, including hidden corners and date-off.
+    func accessibilitySummary(at now: Date, locale: Locale, text: (String) -> String) -> String {
+        [name, valueText(at: now, locale: locale, text: text), accessibilityValue(at: now, locale: locale, text: text)].joined(separator: ", ")
+    }
+    func accessibilityValue(at now: Date, locale: Locale, text: (String) -> String) -> String {
+        var parts: [String] = []
+        if kind == .daily {
+            parts.append(text(completedDays.contains(tracker.day(now)) ? "Today is recorded" : "No record today"))
+            if let rule = tracker.rule(at: now) { parts.append(text(rule.period == .monthly ? "This month" : "This week")) }
+        }
+        let backgroundKey: String
+        switch resolvedBackground {
+        case .plot: backgroundKey = plot?.isEmpty == false ? "Recent records" : "No records yet"
+        case .progress: backgroundKey = currentProgress(at: now) != nil ? "Goal progress" : "Goal progress unavailable"
+        case .photo, .trackerPhoto: backgroundKey = thumbnail != nil ? "Photos" : "No photos yet"
+        case .map: backgroundKey = locations?.isEmpty == false ? "Recorded locations" : "No locations yet"
+        }
+        parts.append(text(backgroundKey))
+        if let date = lastRecordedDate {
+            parts.append(text("Last recorded") + " " + date.formatted(Date.FormatStyle(locale: locale, calendar: tracker.calendar, timeZone: tracker.calendar.timeZone).year().month().day()))
+        }
+        if resolvedBackground == .plot, clippedPointCount > 0 {
+            parts.append(String(format: text("%lld records outside the chart bounds. Values are preserved in the timeline."), locale: locale, Int64(clippedPointCount)))
+        }
+        if resolvedBackground == .progress, let progress = currentProgress(at: now) {
+            parts.append(progress.fraction.formatted(.percent.precision(.fractionLength(0)).locale(locale)))
+            if kind == .number, let fraction = Numbers.decimal(progress.current), let target = Numbers.decimal(progress.target) {
+                let digits = kind == .daily ? 0 : precision
+                parts.append(Numbers.display(fraction, precision: digits, locale: locale) + " / " + Numbers.display(target, precision: digits, locale: locale))
+            }
+        }
+        return parts.joined(separator: ", ")
+    }
     func currentProgress(at date: Date) -> GoalProgress? {
         if kind == .daily { return GoalProgress.current(for: tracker, now: date) }
         guard let rule = tracker.rule(at: date) else { return nil }
@@ -294,6 +354,7 @@ nonisolated struct WidgetRow: Codable, Identifiable {
         var t = Tracker(id: id, name: name, kind: kind, unit: unit, precision: precision, timeZoneID: timeZoneID)
         t.rules = rules
         t.cardBackground = background
+        t.cardTextPosition = textPosition; t.showLastRecorded = showLastRecorded; t.ringStyle = ringStyle
         t.entries = completedDays.map { Entry(occurredAt: .distantPast, localDay: $0) }
         return t
     }

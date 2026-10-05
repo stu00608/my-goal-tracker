@@ -52,6 +52,88 @@ import ImageIO
         #expect(snapshot.row(selectedID: nil)?.id == trackers[0].id)
     }
 
+    @Test(arguments: CardTextPosition.allCases) func optionalCardPreferencesRoundTripWithoutChangingLedger(position: CardTextPosition) throws {
+        var tracker = Tracker(name: "精度 / Precision", kind: .number, timeZoneID: "Asia/Tokyo", cardBackground: .progress)
+        tracker.cardTextPosition = position; tracker.showLastRecorded = false; tracker.ringStyle = .fraction
+        tracker.entries = [Entry(occurredAt: now.addingTimeInterval(-1), localDay: "2024-03-09", value: "18.1234567890123456789"),
+                           Entry(occurredAt: now, localDay: "2024-03-10", change: "0.0000000000000000001")]
+        let original = tracker
+        let row = try JSONDecoder().decode(WidgetRow.self, from: JSONEncoder().encode(WidgetRow(tracker, now: now)))
+        #expect(row.resolvedTextPosition == position && !row.resolvedShowLastRecorded && row.resolvedRingStyle == .fraction)
+        #expect(row.value == "18.123456789012345679" && tracker == original)
+        #expect(row.lastRecordedDay == "2024-03-10" && row.tracker.timeZoneID == "Asia/Tokyo")
+        #expect(row.tracker.cardTextPosition == position && row.tracker.showLastRecorded == false && row.tracker.ringStyle == .fraction)
+    }
+
+    @Test func oldSummaryDefaultsAndLegacyRecordedTimestampRemainReadable() throws {
+        let tracker = Tracker(name: "Legacy", kind: .number, timeZoneID: "Asia/Tokyo")
+        var row = WidgetRow(tracker, now: now); row.lastRecordedAt = now
+        var object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(row)) as? [String: Any])
+        for key in ["textPosition", "showLastRecorded", "ringStyle", "lastRecordedDay"] { object.removeValue(forKey: key) }
+        let decoded = try JSONDecoder().decode(WidgetRow.self, from: JSONSerialization.data(withJSONObject: object))
+        #expect(decoded.textPosition == nil && decoded.showLastRecorded == nil && decoded.ringStyle == nil && decoded.lastRecordedDay == nil)
+        #expect(decoded.resolvedTextPosition == .bottomTrailing && decoded.resolvedShowLastRecorded && decoded.resolvedRingStyle == .percent)
+        #expect(decoded.lastRecordedDate == now)
+    }
+
+    @Test(arguments: [1, 2]) func legacyBackupsWithoutCardPreferencesPreserveRawEntriesAndDates(version: Int) throws {
+        var tracker = Tracker(name: "Legacy backup", kind: .number, timeZoneID: "America/New_York")
+        tracker.entries = [Entry(occurredAt: now, localDay: "2024-03-09", value: "18.1234567890123456789")]
+        if version == 2 {
+            tracker.entries.append(Entry(occurredAt: now.addingTimeInterval(1), localDay: "2024-03-10", change: "0.0000000000000000001"))
+        }
+        var backup = Backup(trackers: [tracker]); backup.version = version
+        let decoded = try Backup.decode(backup.encoded())
+        let restored = try #require(decoded.trackers.first)
+        #expect(restored.entries == tracker.entries && restored.timeZoneID == "America/New_York")
+        #expect(restored.cardTextPosition == nil && restored.showLastRecorded == nil && restored.ringStyle == nil)
+        let row = WidgetRow(restored, now: now.addingTimeInterval(1))
+        #expect(row.resolvedTextPosition == .bottomTrailing && row.resolvedShowLastRecorded && row.resolvedRingStyle == .percent)
+        #expect(row.lastRecordedDay == tracker.sortedEntries.last?.localDay)
+    }
+
+    @Test(arguments: [CardBackground.plot, .photo, .trackerPhoto, .map, .progress])
+    func lastRecordedUsesRecordedLocalDayForBothKindsAcrossAllBackgrounds(background: CardBackground) throws {
+        for kind in [TrackerKind.number, .daily] {
+            var tracker = Tracker(name: "Recorded date", kind: kind, timeZoneID: "Asia/Tokyo", cardBackground: background)
+            tracker.entries = [Entry(occurredAt: now, localDay: "2024-03-09", value: kind == .number ? "5" : nil),
+                               Entry(occurredAt: now.addingTimeInterval(100), localDay: "2024-03-11", value: kind == .number ? "99" : nil)]
+            let row = WidgetRow(tracker, now: now)
+            #expect(row.lastRecordedAt == now && row.lastRecordedDay == "2024-03-09")
+            #expect(row.lastRecordedDate == tracker.date(for: "2024-03-09") && row.resolvedShowLastRecorded)
+            tracker.showLastRecorded = false
+            #expect(!WidgetRow(tracker, now: now).resolvedShowLastRecorded)
+        }
+    }
+
+    @Test func numericRingSharesAchievementEvidenceAfterRollbackAndFutureFiltering() throws {
+        var tracker = Tracker(name: "Evidence", kind: .number, cardBackground: .progress)
+        let rule = GoalRule(period: .deadline, target: "20", effectiveAt: now.addingTimeInterval(-100), deadline: now.addingTimeInterval(100))
+        tracker.rules = [rule]
+        tracker.entries = [Entry(occurredAt: now.addingTimeInterval(-200), localDay: tracker.day(now), value: "21"),
+                           Entry(occurredAt: now, localDay: tracker.day(now), value: "10"),
+                           Entry(occurredAt: now.addingTimeInterval(10), localDay: tracker.day(now), value: "50")]
+        let result = try #require(GoalProgress.current(for: tracker, now: now))
+        #expect(result.achieved == (tracker.achievement(for: rule, now: now) != nil) && result.fraction == 1 && result.current == "10")
+        #expect(tracker.achievement(for: rule, now: now)?.achievedAt == rule.effectiveAt)
+        tracker.entries.removeFirst()
+        #expect(GoalProgress.current(for: tracker, now: now)?.achieved == (tracker.achievement(for: rule, now: now) != nil))
+        #expect(GoalProgress.current(for: tracker, now: now)?.achieved == false)
+        tracker.entries[0].value = "20"
+        #expect(GoalProgress.current(for: tracker, now: now)?.achieved == true)
+    }
+
+    @Test func finiteAchievementRemainsSelectableAndClippingKeepsAccessibleValue() {
+        var tracker = Tracker(name: "Finite", kind: .number, axisLower: "0", axisUpper: "10")
+        tracker.lifecycle = .finite; tracker.cardTextPosition = .hidden; tracker.showLastRecorded = false
+        tracker.rules = [GoalRule(period: .deadline, target: "15", effectiveAt: now.addingTimeInterval(-10), deadline: now.addingTimeInterval(10))]
+        tracker.entries = [Entry(occurredAt: now, localDay: tracker.day(now), value: "15")]
+        let snapshot = WidgetSnapshot([tracker], language: "en", now: now)
+        #expect(snapshot.row(selectedID: tracker.id)?.id == tracker.id)
+        #expect(snapshot.rows[0].accessibilityValue(at: now, locale: Locale(identifier: "en"), text: { $0 }).contains("1 records outside the chart bounds"))
+        #expect(snapshot.rows[0].accessibilitySummary(at: now, locale: Locale(identifier: "en"), text: { $0 }).contains("Finite"))
+    }
+
     @Test func overviewPlotPreservesSmallChangesAndFiniteContext() {
         func points(_ values: [String]) -> [CardPlotPoint] { values.map { CardPlotPoint(date: now, value: $0) } }
         let narrow = CardPlotScale.domain(points: points(["21.530", "21.536"]), precision: 3)

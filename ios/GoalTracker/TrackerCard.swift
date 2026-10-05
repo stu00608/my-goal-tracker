@@ -11,7 +11,46 @@ enum TrackerColors {
     static var secondaryText: Color { Color.primary.opacity(0.72) }
 }
 
-/// Only the app adds a tile boundary. WidgetKit already owns the Widget boundary.
+extension CardTextPosition {
+    var isLeading: Bool { self == .topLeading || self == .bottomLeading }
+    var isTop: Bool { self == .topLeading || self == .topTrailing }
+    var alignment: Alignment {
+        switch self {
+        case .topLeading: .topLeading
+        case .topTrailing: .topTrailing
+        case .bottomLeading: .bottomLeading
+        case .bottomTrailing, .hidden: .bottomTrailing
+        }
+    }
+    var horizontalAlignment: HorizontalAlignment { isLeading ? .leading : .trailing }
+    var textAlignment: TextAlignment { isLeading ? .leading : .trailing }
+    // Root overlays its independent 44pt Button on the outer recording Button, never its label.
+    var dailyToggleAlignment: Alignment { .bottomTrailing }
+    var gradientStart: UnitPoint {
+        switch self {
+        case .topLeading: .bottomTrailing
+        case .topTrailing: .bottomLeading
+        case .bottomLeading: .topTrailing
+        case .bottomTrailing, .hidden: .topLeading
+        }
+    }
+    var gradientEnd: UnitPoint {
+        switch self {
+        case .topLeading: .topLeading
+        case .topTrailing: .topTrailing
+        case .bottomLeading: .bottomLeading
+        case .bottomTrailing, .hidden: .bottomTrailing
+        }
+    }
+}
+
+enum CardLayout {
+    static let plotInset: CGFloat = 14
+    static let textInset: CGFloat = 14
+    static let dailyControlInset: CGFloat = 6
+}
+
+/// Only the app adds a tile boundary. This surface contains no interactive controls.
 struct TrackerCardSurface<Backdrop: View>: View {
     let row: WidgetRow
     let now: Date
@@ -19,15 +58,20 @@ struct TrackerCardSurface<Backdrop: View>: View {
     let text: (String) -> String
     var minimumHeight: CGFloat = 120
     var fillsHeight = true
+    var showsDailyStatus = true
     @ViewBuilder var backdrop: () -> Backdrop
     @Environment(\.colorSchemeContrast) private var contrast
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     var body: some View {
-        TrackerCardLabel(row: row, now: now, locale: locale, text: text)
-            .padding(14).padding(.bottom, row.resolvedBackground == .map ? 18 : 0)
-            .frame(maxWidth: .infinity, maxHeight: fillsHeight ? .infinity : nil, alignment: .bottomTrailing)
+        TrackerCardLabel(row: row, now: now, locale: locale, text: text, showsDailyStatus: showsDailyStatus)
+            .padding(CardLayout.textInset)
+            .padding(.bottom, row.resolvedBackground == .map && !row.resolvedTextPosition.isTop ? 18 : 0)
+            .padding(.trailing, row.kind == .daily && !showsDailyStatus && row.resolvedTextPosition == .bottomTrailing ? 44 : 0)
+            .frame(maxWidth: .infinity, maxHeight: fillsHeight ? .infinity : nil, alignment: row.resolvedTextPosition.alignment)
             .fixedSize(horizontal: false, vertical: !fillsHeight)
-            .frame(minHeight: minimumHeight, alignment: .bottomTrailing)
+            .frame(minHeight: row.resolvedBackground == .progress && dynamicTypeSize.isAccessibilitySize && !fillsHeight ? max(minimumHeight, 440) : minimumHeight,
+                   alignment: row.resolvedTextPosition.alignment)
             .background {
                 GeometryReader { geometry in
                     backdrop().frame(width: geometry.size.width, height: geometry.size.height).clipped()
@@ -39,7 +83,7 @@ struct TrackerCardSurface<Backdrop: View>: View {
     }
 }
 
-/// One transparent text group, shared with the small Widget; no text plates or plus button.
+/// Transparent corner text; a hidden group retains its semantic summary.
 struct TrackerCardLabel: View {
     let row: WidgetRow
     let now: Date
@@ -47,84 +91,101 @@ struct TrackerCardLabel: View {
     let text: (String) -> String
     var compact = false
     var monochrome = false
+    var showsDailyStatus = true
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.colorScheme) private var colorScheme
     private var hasImage: Bool { !monochrome && (row.hasPhoto || row.resolvedBackground == .map && row.locations?.isEmpty == false) }
+    private var position: CardTextPosition { row.resolvedTextPosition }
 
     var body: some View {
-        VStack(alignment: .trailing, spacing: 4) {
+        Group {
+            if position == .hidden { Color.clear.frame(width: 1, height: 1) }
+            else { visibleGroup }
+        }
+            .accessibilityElement(children: .ignore)
+            .accessibilityLabel(row.name + ", " + row.valueText(at: now, locale: locale, text: text))
+            .accessibilityValue(row.accessibilityValue(at: now, locale: locale, text: text))
+            .accessibilityIdentifier("card.summary." + row.id.uuidString)
+    }
+    private var visibleGroup: some View {
+        VStack(alignment: position.horizontalAlignment, spacing: 4) {
             Text(row.name).font(compact ? .subheadline.weight(.semibold) : .headline)
-                .lineLimit(dynamicTypeSize.isAccessibilitySize && !compact ? nil : compact ? 2 : 3)
+                .lineLimit(row.resolvedBackground == .progress ? compact ? 1 : 2 : dynamicTypeSize.isAccessibilitySize && !compact ? nil : compact ? 2 : 3)
                 .minimumScaleFactor(0.8)
                 .fixedSize(horizontal: false, vertical: true)
-            HStack(alignment: .firstTextBaseline, spacing: 6) {
-                Text(progress).font((compact ? Font.subheadline : .title3).monospacedDigit())
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize && !compact ? nil : 2).minimumScaleFactor(0.6)
-                    .fixedSize(horizontal: false, vertical: true)
-                    .accessibilityIdentifier("progress." + row.id.uuidString)
-                if row.kind == .daily {
-                    Image(systemName: completed ? "checkmark.circle.fill" : "circle")
-                        .foregroundStyle(!hasImage && !monochrome && completed ? TrackerColors.accent : foreground)
-                        .accessibilityLabel(text(completed ? "Today is recorded" : "No record today"))
+            // A ring owns its centered number; corners retain only title/date and daily state.
+            if row.resolvedBackground != .progress {
+                HStack(alignment: .firstTextBaseline, spacing: 6) {
+                    Text(row.valueText(at: now, locale: locale, text: text)).font((compact ? Font.subheadline : .title3).monospacedDigit())
+                        .lineLimit(dynamicTypeSize.isAccessibilitySize && !compact ? nil : 2).minimumScaleFactor(0.6)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("progress." + row.id.uuidString)
+                    if row.kind == .daily && showsDailyStatus { dailyStatus }
                 }
-            }
+            } else if row.kind == .daily && showsDailyStatus { dailyStatus }
             if row.resolvedBackground == .plot && row.clippedPointCount > 0 {
                 Text(text("Some records are outside chart bounds")).font(.caption2).lineLimit(compact ? 1 : 2)
             }
-            if row.resolvedBackground == .plot, let date = row.lastRecordedAt, date < now {
-                (Text(text("Last recorded")) + Text(" ") + Text(date.formatted(Date.FormatStyle(locale: locale, calendar: row.tracker.calendar, timeZone: row.tracker.calendar.timeZone).month().day())))
-                    .font(.caption2).lineLimit(1)
+            if row.resolvedShowLastRecorded, let date = row.lastRecordedDate {
+                Text(text("Last recorded") + " " + date.formatted(Date.FormatStyle(locale: locale, calendar: row.tracker.calendar, timeZone: row.tracker.calendar.timeZone).month().day()))
+                    .font(.caption2).lineLimit(compact ? 1 : row.resolvedBackground == .progress ? 2 : nil)
             }
         }
-        .multilineTextAlignment(.trailing)
+        .multilineTextAlignment(position.textAlignment)
         .foregroundStyle(foreground)
         .shadow(color: hasImage ? (foregroundIsLight ? Color.black.opacity(0.45) : Color.white.opacity(0.5)) : .clear, radius: 1, y: 1)
-        .accessibilityElement(children: .combine)
-        .accessibilityValue(accessibilityDescription)
     }
-    private var accessibilityDescription: String {
-        var parts = [text(backgroundDescription)]
-        if let completionPeriod { parts.append(completionPeriod) }
-        if row.clippedPointCount > 0 {
-            parts.append(String(format: text("%lld records outside the chart bounds. Values are preserved in the timeline."), locale: locale, Int64(row.clippedPointCount)))
-        }
-        if row.resolvedBackground == .progress, let progress = row.currentProgress(at: now) {
-            parts.append(progress.fraction.formatted(.percent.locale(locale)))
-        }
-        return parts.joined(separator: ", ")
+    private var dailyStatus: some View {
+        Image(systemName: completed ? "checkmark.circle.fill" : "circle")
+            .foregroundStyle(!hasImage && !monochrome && completed ? TrackerColors.accent : foreground)
     }
     private var foregroundIsLight: Bool {
         if row.resolvedBackground == .map { return colorScheme == .dark }
-        return row.hasPhoto
+        if row.hasPhoto, let data = row.thumbnail { return CardImageContrast.prefersLightText(data, position: position) }
+        return false
     }
     private var foreground: Color { hasImage ? (foregroundIsLight ? .white : .black) : .primary }
-    private var completionPeriod: String? {
-        guard row.kind == .daily, let rule = row.tracker.rule(at: now) else { return nil }
-        return text(rule.period == .monthly ? "This month" : "This week")
-    }
     private var completed: Bool { row.completedDays.contains(row.tracker.day(now)) }
-    private var backgroundDescription: String {
-        switch row.resolvedBackground {
-        case .plot: row.plot?.isEmpty == false ? "Recent records" : "No records yet"
-        case .progress: row.currentProgress(at: now) != nil ? "Goal progress" : "Goal progress unavailable"
-        case .photo, .trackerPhoto: row.thumbnail != nil ? "Photos" : "No photos yet"
-        case .map: row.locations?.isEmpty == false ? "Recorded locations" : "No locations yet"
+}
+
+/// Widget accented/clear modes flatten the same corner fade into a bounded, display-only image.
+enum CardAccentedPhoto {
+    static func make(_ image: UIImage, size: CGSize, position: CardTextPosition, increasedContrast: Bool) -> UIImage {
+        guard size.width.isFinite, size.height.isFinite, size.width > 0, size.height > 0,
+              image.size.width > 0, image.size.height > 0 else { return image }
+        let format = UIGraphicsImageRendererFormat()
+        format.scale = 320 / max(size.width, size.height)
+        format.opaque = true
+        format.preferredRange = .standard
+        return UIGraphicsImageRenderer(size: size, format: format).image { renderer in
+            let context = renderer.cgContext
+            let bounds = CGRect(origin: .zero, size: size)
+            let scale = max(size.width / image.size.width, size.height / image.size.height)
+            let cropSize = CGSize(width: image.size.width * scale, height: image.size.height * scale)
+            image.draw(in: CGRect(x: (size.width - cropSize.width) / 2, y: (size.height - cropSize.height) / 2,
+                                  width: cropSize.width, height: cropSize.height))
+            context.setBlendMode(.saturation)
+            context.setFillColor(UIColor.black.cgColor)
+            context.fill(bounds)
+            context.setBlendMode(.normal)
+            guard position != .hidden else { return }
+            let colors = [UIColor.clear.cgColor, UIColor.clear.cgColor,
+                          UIColor.black.withAlphaComponent(0.12).cgColor,
+                          UIColor.black.withAlphaComponent(increasedContrast ? 0.82 : 0.66).cgColor]
+            if let gradient = CGGradient(colorsSpace: CGColorSpaceCreateDeviceRGB(), colors: colors as CFArray,
+                                         locations: [0, 0.3, 0.6, 1]) {
+                let start = position.gradientStart, end = position.gradientEnd
+                context.drawLinearGradient(gradient,
+                    start: CGPoint(x: size.width * start.x, y: size.height * start.y),
+                    end: CGPoint(x: size.width * end.x, y: size.height * end.y), options: [])
+            }
         }
-    }
-    private var progress: String {
-        if row.kind == .number {
-            guard let value = row.value.flatMap(Numbers.decimal) else { return text("No snapshots yet") }
-            return Numbers.display(value, precision: row.precision, locale: locale) + (row.unit.isEmpty ? "" : " " + row.unit)
-        }
-        let t = row.tracker
-        guard let rule = t.rule(at: now) else { return text("Completion record") }
-        return "\(t.count(in: t.interval(now, period: rule.period))) / \(rule.target)"
     }
 }
 
-/// Choose an unboxed text color from the actual lower-right crop, not the app theme.
+/// Sample the chosen corner of the same aspect-fill crop used by the card.
 enum CardImageContrast {
-    static func prefersLightText(_ data: Data) -> Bool {
+    static func prefersLightText(_ data: Data, position: CardTextPosition = .bottomTrailing) -> Bool {
         guard let image = UIImage(data: data)?.cgImage else { return false }
         var pixels = [UInt8](repeating: 0, count: 16 * 16 * 4)
         return pixels.withUnsafeMutableBytes { buffer in
@@ -141,7 +202,9 @@ enum CardImageContrast {
                 let value = Double(channel) / 255
                 return value <= 0.04045 ? value / 12.92 : pow((value + 0.055) / 1.055, 2.4)
             }
-            let luminances = (0..<8).flatMap { y in (6..<16).map { x in
+            let rows = position.isTop ? 8..<16 : 0..<8
+            let columns = position.isLeading ? 0..<10 : 6..<16
+            let luminances = rows.flatMap { y in columns.map { x in
                 let offset = (y * 16 + x) * 4
                 return 0.2126 * linear(buffer[offset]) + 0.7152 * linear(buffer[offset + 1]) + 0.0722 * linear(buffer[offset + 2])
             }}
@@ -154,6 +217,7 @@ struct TrackerCardBackdrop: View {
     let row: WidgetRow
     let text: (String) -> String
     var now = Date()
+    var locale = Locale.current
     var mapImage: UIImage?
     var monochrome = false
     var body: some View {
@@ -161,10 +225,11 @@ struct TrackerCardBackdrop: View {
         case .progress:
             if let progress = row.currentProgress(at: now) {
                 GeometryReader { geometry in
-                    GoalProgressRing(fraction: progress.fraction, monochrome: monochrome)
-                        .frame(width: min(geometry.size.width, geometry.size.height) * 0.60,
-                               height: min(geometry.size.width, geometry.size.height) * 0.60)
-                        .padding(16).frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading)
+                    let edge = max(0, min(geometry.size.width, geometry.size.height) - CardLayout.plotInset * 2)
+                    GoalProgressRing(fraction: progress.fraction, monochrome: monochrome,
+                                     value: row.ringText(at: now, locale: locale))
+                        .frame(width: edge, height: edge)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             } else { empty("Goal progress unavailable", symbol: "circle.dashed") }
         case .plot:
@@ -198,7 +263,7 @@ struct TrackerCardBackdrop: View {
                 }
                 .foregroundStyle(monochrome ? Color.primary : TrackerColors.accent).chartXAxis(.hidden).chartYAxis(.hidden).chartLegend(.hidden)
                 .chartYScale(domain: row.plotDomain(at: now)).chartPlotStyle { $0.clipped() }
-                .padding(.horizontal, 16).padding(.top, 22).padding(.bottom, 28)
+                .padding(CardLayout.plotInset)
             } else {
                 Image(systemName: "chart.xyaxis.line").font(.title2).foregroundStyle(TrackerColors.secondaryText)
                     .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .topLeading).padding(16).accessibilityHidden(true)
@@ -207,7 +272,10 @@ struct TrackerCardBackdrop: View {
             if let data = row.thumbnail, let image = UIImage(data: data) {
                 GeometryReader { geometry in
                     Image(uiImage: image).renderingMode(.original).resizable().scaledToFill().frame(width: geometry.size.width, height: geometry.size.height).clipped()
-                        .overlay { CardPhotoReadabilityGradient(monochrome: monochrome) }
+                        .overlay {
+                            CardPhotoReadabilityGradient(position: row.resolvedTextPosition, monochrome: monochrome,
+                                                         lightText: CardImageContrast.prefersLightText(data, position: row.resolvedTextPosition))
+                        }
                 }
             } else { empty("No photos yet", symbol: "photo") }
         case .map:
@@ -227,25 +295,44 @@ struct TrackerCardBackdrop: View {
 struct GoalProgressRing: View {
     let fraction: Double
     var monochrome = false
+    var value: String?
     var body: some View {
         ZStack {
             Circle().stroke(Color.primary.opacity(0.12), lineWidth: 12)
             Circle().trim(from: 0, to: min(max(fraction, 0), 1))
                 .stroke(monochrome ? Color.primary : TrackerColors.accent, style: StrokeStyle(lineWidth: 12, lineCap: .round))
                 .rotationEffect(.degrees(-90))
-        }.padding(6).accessibilityHidden(true)
+        }
+        .padding(6)
+        .overlay {
+            if let value {
+                GeometryReader { geometry in
+                    Text(value).font(.title2.weight(.semibold).monospacedDigit())
+                        .foregroundStyle(.primary).multilineTextAlignment(.center)
+                        .lineLimit(2).minimumScaleFactor(0.35)
+                        .frame(width: geometry.size.width * 0.68, height: geometry.size.height * 0.48)
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            }
+        }
+        .accessibilityHidden(true)
     }
 }
 
-/// The entire photo remains the surface; the gradient protects the bottom text group.
+/// A subtle corner fade preserves the full photo and follows the chosen text position.
 struct CardPhotoReadabilityGradient: View {
+    var position: CardTextPosition = .bottomTrailing
     var monochrome = false
+    var lightText = true
     @Environment(\.colorSchemeContrast) private var contrast
     var body: some View {
-        let color = monochrome ? Color(uiColor: .systemBackground) : Color.black
-        LinearGradient(stops: [.init(color: color.opacity(0), location: 0),
-                               .init(color: color.opacity(0.1), location: 0.35),
-                               .init(color: color.opacity(contrast == .increased ? 0.9 : 0.78), location: 1)],
-                       startPoint: .top, endPoint: .bottom)
+        let color = monochrome ? Color(uiColor: .systemBackground) : lightText ? Color.black : Color.white
+        if position != .hidden {
+            LinearGradient(stops: [.init(color: .clear, location: 0),
+                                   .init(color: .clear, location: 0.3),
+                                   .init(color: color.opacity(0.12), location: 0.6),
+                                   .init(color: color.opacity(contrast == .increased ? 0.82 : 0.66), location: 1)],
+                           startPoint: position.gradientStart, endPoint: position.gradientEnd)
+        }
     }
 }
