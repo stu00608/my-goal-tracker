@@ -47,6 +47,10 @@ import Testing
         try ConditionEvaluation.requireMet(.met)
         #expect(throws: ConditionError.self) { try ConditionEvaluation.requireMet(.unknown) }
         #expect(throws: ConditionError.self) { try ConditionEvaluation.requireMet(.unmet) }
+        do { try ConditionEvaluation.requireMet(.unknown) }
+        catch let error as ConditionError {
+            #expect(error.key == "Could not verify the achievement conditions. Check their status and try again.")
+        }
     }
 
     @Test func outsideNativeStateInvertsAndOldStatesStayUnknown() {
@@ -222,6 +226,23 @@ import Testing
         #expect(throws: DataError.self) { try Reminders.requests(trackers) }
     }
 
+    @Test func deadlineRemindersUseSuppliedNowAndKeepHistoricalEverHitSemantics() throws {
+        let reference = Date(timeIntervalSince1970: 1_700_000_000)
+        var t = Tracker(name: "Reference clock", kind: .number)
+        t.timeZoneID = "UTC"; t.reminder = Reminder(hour: 12, minute: 0, weekdays: [2])
+        let rule = GoalRule(period: .deadline, target: "10", effectiveAt: reference.addingTimeInterval(-3600),
+                            deadline: reference.addingTimeInterval(86_400 * 4))
+        t.rules = [rule]
+        let futureHit = reference.addingTimeInterval(3600)
+        t.entries = [Entry(occurredAt: futureHit, localDay: t.day(futureHit), value: "10")]
+        #expect(try Reminders.requests([t], now: reference).contains { $0.identifier == t.id.uuidString + ".deadline" })
+        #expect(try !Reminders.requests([t], now: futureHit).contains { $0.identifier == t.id.uuidString + ".deadline" })
+        let historical = reference.addingTimeInterval(-7200)
+        t.entries = [Entry(occurredAt: historical, localDay: t.day(historical), value: "10"),
+                     Entry(occurredAt: reference, localDay: t.day(reference), value: "2")]
+        #expect(try !Reminders.requests([t], now: reference).contains { $0.identifier == t.id.uuidString + ".deadline" })
+    }
+
     @Test func metadataWebsiteAndDecimalAxisValidationPreservePrecision() throws {
         #expect(try TrackerFields.website("  https://example.com/a?q=1  ") == "https://example.com/a?q=1")
         #expect(try TrackerFields.website("") == nil)
@@ -265,7 +286,7 @@ import Testing
         try store.replace([archived, active])
         let original = store.trackers
         var unarchived = archived; unarchived.archived = false
-        let overCapacity = try Backup(trackers: [unarchived, active]).encoded()
+        let overCapacity = try Backup(version: 2, trackers: [unarchived, active]).encoded()
         let preference = L.defaults.object(forKey: "remindersEnabled")
         defer {
             if let preference { L.defaults.set(preference, forKey: "remindersEnabled") }
