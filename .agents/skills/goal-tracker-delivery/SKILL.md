@@ -36,7 +36,7 @@ Simulator tests, visual inspection, and physical-device checks; report unmet acc
 | Work | Skill |
 | --- | --- |
 | Swift implementation | write-swift; follow installed toolchain availability |
-| UI and interaction design | apple-design; emil-design-eng for focused polish |
+| UI and interaction design | [DESIGN.md](../../../DESIGN.md) first; apple-design; emil-design-eng for focused polish |
 | Hard-to-localize failure | diagnosing-bugs |
 | Substantive review | code-review |
 | Agent instructions or skills | writing-for-agents, skill-creator |
