@@ -498,6 +498,7 @@ nonisolated final class MilestoneFlows: XCTestCase {
                 let card = button(app, prefix: "card.", name: "GROUPED")
                 let action = button(app, prefix: "complete.", name: "GROUPED")
                 reveal(app, action)
+                if large { XCTAssertTrue(element(app, "today.title.date").exists, "The accessible toolbar retains the Today date") }
                 let before = card.frame
                 action.tap()
                 let toast = app.staticTexts["home.conditions.error"]
