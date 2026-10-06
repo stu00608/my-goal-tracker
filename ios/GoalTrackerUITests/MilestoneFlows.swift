@@ -119,6 +119,8 @@ nonisolated final class MilestoneFlows: XCTestCase {
         let card = button(app, prefix: "card.", name: "HEALTH"); reveal(app, card); card.tap()
         XCTAssertTrue(element(app, "conditions.overall").waitForExistence(timeout: 10))
         XCTAssertTrue(element(app, "conditions.overall").label.contains("Cannot determine yet"))
+        XCTAssertEqual(app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "conditions.leaf.")).count, 0)
+        element(app, "conditions.overall").tap()
         // Exercise the actual asynchronous HealthKit read/status result, with no gate override.
         // A completed read must appear immediately, before the next minute-clock tick.
         let readResult = app.descendants(matching: .any).matching(NSPredicate(

@@ -1709,19 +1709,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Notes (optional)"
+            "value": "Notes"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "說明（選填）"
+            "value": "備註"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "メモ（任意）"
+            "value": "備考"
           }
         }
       }
@@ -3168,19 +3168,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Current iPhone location, not the record’s historical location."
+            "value": "Current iPhone location, not where the record happened"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "這是 iPhone 目前位置，並非紀錄當時的位置。"
+            "value": "iPhone 目前位置，不是紀錄當時的位置"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPhoneの現在地です。記録当時の場所ではありません。"
+            "value": "iPhoneの現在地（記録時の場所ではありません）"
           }
         }
       }
@@ -3477,19 +3477,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Location from the first photo."
+            "value": "First photo’s location"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "位置取自第一張照片。"
+            "value": "第一張照片的位置"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "最初の写真の位置情報です。"
+            "value": "最初の写真の位置"
           }
         }
       }
@@ -4049,19 +4049,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Saved location will be kept."
+            "value": "Saved location"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "保留已儲存的位置。"
+            "value": "已儲存的位置"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "保存した位置情報を保持します。"
+            "value": "保存済みの位置"
           }
         }
       }
@@ -10306,6 +10306,213 @@
           "stringUnit": {
             "state": "translated",
             "value": "写真1枚"
+          }
+        }
+      }
+    },
+    "View details": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "View details"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "詳細を見る"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "查看詳情"
+          }
+        }
+      }
+    },
+    "Discard changes?": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Discard changes?"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "変更を破棄しますか？"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "捨棄變更？"
+          }
+        }
+      }
+    },
+    "Discard changes": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Discard changes"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "変更を破棄"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "捨棄變更"
+          }
+        }
+      }
+    },
+    "Keep editing": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Keep editing"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "編集を続ける"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "繼續編輯"
+          }
+        }
+      }
+    },
+    "Every day": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Every day"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "毎日"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "每天"
+          }
+        }
+      }
+    },
+    "More than %@ steps": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "More than %@ steps"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@歩より多い"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "超過 %@ 步"
+          }
+        }
+      }
+    },
+    "Fewer than %@ steps": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Fewer than %@ steps"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@歩より少ない"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "少於 %@ 步"
+          }
+        }
+      }
+    },
+    "More than %@ hours": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "More than %@ hours"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@時間より長い"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "超過 %@ 小時"
+          }
+        }
+      }
+    },
+    "Less than %@ hours": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Less than %@ hours"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "%@時間より短い"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "少於 %@ 小時"
           }
         }
       }

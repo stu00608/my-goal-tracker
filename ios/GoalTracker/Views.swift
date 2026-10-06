@@ -7,6 +7,8 @@ struct RootView: View {
     @AppStorage("homeLayout") private var homeLayout = "grid"
     @AppStorage("recordLocationByDefault", store: L.defaults) private var recordLocationByDefault = false
     @State private var selected = 0
+    @State private var todayPath: [UUID] = []
+    @State private var editingTracker: Tracker?
     @State private var todayNavigationID = UUID()
     @State private var editMode = EditMode.inactive
     @State private var goalsNavigationID = UUID()
@@ -18,11 +20,12 @@ struct RootView: View {
     }
     private func screen(at date: Date) -> some View {
         TabView(selection: $selected) {
-            NavigationStack {
+            NavigationStack(path: $todayPath) {
                 trackerList(today: true, at: date)
                     .statusToast(message: statusMessage, identifier: "home.conditions.error", autoDismiss: store.error == nil)
+                    .navigationDestination(for: UUID.self) { TrackerDetail(id: $0, now: date) }
             }.id(todayNavigationID).tabItem { Label(L.text("Today"), systemImage: "checkmark.circle") }.tag(0)
-            NavigationStack { trackerList(today: false, at: date).statusToast(message: statusMessage, identifier: "home.conditions.error", autoDismiss: store.error == nil) }.id(goalsNavigationID).tabItem { Label(L.text("Goals"), systemImage: "chart.xyaxis.line") }.tag(1)
+            NavigationStack { trackerList(today: false, at: date).statusToast(message: statusMessage, identifier: "home.conditions.error", autoDismiss: store.error == nil) }.id(goalsNavigationID).tabItem { Label(L.text("Goals"), systemImage: "chart.bar.fill") }.tag(1)
             CompletedTab(trackers: store.trackers, now: date).tabItem { Label(L.text("Completed tab"), systemImage: "sparkles") }.tag(2)
             SettingsView(now: date).tabItem { Label(L.text("Settings"), systemImage: "gearshape") }.tag(3)
         }
@@ -35,12 +38,13 @@ struct RootView: View {
         }
         .onOpenURL { url in
             guard url.scheme == "goaltracker", url.host == "today" || url.host == "record" else { return }
-            creating = false; entryTracker = nil; selected = 0; editMode = .inactive; todayNavigationID = UUID(); goalsNavigationID = UUID()
+            creating = false; entryTracker = nil; editingTracker = nil; todayPath = []; selected = 0; editMode = .inactive; todayNavigationID = UUID(); goalsNavigationID = UUID()
             if url.host == "record", url.pathComponents.count == 2,
                let id = UUID(uuidString: url.pathComponents[1]) {
                 entryTracker = store.trackers.first { $0.id == id && !$0.archived }
             }
         }
+        .sheet(item: $editingTracker) { TrackerEditor(existing: $0) }
         .sheet(isPresented: $creating) { TrackerEditor() }
         .sheet(item: $entryTracker) { t in EntryEditor(tracker: t, existing: t.entries.first { $0.localDay == t.day(Date()) && t.kind == .daily }) }
 
@@ -51,22 +55,21 @@ struct RootView: View {
     private func trackerList(today: Bool, at date: Date) -> some View {
         let active = store.trackers.filter { !$0.archived }
         return Group {
-            if today && homeLayout != "list" && !active.isEmpty {
+            if active.isEmpty {
+                ContentUnavailableView {
+                    Label(L.text("Make room for progress"), systemImage: "leaf")
+                } description: { Text(L.text("Track a number or mark a day. Start with one thing that matters to you.")) }
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            } else if today && homeLayout != "list" {
                 DashboardView(trackers: store.trackers, now: date,
-                              onRecord: { entryTracker = $0 }, onReorder: reorder,
-                              cancelForPresentation: entryTracker != nil || creating || selected != 0,
+                              onRecord: { entryTracker = $0 }, onDetails: { todayPath.append($0.id) },
+                              onEdit: { editingTracker = $0 }, onArchive: archive, onReorder: reorder,
+                              cancelForPresentation: entryTracker != nil || editingTracker != nil || creating || selected != 0,
                               onBegin: { gateNotice = nil }, onFailure: { gateNotice = $0 })
             } else {
                 List {
-                    if active.isEmpty {
-                        ContentUnavailableView {
-                            Label(L.text("Make room for progress"), systemImage: "leaf")
-                        } description: { Text(L.text("Track a number or mark a day. Start with one thing that matters to you.")) }
-                        actions: { Button(L.text("Create a tracker")) { creating = true }.accessibilityIdentifier("empty.create") }
-                        .listRowBackground(Color.clear)
-                    }
                     ForEach(active) { tracker in
-                        HStack(spacing: 14) {
+                        HStack(spacing: 12) {
                             if today {
                                 Button { entryTracker = tracker } label: {
                                     TrackerSummary(tracker: tracker, now: date).frame(maxWidth: .infinity, alignment: .leading)
@@ -78,16 +81,22 @@ struct RootView: View {
                             if today && tracker.kind == .daily {
                                 DailyCompletionButton(tracker: tracker, now: date,
                                     recordLocationByDefault: recordLocationByDefault,
-                                    cancelForPresentation: entryTracker != nil || creating || selected != 0,
+                                    cancelForPresentation: entryTracker != nil || editingTracker != nil || creating || selected != 0,
                                     onEditor: { entryTracker = $0 }, onBegin: { gateNotice = nil },
                                     onFailure: { gateNotice = $0 })
                             }
                             if today && tracker.kind == .number {
-                                Button { entryTracker = tracker } label: { Image(systemName: "plus.circle").font(.title2).frame(minWidth: 44, minHeight: 44) }
+                                Button { entryTracker = tracker } label: { Image(systemName: "plus.circle").font(.title2).foregroundStyle(Color.secondary).frame(minWidth: 44, minHeight: 44) }
                                     .buttonStyle(.borderless).accessibilityLabel(L.text("Add a snapshot") + ": " + tracker.name)
                                     .accessibilityIdentifier("snapshot." + tracker.id.uuidString)
                             }
-                        }.padding(.vertical, 6)
+                        }.padding(.vertical, 4)
+                        .contextMenu {
+                            if today {
+                                TrackerContextMenu(tracker: tracker, onDetails: { todayPath.append($0.id) },
+                                                   onEdit: { editingTracker = $0 }, onArchive: archive)
+                            }
+                        }
                         .modifier(TrackerReorderInteraction(enabled: today, id: tracker.id, active: active, onReorder: reorder))
                     }.onMove { indices, destination in
                         store.perform {
@@ -101,6 +110,7 @@ struct RootView: View {
         }
         .environment(\.editMode, today ? .constant(.inactive) : $editMode)
         .navigationTitle(L.text(today ? "Today" : "Goals"))
+        .modifier(TodayDateSubtitle(date: today ? date : nil))
         .toolbar {
             if !today && !active.isEmpty { ToolbarItem(placement: .topBarTrailing) {
                 Button(L.text(editMode.isEditing ? "Done" : "Edit")) {
@@ -111,6 +121,13 @@ struct RootView: View {
                 Button { creating = true } label: { Image(systemName: "plus") }
                     .accessibilityLabel(L.text("Create a tracker")).accessibilityIdentifier("tracker.create")
             }
+        }
+    }
+    private func archive(_ tracker: Tracker) {
+        store.perform {
+            guard var current = store.trackers.first(where: { $0.id == tracker.id }) else { return }
+            current.archived = true
+            try store.save(current)
         }
     }
     private func reorder(_ source: UUID, _ target: UUID) {
@@ -133,18 +150,25 @@ struct DailyCompletionButton: View {
     let onEditor: (Tracker) -> Void
     let onBegin: () -> Void
     let onFailure: (String) -> Void
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var checking = false
     @State private var verification: Task<Void, Never>?
     @State private var pendingRemoval: (tracker: Tracker, entryID: UUID)?
     @State private var quickLocation = RecordLocationRecorder()
+    // Haptics follow the user's action, not `done`, which also flips at midnight or after restores.
+    @State private var feedbackTick = 0
+    @State private var feedbackCompleted = false
     private var done: Bool { tracker.entries.contains { $0.localDay == tracker.day(now) } }
     var body: some View {
         Button(action: toggle) {
             Group {
                 if checking { ProgressView() }
-                else { Image(systemName: done ? "checkmark.circle.fill" : "circle").font(.title2) }
+                else { Image(systemName: done ? "checkmark.circle.fill" : "circle").font(.title2)
+                        .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace)) }
             }.frame(minWidth: 44, minHeight: 44)
         }.buttonStyle(.borderless).disabled(checking)
+            .sensoryFeedback(trigger: feedbackTick) { _, _ in feedbackCompleted ? .success : .impact }
+            .animation(reduceMotion ? nil : .snappy, value: done)
             .accessibilityLabel(L.text(checking ? "Checking record conditions" : done ? "Undo completion" : "Mark complete") + ": " + tracker.name)
             .accessibilityIdentifier("complete." + tracker.id.uuidString)
             .onDisappear { verification?.cancel(); quickLocation.cancel() }
@@ -162,10 +186,12 @@ struct DailyCompletionButton: View {
                     var candidate = original
                     candidate.entries.removeAll { $0.id == pending.entryID }
                     store.perform { try store.save(candidate) }
+                    feedback(completed: false)
                 }
                 Button(L.text("Cancel"), role: .cancel) { pendingRemoval = nil }
             } message: { Text(L.text("The record, notes and photos for today will be removed.")) }
     }
+    private func feedback(completed: Bool) { feedbackCompleted = completed; feedbackTick += 1 }
     private func toggle() {
         guard !checking, var original = store.trackers.first(where: { $0.id == tracker.id }) else { return }
         onBegin()
@@ -174,11 +200,13 @@ struct DailyCompletionButton: View {
             if !entry.note.isEmpty || !entry.photos.isEmpty || entry.location != nil { pendingRemoval = (original, entry.id); return }
             original.entries.removeAll { $0.localDay == day }
             store.perform { try store.save(original) }
+            feedback(completed: false)
             return
         }
         guard original.requiresConditionGate || recordLocationByDefault else {
             original.put(Entry(occurredAt: instant, localDay: day))
             store.perform { try store.save(original) }
+            feedback(completed: true)
             return
         }
         checking = true
@@ -204,6 +232,7 @@ struct DailyCompletionButton: View {
                 if recordLocationByDefault { entry.location = quickLocation.draft.applying(to: nil) }
                 candidate.put(entry)
                 try store.save(candidate)
+                feedback(completed: true)
             } catch is CancellationError { }
             catch {
                 if !Task.isCancelled {
@@ -218,9 +247,9 @@ struct TrackerSummary: View {
     let tracker: Tracker
     var now = Date()
     var body: some View {
-        VStack(alignment: .leading, spacing: 5) {
+        VStack(alignment: .leading, spacing: 8) {
             HStack(alignment: .firstTextBaseline) {
-                Text(tracker.name).font(.headline)
+                Text(tracker.name).font(.headline).foregroundStyle(Color.primary)
                 if CompletionEngine.isCompleted(tracker: tracker, now: now) {
                     Image(systemName: "checkmark.seal.fill").foregroundStyle(TrackerColors.accent)
                         .accessibilityLabel(L.text("Completed goal"))
@@ -228,13 +257,37 @@ struct TrackerSummary: View {
             }
             if tracker.kind == .number {
                 if let v = tracker.resolvedEntries.last(where: { $0.occurredAt <= now })?.value.flatMap(Numbers.decimal) {
-                    Text(Numbers.display(v, precision: tracker.precision, locale: L.locale) + (tracker.unit.isEmpty ? "" : " " + tracker.unit)).font(.title3.monospacedDigit()).foregroundStyle(.primary)
-                } else { Text(L.text("No records yet")).foregroundStyle(TrackerColors.secondaryText) }
+                    Text(Numbers.display(v, precision: tracker.precision, locale: L.locale) + (tracker.unit.isEmpty ? "" : " " + tracker.unit)).font(.title3.monospacedDigit()).foregroundStyle(Color.primary)
+                } else { Text(L.text("No records yet")).foregroundStyle(Color.secondary) }
             } else if let rule = tracker.rule(at: now) {
                 Text("\(tracker.count(in: tracker.interval(now, period: rule.period))) / \(rule.target) · " + L.text(rule.period == .weekly ? "This week" : "This month"))
-                    .foregroundStyle(TrackerColors.secondaryText).monospacedDigit().accessibilityIdentifier("progress." + tracker.id.uuidString)
-            } else { Text(L.text(tracker.entries.contains { $0.localDay == tracker.day(now) && $0.occurredAt <= now } ? "Today is recorded" : "No record today")).foregroundStyle(TrackerColors.secondaryText) }
+                    .foregroundStyle(Color.primary).monospacedDigit().accessibilityIdentifier("progress." + tracker.id.uuidString)
+            } else { Text(L.text(tracker.entries.contains { $0.localDay == tracker.day(now) && $0.occurredAt <= now } ? "Today is recorded" : "No record today")).foregroundStyle(Color.secondary) }
         }.padding(.vertical, 2)
+    }
+}
+
+struct TrackerContextMenu: View {
+    let tracker: Tracker
+    let onDetails: (Tracker) -> Void
+    let onEdit: (Tracker) -> Void
+    let onArchive: (Tracker) -> Void
+    var body: some View {
+        Button { onDetails(tracker) } label: { Label(L.text("View details"), systemImage: "chart.bar") }
+            .accessibilityIdentifier("tracker.context.details")
+        Button { onEdit(tracker) } label: { Label(L.text("Edit"), systemImage: "pencil") }
+            .accessibilityIdentifier("tracker.context.edit")
+        Button { onArchive(tracker) } label: { Label(L.text("Archive"), systemImage: "archivebox") }
+            .accessibilityIdentifier("tracker.context.archive")
+    }
+}
+
+private struct TodayDateSubtitle: ViewModifier {
+    let date: Date?
+    @ViewBuilder func body(content: Content) -> some View {
+        if #available(iOS 26, *), let date {
+            content.navigationSubtitle(date.formatted(Date.FormatStyle(locale: L.locale).month().day().weekday()))
+        } else { content }
     }
 }
 
