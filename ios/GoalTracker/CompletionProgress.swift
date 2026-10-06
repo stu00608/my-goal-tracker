@@ -127,7 +127,7 @@ import Charts
                 if period.count == 0 { Text(L.text("No completion records in this period.")).foregroundStyle(.secondary) }
             } else {
                 Text(L.text("No completion goal")).font(.headline).accessibilityIdentifier("completion.progress")
-                Button(L.text("Set a goal"), action: editGoal).accessibilityIdentifier("completion.setGoal")
+                Button(L.text("Set a goal"), action: editGoal).buttonStyle(.borderless).accessibilityIdentifier("completion.setGoal")
             }
         }
     }

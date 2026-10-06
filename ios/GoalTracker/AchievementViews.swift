@@ -194,7 +194,7 @@ struct AchievementPoster: View {
                 .fixedSize(horizontal: false, vertical: true)
             Text(AchievementText.value(snapshot)).font((compact ? Font.title3 : Font.title).weight(.semibold).monospacedDigit())
                 .fixedSize(horizontal: false, vertical: true)
-            Text(AchievementText.date(snapshot)).font(compact ? .caption : .subheadline)
+            Text(AchievementText.date(snapshot, full: true)).font(compact ? .caption : .subheadline)
             if !compact { Text(L.text("Time to achieve") + " · " + AchievementText.duration(snapshot)).font(.subheadline) }
         }
         .multilineTextAlignment(alternateLayout ? .leading : .trailing)
@@ -288,11 +288,12 @@ enum AchievementText {
         return value + (snapshot.unit.isEmpty ? "" : " " + snapshot.unit)
     }
 
-    static func date(_ snapshot: AchievementSnapshot) -> String {
+    /// Lists use the short date; the shared poster keeps year and time so exported images stay unambiguous.
+    static func date(_ snapshot: AchievementSnapshot, full: Bool = false) -> String {
         var calendar = Calendar(identifier: .gregorian)
         calendar.timeZone = TimeZone(identifier: snapshot.timeZoneID) ?? .gmt
-        return DetailStyle.date(snapshot.achievedAt, calendar: calendar)
-
+        guard full else { return DetailStyle.date(snapshot.achievedAt, calendar: calendar) }
+        return snapshot.achievedAt.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened, locale: L.locale, calendar: calendar, timeZone: calendar.timeZone))
     }
 
     static func duration(_ snapshot: AchievementSnapshot) -> String {
