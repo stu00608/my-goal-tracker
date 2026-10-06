@@ -10,7 +10,18 @@ struct AchievementConditionEditor: View {
     @Binding var deleting: ConditionGroup?
     @State private var initialized = false
 
+    let healthAccess: HealthConditionAccess
+    let onConnectHealth: () -> Void
+
     var body: some View {
+        if healthAccess.needsConnection {
+            Section {
+                Button(action: onConnectHealth) {
+                    Label(L.text("Connect Apple Health for more conditions"), systemImage: "heart.fill")
+                        .multilineTextAlignment(.leading).frame(minHeight: 44)
+                }.buttonStyle(.borderless).accessibilityIdentifier("conditions.healthSetup")
+            }
+        }
         if groups.count > 1 {
             Section {
                 Picker(L.text("Combine groups"), selection: $outerCombination) {
@@ -95,7 +106,7 @@ struct AchievementConditionEditor: View {
     @ViewBuilder private func addCondition(groupID: UUID, count: Int) -> some View {
         if count < ConditionGroup.limit {
             Menu {
-                ForEach(ConditionLeafKind.allCases) { kind in
+                ForEach(ConditionLeafKind.available(healthAccess: healthAccess)) { kind in
                     Button(L.text(kind.title)) { editing = ConditionEditorSelection(groupID: groupID, condition: nil, kind: kind) }
                         .accessibilityIdentifier("conditions.editor.add." + kind.rawValue)
                 }
@@ -137,6 +148,15 @@ struct ConditionEditorSelection: Identifiable {
 enum ConditionLeafKind: String, Identifiable, CaseIterable {
     case place, time, weekdays, steps, sleep
     var id: String { rawValue }
+    static func available(healthAccess: HealthConditionAccess) -> [Self] {
+        allCases.filter {
+            switch $0 {
+            case .steps: healthAccess.steps == .requested
+            case .sleep: healthAccess.sleep == .requested
+            default: true
+            }
+        }
+    }
     var title: String {
         switch self { case .place: "Place"; case .time: "Time range"; case .weekdays: "Weekdays"; case .steps: "Steps"; case .sleep: "Sleep" }
     }
@@ -218,7 +238,6 @@ struct AchievementLeafEditor: View {
             Picker(L.text("Calendar period"), selection: $window) {
                 ForEach(HealthWindow.allCases, id: \.self) { Text(ConditionLabels.window($0)).tag($0) }
             }.tint(.primary).accessibilityIdentifier("condition.health.window")
-            HealthConnectionView(keys: [HealthFactKey(metric: kind == .sleep ? .sleep : .steps, window: window)], onFailure: { error = $0 })
         }
     }
     private func clockBinding(_ minutes: Binding<Int>) -> Binding<Date> {

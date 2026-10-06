@@ -1,153 +1,70 @@
 import SwiftUI
+import Observation
 
-struct ConditionStatusView: View {
-    @Environment(\.scenePhase) private var scenePhase
-    let tracker: Tracker
-    var onFailure: (String) -> Void = { _ in }
-    @State private var health = HealthConditions.shared
-    @State private var observerOwner = UUID()
-    @State private var refreshQueued = false
-    private var clockID: String { String(describing: scenePhase) + ConditionPlan.signature(tracker) }
-    private var healthKeys: Set<HealthFactKey> { Set(tracker.resolvedConditionGroups.flatMap(\.conditions).compactMap(\.healthKey)) }
-    @State private var expanded = false
-    @State private var facts = ConditionFacts()
-    @State private var request: Task<Void, Never>?
-    @State private var generation = UUID()
-    @State private var locationAuthorized = false
+/// Keeps live checks independent of which lazy Form rows happen to be visible.
+@MainActor @Observable final class ConditionPreview {
+    private(set) var facts = ConditionFacts()
+    private(set) var now = Date()
+    private(set) var isRefreshing = false
+    private(set) var locationAuthorized = false
+    @ObservationIgnored private var tracker: Tracker?
+    @ObservationIgnored private var observerOwner = UUID()
+    @ObservationIgnored private var refreshQueued = false
+    @ObservationIgnored private var request: Task<Void, Never>?
+    @ObservationIgnored private var generation = UUID()
 
-    var body: some View {
-        if tracker.requiresConditionGate {
-            TimelineView(.everyMinute) { _ in
-                // Async facts can arrive after the scheduled tick; evaluate at render time.
-                let snapshot = RecordConditions.status(tracker: tracker, now: Date(), facts: facts)
-                VStack(alignment: .leading, spacing: 12) {
-                    DisclosureGroup(isExpanded: $expanded) {
-                        VStack(alignment: .leading, spacing: 16) {
-                            if tracker.resolvedConditionGroups.count > 1 {
-                                Text(L.text(tracker.resolvedOuterCombination == .all ? "All groups" : "Any group"))
-                                    .font(.subheadline).foregroundStyle(Color.secondary)
-                            }
-                            ForEach(Array(tracker.resolvedConditionGroups.enumerated()), id: \.element.id) { index, group in
-                                if let result = snapshot.groups.first(where: { $0.id == group.id }) {
-                                    VStack(alignment: .leading, spacing: 12) {
-                                        if tracker.resolvedConditionGroups.count > 1 {
-                                            statusRow(title: ConditionLabels.group(group, index: index), state: result.state, loading: result.loading)
-                                                .accessibilityIdentifier("conditions.group." + group.id.uuidString)
-                                            Text(ConditionLabels.combination(group.combination)).foregroundStyle(Color.secondary)
-                                        }
-                                        ForEach(group.conditions) { condition in
-                                            if let leaf = result.leaves.first(where: { $0.id == condition.id }) {
-                                                VStack(alignment: .leading, spacing: 4) {
-                                                    statusRow(title: ConditionLabels.leaf(condition), state: leaf.state, loading: leaf.loading)
-                                                    if let detail = leaf.detail { Text(L.text(detail)).foregroundStyle(Color.secondary).fixedSize(horizontal: false, vertical: true) }
-                                                    if let value = leaf.measurement, let key = condition.healthKey {
-                                                        Text(ConditionLabels.measurement(value, metric: key.metric)).monospacedDigit().foregroundStyle(Color.secondary).fixedSize(horizontal: false, vertical: true)
-                                                        if let date = leaf.measuredAt {
-                                                            Text(String(format: L.text("Read at %@"), locale: L.locale,
-                                                                date.formatted(Date.FormatStyle(date: .omitted, time: .shortened,
-                                                                    locale: L.locale, calendar: tracker.calendar, timeZone: tracker.calendar.timeZone))))
-                                                                .foregroundStyle(Color.secondary).fixedSize(horizontal: false, vertical: true)
-                                                        }
-                                                    }
-                                                }.accessibilityElement(children: .combine)
-                                                    .accessibilityIdentifier("conditions.leaf." + condition.id.uuidString)
-                                            }
-                                        }
-                                    }
-                                }
-                            }
-                            Text(L.text("Conditions use the current time, even for a backdated record.")).foregroundStyle(Color.secondary)
-                            if tracker.resolvedConditionGroups.flatMap(\.conditions).contains(where: \.isHealth) {
-                                Text(L.text("Based on readable Apple Health data so far in this calendar period. Sleep is clipped to the period, not grouped by wake-up."))
-                                    .foregroundStyle(Color.secondary)
-                            }
-                        }.font(.subheadline).padding(.top, 8)
-                    } label: {
-                        statusRow(title: L.text(snapshot.loading ? "Checking conditions…" : snapshot.state == .met ? "Conditions met" : snapshot.state == .unmet ? "Conditions not met" : "Cannot determine yet"), stateInTitle: true,
-                                  state: snapshot.state, loading: snapshot.loading)
-                            .accessibilityIdentifier("conditions.overall")
-                    }
-                    if !tracker.resolvedConditions.isEmpty && (!locationAuthorized || facts.locationIssue != nil) {
-                        Button(L.text("Check current location")) { refresh(location: true) }
-                            .buttonStyle(.borderless).disabled(request != nil).accessibilityIdentifier("conditions.checkLocation")
-                    }
-                }.padding(.vertical, 4)
-
-            }
-            .onAppear { start() }
-            .onChange(of: ConditionPlan.signature(tracker)) { _, _ in facts = ConditionFacts(); start() }
-            .onChange(of: health.revision) { _, _ in automaticRefresh() }
-            .task(id: clockID) {
-                guard scenePhase == .active else { return }
-                do {
-                    while !Task.isCancelled {
-                        let wait = 60 - Date().timeIntervalSince1970.truncatingRemainder(dividingBy: 60)
-                        try await Task.sleep(for: .seconds(wait))
-                        try Task.checkCancellation()
-                        automaticRefresh()
-                    }
-                } catch { }
-            }
-            .onChange(of: scenePhase) { _, phase in
-                if phase == .active { facts = ConditionFacts(); start() }
-                else { stop(); health.stopObserving(owner: observerOwner) }
-            }
-            .onDisappear { stop(); health.stopObserving(owner: observerOwner) }
-        }
+    func status(for tracker: Tracker) -> ConditionStatus {
+        RecordConditions.status(tracker: tracker, now: now, facts: facts)
     }
-    private func statusRow(title: String, stateInTitle: Bool = false, state: ConditionState, loading: Bool) -> some View {
-        HStack(alignment: .firstTextBaseline, spacing: 8) {
-            if loading { ProgressView().accessibilityHidden(true) }
-            else {
-                Image(systemName: state == .met ? "checkmark.circle.fill" : state == .unmet ? "xmark.circle.fill" : "questionmark.circle.fill")
-                    .foregroundStyle(state == .met ? Color.green : state == .unmet ? .orange : .secondary)
-                    .accessibilityHidden(true)
-            }
-            Text(title).foregroundStyle(Color.primary).fixedSize(horizontal: false, vertical: true)
-        }.accessibilityElement(children: .combine)
-            .accessibilityValue(stateInTitle ? "" : L.text(loading ? "Checking conditions…" : state == .met ? "Condition met" : state == .unmet ? "Condition not met" : "Condition unknown"))
+    var needsLocationCheck: Bool {
+        !(tracker?.resolvedConditions.isEmpty ?? true) && (!locationAuthorized || facts.locationIssue != nil)
     }
-    private func start() {
-        guard scenePhase == .active else { return }
-        health.observe(keys: healthKeys, owner: observerOwner)
+    func start(tracker: Tracker, reset: Bool = false) {
+        self.tracker = tracker
+        if reset { facts = ConditionFacts() }
+        let keys = Set(tracker.resolvedConditionGroups.flatMap(\.conditions).compactMap(\.healthKey))
+        HealthConditions.shared.observe(keys: keys, owner: observerOwner)
         refresh(allHealth: true)
     }
-    private func automaticRefresh() {
-        guard scenePhase == .active else { return }
+    func stop() {
+        cancelRequest()
+        HealthConditions.shared.stopObserving(owner: observerOwner)
+    }
+    func automaticRefresh() {
         if request != nil { refreshQueued = true; return }
         refresh(allHealth: true)
     }
-    private func stop() {
-        generation = UUID(); request?.cancel(); request = nil; refreshQueued = false
+    func checkLocation(onFailure: @escaping (String) -> Void) { refresh(location: true, onFailure: onFailure) }
+    private func cancelRequest() {
+        generation = UUID(); request?.cancel(); request = nil; refreshQueued = false; isRefreshing = false
         facts.loadingPlaces = false; facts.loadingHealth = []
     }
-    private func refresh(location: Bool = false, allHealth: Bool = false) {
-        stop()
+    private func refresh(location: Bool = false, allHealth: Bool = false, onFailure: @escaping (String) -> Void = { _ in }) {
+        guard let source = tracker else { return }
+        cancelRequest(); now = Date()
         let token = generation
-        let source = tracker
-        if let fixture = RecordConditions.previewFixture(tracker: source) { facts = fixture; return }
         if !source.resolvedConditions.isEmpty { locationAuthorized = RecordConditions.hasLocationAuthorization }
+        if let fixture = RecordConditions.previewFixture(tracker: source, now: now) { facts = fixture; return }
         let needed = allHealth ? source.resolvedConditionGroups.flatMap(\.conditions)
-            : ConditionEvaluation.neededLeaves(tracker: source, facts: facts, now: Date())
+            : ConditionEvaluation.neededLeaves(tracker: source, facts: facts, now: now)
         let keys = Set(needed.compactMap(\.healthKey))
-        let instant = Date()
         facts.loadingHealth = Set(keys.filter { key in
             guard let fact = facts.health[key] else { return true }
-            return fact.start != HealthConditionEvaluation.start(window: key.window, calendar: source.calendar, now: instant)
-                || !(0...300).contains(instant.timeIntervalSince(fact.through))
+            return fact.start != HealthConditionEvaluation.start(window: key.window, calendar: source.calendar, now: now)
+                || !(0...300).contains(now.timeIntervalSince(fact.through))
         })
-        facts.loadingPlaces = location
+        facts.loadingPlaces = location; isRefreshing = true
         request = Task {
             var checkingLocation = false
             defer {
                 if generation == token {
-                    request = nil; facts.loadingHealth = []; facts.loadingPlaces = false
+                    request = nil; isRefreshing = false; facts.loadingHealth = []; facts.loadingPlaces = false; now = Date()
                     if !source.resolvedConditions.isEmpty { locationAuthorized = RecordConditions.hasLocationAuthorization }
                     if refreshQueued { refreshQueued = false; automaticRefresh() }
                 }
             }
             do {
-                let health = try await HealthConditions.shared.read(keys: keys, tracker: source, now: Date())
+                let health = try await HealthConditions.shared.read(keys: keys, tracker: source, now: now)
                 try Task.checkCancellation()
                 guard generation == token else { return }
                 facts.health.merge(health) { _, fresh in fresh }
@@ -158,8 +75,7 @@ struct ConditionStatusView: View {
                     guard generation == token else { return }
                     facts.fix = fix; facts.locationIssue = nil
                 } else if facts.locationIssue == nil && ConditionEvaluation.canVerifyWithLocation(tracker: source, facts: facts, now: Date()) {
-                    checkingLocation = true
-                    facts.loadingPlaces = true
+                    checkingLocation = true; facts.loadingPlaces = true
                     if let fix = try await RecordConditions.checkAuthorizedLocation(tracker: source) {
                         try Task.checkCancellation()
                         guard generation == token else { return }
@@ -173,6 +89,116 @@ struct ConditionStatusView: View {
                 if location { onFailure(L.error(error)) }
             }
         }
+    }
+}
+
+struct ConditionPreviewUpdates: ViewModifier {
+    @Environment(\.scenePhase) private var scenePhase
+    let preview: ConditionPreview
+    let tracker: Tracker
+    private var signature: String { ConditionPlan.signature(tracker) + String(tracker.requiresConditionGate) }
+    private var clockID: String { String(describing: scenePhase) + signature }
+    func body(content: Content) -> some View {
+        content
+            .onAppear { if scenePhase == .active && tracker.requiresConditionGate { preview.start(tracker: tracker) } }
+            .onChange(of: signature) { _, _ in
+                if scenePhase == .active && tracker.requiresConditionGate { preview.start(tracker: tracker, reset: true) }
+                else { preview.stop() }
+            }
+            .onChange(of: HealthConditions.shared.revision) { _, _ in
+                if scenePhase == .active && tracker.requiresConditionGate { preview.automaticRefresh() }
+            }
+            .task(id: clockID) {
+                guard scenePhase == .active && tracker.requiresConditionGate else { return }
+                do {
+                    while !Task.isCancelled {
+                        let wait = 60 - Date().timeIntervalSince1970.truncatingRemainder(dividingBy: 60)
+                        try await Task.sleep(for: .seconds(wait))
+                        try Task.checkCancellation()
+                        preview.automaticRefresh()
+                    }
+                } catch { }
+            }
+            .onChange(of: scenePhase) { _, phase in
+                if phase == .active && tracker.requiresConditionGate { preview.start(tracker: tracker, reset: true) }
+                else { preview.stop() }
+            }
+            .onDisappear { preview.stop() }
+    }
+}
+
+struct ConditionStatusView: View {
+    let tracker: Tracker
+    let snapshot: ConditionStatus
+    let preview: ConditionPreview
+    var onFailure: (String) -> Void = { _ in }
+    @State private var expanded = false
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            DisclosureGroup(isExpanded: $expanded) {
+                VStack(alignment: .leading, spacing: 16) {
+                    if tracker.resolvedConditionGroups.count > 1 {
+                        Text(L.text(tracker.resolvedOuterCombination == .all ? "All groups" : "Any group"))
+                            .foregroundStyle(.secondary)
+                    }
+                    ForEach(Array(tracker.resolvedConditionGroups.enumerated()), id: \.element.id) { index, group in
+                        if let result = snapshot.groups.first(where: { $0.id == group.id }) {
+                            VStack(alignment: .leading, spacing: 12) {
+                                if tracker.resolvedConditionGroups.count > 1 {
+                                    Text(ConditionLabels.group(group, index: index)).fontWeight(.semibold)
+                                        .accessibilityIdentifier("conditions.group." + group.id.uuidString)
+                                    if group.conditions.count > 1 {
+                                        Text(ConditionLabels.combination(group.combination)).foregroundStyle(.secondary)
+                                    }
+                                }
+                                ForEach(group.conditions) { condition in
+                                    if let leaf = result.leaves.first(where: { $0.id == condition.id }) {
+                                        leafRow(condition: condition, status: leaf)
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }.font(.subheadline).padding(.top, 8)
+            } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    stateSymbol(snapshot.state, loading: snapshot.loading)
+                    Text(L.text(snapshot.loading ? "Checking conditions…" : snapshot.state == .met ? "Conditions met" : snapshot.state == .unmet ? "Conditions not met" : "Cannot determine yet"))
+                        .foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true)
+                }.accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("conditions.overall")
+            }
+            if preview.needsLocationCheck {
+                Button(L.text("Check current location")) { preview.checkLocation(onFailure: onFailure) }
+                    .buttonStyle(.borderless).disabled(preview.isRefreshing).frame(minHeight: 44)
+                    .accessibilityIdentifier("conditions.checkLocation")
+            }
+        }.padding(.vertical, 4)
+    }
+    private func stateSymbol(_ state: ConditionState, loading: Bool) -> some View {
+        Image(systemName: loading ? "questionmark.circle.fill" : state == .met ? "checkmark.circle.fill" : state == .unmet ? "xmark.circle.fill" : "questionmark.circle.fill")
+            .foregroundStyle(loading ? Color.secondary : state == .met ? .green : state == .unmet ? .orange : .secondary)
+            .accessibilityHidden(true)
+    }
+    private func leafRow(condition: AchievementCondition, status: ConditionLeafStatus) -> some View {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(ConditionLabels.leaf(condition)).foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true)
+                if let value = status.measurement, let key = condition.healthKey {
+                    Text(ConditionLabels.measurement(value, metric: key.metric)).monospacedDigit().foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+            }.frame(maxWidth: .infinity, alignment: .leading)
+            stateSymbol(status.state, loading: status.loading)
+        }.accessibilityElement(children: .ignore)
+            .accessibilityLabel(ConditionLabels.leaf(condition) + measurementLabel(condition: condition, status: status))
+            .accessibilityValue(L.text(status.loading ? "Checking conditions…" : status.state == .met ? "Condition met" : status.state == .unmet ? "Condition not met" : "Condition unknown"))
+            .accessibilityIdentifier("conditions.leaf." + condition.id.uuidString)
+    }
+    private func measurementLabel(condition: AchievementCondition, status: ConditionLeafStatus) -> String {
+        guard let value = status.measurement, let key = condition.healthKey else { return "" }
+        return ", " + ConditionLabels.measurement(value, metric: key.metric)
     }
 }
 

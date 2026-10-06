@@ -7,6 +7,7 @@ import MapKit
 struct TrackerEditor: View {
     @Environment(AppStore.self) private var store
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     var existing: Tracker?
     @State private var newTracker = Tracker(name: "", kind: .number)
@@ -34,6 +35,8 @@ struct TrackerEditor: View {
     @State private var reminder: Reminder?
     @State private var groups: [ConditionGroup] = []
     @State private var editingCondition: ConditionEditorSelection?
+    @State private var healthSettings = false
+    @State private var healthAccess = HealthConditionAccess()
     @State private var deletingGroup: ConditionGroup?
     @State private var combination = ConditionCombination.any
     @State private var gateSave = false
@@ -51,8 +54,6 @@ struct TrackerEditor: View {
     @State private var deleteTracker = false
     @State private var initialized = false
     @State private var keyboard = EditorKeyboardControl()
-
-    private var healthKeys: Set<HealthFactKey> { Set(groups.flatMap(\.conditions).compactMap(\.healthKey)) }
 
     var body: some View {
         NavigationStack {
@@ -77,8 +78,7 @@ struct TrackerEditor: View {
                         LabeledContent(L.text("Appearance")) { Text(backgroundSummary).foregroundStyle(.primary) }
                     }.accessibilityIdentifier("tracker.appearance")
                     NavigationLink { editorPage("Achievement conditions") {
-                        AchievementConditionEditor(groups: $groups, outerCombination: $combination, gateSave: $gateSave, editing: $editingCondition, deleting: $deletingGroup)
-                        if !healthKeys.isEmpty { Section { HealthConnectionView(keys: healthKeys, onFailure: { error = $0 }) } }
+                        AchievementConditionEditor(groups: $groups, outerCombination: $combination, gateSave: $gateSave, editing: $editingCondition, deleting: $deletingGroup, healthAccess: healthAccess, onConnectHealth: { endEditing(); healthSettings = true })
                     }
                     .confirmationDialog(L.text("Delete this group and its conditions?"), isPresented: Binding(get: { deletingGroup != nil }, set: { if !$0 { deletingGroup = nil } }), titleVisibility: .visible) {
                         Button(L.text("Delete group"), role: .destructive) {
@@ -132,6 +132,7 @@ struct TrackerEditor: View {
             .fullScreenCover(item: $photoPresentation) { selection in
                 PhotoViewer(photos: selection.photos, initialIndex: selection.initialIndex)
             }
+            .sheet(isPresented: $healthSettings) { HealthSettingsSheet() }
             .sheet(item: $photoRemoval) { removalSheet($0) }
             .confirmationDialog(L.text("Delete this tracker and all its records?"), isPresented: $deleteTracker, titleVisibility: .visible) {
                 Button(L.text("Delete tracker"), role: .destructive) {
@@ -153,7 +154,18 @@ struct TrackerEditor: View {
                 }
             }
 
-        }.onDisappear { photoTask?.cancel() }
+        }
+        .task(id: String(describing: scenePhase) + String(HealthConditions.shared.revision)) {
+            guard scenePhase == .active else { return }
+            do { healthAccess = try await HealthConditions.shared.conditionAccess() }
+            catch is CancellationError { }
+            catch {
+                if healthAccess.steps != .requested && healthAccess.sleep != .requested {
+                    healthAccess = HealthConditionAccess(steps: .requestNeeded, sleep: .requestNeeded)
+                }
+            }
+        }
+        .onDisappear { photoTask?.cancel() }
     }
 
     private var metadataSection: some View {

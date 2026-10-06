@@ -30,6 +30,7 @@ struct EntryEditor: View {
     @State private var saveTask: Task<Void, Never>?
     @State private var saving = false
     @State private var gatePending = false
+    @State private var conditionPreview = ConditionPreview()
     @State private var draftEntry = Entry(occurredAt: Date(), localDay: "")
     @State private var pendingMutation: PendingEntryMutation?
     @State private var confirmingOrphan = false
@@ -75,7 +76,10 @@ struct EntryEditor: View {
                     .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 8, trailing: 20))
                     .disabled(saving)
                 if currentTracker.requiresConditionGate {
-                    Section(L.text("Achievement conditions")) { ConditionStatusView(tracker: currentTracker, onFailure: { error = $0 }) }
+                    Section(L.text("Achievement conditions")) {
+                        ConditionStatusView(tracker: currentTracker, snapshot: conditionPreview.status(for: currentTracker),
+                                            preview: conditionPreview, onFailure: { error = $0 })
+                    }
                 }
                 Section {
                     DatePicker(L.text("Date"), selection: Binding(get: { date }, set: { endEditing(); date = $0; dateEdited = true }), in: ...Date(), displayedComponents: tracker.kind == .number ? [.date, .hourAndMinute] : [.date])
@@ -105,6 +109,7 @@ struct EntryEditor: View {
                     Section { Button(L.text("Delete record"), role: .destructive) { deleting = true }.accessibilityIdentifier("entry.delete").disabled(saving) }
                 }
             }
+            .modifier(ConditionPreviewUpdates(preview: conditionPreview, tracker: currentTracker))
             .listSectionSpacing(16)
             .statusToast(message: $error, identifier: "editor.error", autoDismiss: false)
             .scrollDismissesKeyboard(.interactively)

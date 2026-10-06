@@ -34,6 +34,7 @@ struct SettingsView: View {
     @AppStorage("numericInputMode", store: L.defaults) private var numericInputMode = NumericEntryMode.direct.rawValue
     @AppStorage("remindersEnabled", store: L.defaults) private var remindersEnabled = true
     @AppStorage("firstWeekday", store: L.defaults) private var firstWeekday = 1
+    @State private var healthSettings = false
     @State private var syncingReminders = false
     @State private var exportNames = ExportNameGenerator()
     @State private var exportFilename = ""
@@ -74,6 +75,14 @@ struct SettingsView: View {
                     Text(L.text("Applies to new records only. You can change it for each record. Location is requested when you save."))
                 }
                 Section {
+                    // Opens a sheet, so no push chevron.
+                    Button { healthSettings = true } label: {
+                        Label { Text(L.text("Apple Health")).foregroundStyle(.primary) } icon: {
+                            Image(systemName: "heart.fill").foregroundStyle(.pink)
+                        }.frame(minHeight: 44)
+                    }.accessibilityIdentifier("settings.health")
+                }
+                Section {
                     Toggle(L.text("Enable reminders"), isOn: $remindersEnabled)
                         .disabled(syncingReminders).accessibilityIdentifier("settings.remindersEnabled")
                 } header: { Text(L.text("Reminders")) } footer: {
@@ -104,6 +113,7 @@ struct SettingsView: View {
             .statusToast(message: $error, identifier: "settings.error", autoDismiss: false)
             .sensoryFeedback(.error, trigger: error) { _, error in error != nil }
             .navigationTitle(L.text("Settings"))
+            .sheet(isPresented: $healthSettings) { HealthSettingsSheet() }
             #if DEBUG && targetEnvironment(simulator)
             .onAppear {
                 if ProcessInfo.processInfo.arguments.contains("--uitesting") && ProcessInfo.processInfo.arguments.contains("--backup-confirmation-fixture") {
