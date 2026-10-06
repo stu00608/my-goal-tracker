@@ -18,12 +18,7 @@ struct ReminderScheduleEditor: View {
                 if enabled {
                     DatePicker(L.text("Time"), selection: $time, displayedComponents: .hourAndMinute)
                         .accessibilityIdentifier("reminder.time")
-                    ForEach(WeekdayOrder.days(starting: L.firstWeekday), id: \.self) { day in
-                        Toggle(L.locale.calendar.weekdaySymbols[day - 1], isOn: Binding(
-                            get: { weekdays.contains(day) },
-                            set: { if $0 { weekdays.insert(day) } else { weekdays.remove(day) }; update() }
-                        )).accessibilityIdentifier("reminder.weekday.\(day)")
-                    }
+                    WeekdaySelector(weekdays: $weekdays, identifier: "reminder.weekday")
                     if weekdays.isEmpty {
                         Text(L.text("Choose at least one weekday.")).foregroundStyle(.red)
                     }
@@ -42,6 +37,7 @@ struct ReminderScheduleEditor: View {
         }
         .onChange(of: enabled) { _, _ in update() }
         .onChange(of: time) { _, _ in update() }
+        .onChange(of: weekdays) { _, _ in update() }
     }
     private func update() {
         guard initialized else { return }
