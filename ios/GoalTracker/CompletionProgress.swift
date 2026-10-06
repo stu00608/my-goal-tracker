@@ -5,28 +5,34 @@ import Charts
     let tracker: Tracker
     let now: Date
     private let calendarContent: CalendarContent
+    let editGoal: () -> Void
     @State private var presentation = CompletionPresentation.calendar
 
-    init(tracker: Tracker, now: Date, @ViewBuilder calendar: () -> CalendarContent) {
+    init(tracker: Tracker, now: Date, editGoal: @escaping () -> Void, @ViewBuilder calendar: () -> CalendarContent) {
         self.tracker = tracker
         self.now = now
         calendarContent = calendar()
+        self.editGoal = editGoal
     }
 
     var body: some View {
-        Group {
-            Section {
+        Section {
+            VStack(alignment: .leading, spacing: 16) {
                 Picker(L.text("Progress view"), selection: $presentation) {
                     ForEach(CompletionPresentation.allCases, id: \.self) { option in
                         Text(L.text(option.title)).tag(option)
                     }
-                }.pickerStyle(.menu).accessibilityIdentifier("completion.view")
-            }
-            switch presentation {
-            case .calendar: calendarContent
-            case .barChart: barChart
-            case .progressBar: progressBar
-            }
+                }.pickerStyle(.segmented).accessibilityIdentifier("completion.view")
+                switch presentation {
+                case .calendar: calendarContent
+                case .barChart: barChart
+                case .progressBar: progressBar
+                }
+                let full = tracker.frequencyHistory(until: now).filter { !$0.3 && $0.0.end <= now }
+                if !full.isEmpty {
+                    LabeledContent(L.text("Full-period success rate"), value: (Double(full.filter { $0.1 >= $0.2 }.count) / Double(full.count)).formatted(.percent.precision(.fractionLength(0)).locale(L.locale))).monospacedDigit()
+                }
+            }.padding(.vertical, 8)
         }
         .environment(\.calendar, tracker.calendar)
         .environment(\.timeZone, tracker.calendar.timeZone)
@@ -39,23 +45,27 @@ import Charts
         let labels = periods.enumerated().compactMap { index, period in
             index % step == 0 || index == periods.count - 1 ? period.interval.start : nil
         }
-        return Section(L.text("Completion history")) {
-            VStack(alignment: .leading, spacing: 12) {
+        return VStack(alignment: .leading, spacing: 12) {
+            if periods.allSatisfy({ $0.count == 0 }) {
+                ContentUnavailableView(L.text("No completion records in this period."), systemImage: "calendar")
+                    .frame(minHeight: DetailStyle.chartHeight).accessibilityIdentifier("completion.chart")
+            } else {
                 Chart(periods) { period in
                     BarMark(x: .value(L.text("Period"), period.interval.start), y: .value(L.text("Recorded completions"), period.count))
                         .foregroundStyle(TrackerColors.accent)
                         .annotation(position: .top) {
-                            if period.partial {
+                            if period.partial && period.count > 0 {
                                 Image(systemName: "circle.lefthalf.filled").font(.caption)
-                                    .foregroundStyle(TrackerColors.secondaryText).accessibilityLabel(L.text("Partial period"))
+                                    .foregroundStyle(.secondary).accessibilityLabel(L.text("Partial period"))
                             }
                         }
                     if let target = period.target {
                         PointMark(x: .value(L.text("Period"), period.interval.start), y: .value(L.text("Target"), target))
-                            .symbol(.diamond).symbolSize(45).foregroundStyle(TrackerColors.secondaryText)
+                            .symbol(.diamond).symbolSize(45).foregroundStyle(.secondary)
                     }
                 }
-                .frame(height: 240)
+                .frame(height: DetailStyle.chartHeight)
+                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
                 .chartYScale(domain: 0...max(maximum + 1, 1))
                 .chartXAxis {
                     AxisMarks(values: labels) { value in
@@ -73,7 +83,7 @@ import Charts
                 .accessibilityIdentifier("completion.chart")
                 .accessibilityChildren {
                     ForEach(periods) { period in
-                        Text(period.interval.start, format: .dateTime.year().month().day())
+                        Text(DetailStyle.date(period.interval.start, calendar: tracker.calendar, now: now))
                         Text(countLabel(period))
                         if period.partial { Text(L.text("Partial period")) }
                     }
@@ -81,12 +91,9 @@ import Charts
                 ViewThatFits(in: .horizontal) {
                     HStack(spacing: 16) { legend(periods) }
                     VStack(alignment: .leading, spacing: 8) { legend(periods) }
-                }.font(.caption).foregroundStyle(TrackerColors.secondaryText)
-                if periods.allSatisfy({ $0.count == 0 }) {
-                    Text(L.text("No completion records in this period.")).foregroundStyle(TrackerColors.secondaryText)
-                }
+                }.font(.caption).foregroundStyle(.secondary)
                 if periods.allSatisfy({ $0.target == nil }) {
-                    Text(L.text("Weekly recorded completions")).font(.caption).foregroundStyle(TrackerColors.secondaryText)
+                    Text(L.text("Weekly recorded completions")).font(.caption).foregroundStyle(.secondary)
                 }
             }
         }
@@ -99,33 +106,28 @@ import Charts
     }
 
     private var progressBar: some View {
-        Section(L.text("Progress")) {
-            VStack(alignment: .leading, spacing: 10) {
-                if let period = CompletionProgressData.current(for: tracker, now: now) {
-                    ProgressView(value: period.fraction) {
-                        HStack {
-                            Text(L.text(period.period == .weekly ? "This week" : "This month"))
-                            Spacer()
-                            Text(countLabel(period)).monospacedDigit()
-                        }
-                    }
-                    .progressViewStyle(.linear)
-                    .accessibilityLabel(L.text(period.period == .weekly ? "This week" : "This month") + ": " + L.text("Recorded completions"))
-                    .accessibilityValue(countLabel(period))
-                    .accessibilityIdentifier("completion.progress")
+        VStack(alignment: .leading, spacing: 12) {
+            if let period = CompletionProgressData.current(for: tracker, now: now) {
+                ProgressView(value: period.fraction) {
                     HStack {
-                        Text(period.interval.start, format: .dateTime.year().month().day())
-                        Text("–")
-                        Text(tracker.calendar.date(byAdding: .day, value: -1, to: period.interval.end) ?? period.interval.start, format: .dateTime.year().month().day())
-                    }.font(.caption).foregroundStyle(TrackerColors.secondaryText)
-                    if period.partial {
-                        Label(L.text("Partial period"), systemImage: "circle.lefthalf.filled").font(.caption).foregroundStyle(TrackerColors.secondaryText)
+                        Text(L.text(period.period == .weekly ? "This week" : "This month"))
+                        Spacer()
+                        Text(countLabel(period)).monospacedDigit()
                     }
-                    if period.count == 0 { Text(L.text("No completion records in this period.")).foregroundStyle(TrackerColors.secondaryText) }
-                } else {
-                    Text(L.text("No completion goal")).font(.headline).accessibilityIdentifier("completion.progress")
-                    Text(L.text("Use Edit tracker in the menu to set a weekly or monthly goal.")).foregroundStyle(TrackerColors.secondaryText)
                 }
+                .progressViewStyle(.linear)
+                .accessibilityLabel(L.text(period.period == .weekly ? "This week" : "This month") + ": " + L.text("Recorded completions"))
+                .accessibilityValue(countLabel(period))
+                .accessibilityIdentifier("completion.progress")
+                HStack {
+                    Text(DetailStyle.date(period.interval.start, calendar: tracker.calendar, now: now))
+                    Text("–")
+                    Text(DetailStyle.date(tracker.calendar.date(byAdding: .day, value: -1, to: period.interval.end) ?? period.interval.start, calendar: tracker.calendar, now: now))
+                }.font(.caption).foregroundStyle(.secondary)
+                if period.count == 0 { Text(L.text("No completion records in this period.")).foregroundStyle(.secondary) }
+            } else {
+                Text(L.text("No completion goal")).font(.headline).accessibilityIdentifier("completion.progress")
+                Button(L.text("Set a goal"), action: editGoal).buttonStyle(.borderless).accessibilityIdentifier("completion.setGoal")
             }
         }
     }

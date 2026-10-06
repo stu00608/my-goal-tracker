@@ -108,15 +108,17 @@ nonisolated final class ExpansionTests: XCTestCase {
         let app = launch()
         app.tabBars.buttons.element(boundBy: 1).tap()
         button(app, prefix: "tracker.", text: "SCORE").tap()
+        for _ in 0..<10 { if app.staticTexts["tracker.description"].isHittable { break }; app.swipeUp() }
         XCTAssertTrue(app.staticTexts["tracker.description"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.buttons["tracker.website"].exists)
         let photo = app.buttons["tracker.photo.0"]
+        for _ in 0..<4 { if photo.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(photo.waitForExistence(timeout: 10)); photo.tap()
         XCTAssertTrue(app.buttons["photo.close"].waitForExistence(timeout: 10))
         screenshot(app, "Tracker-owned photo opens full screen")
         app.buttons["photo.close"].tap()
         let view = app.segmentedControls["snapshot.view"]
-        for _ in 0..<8 { if view.isHittable { break }; app.swipeUp() }
+        for _ in 0..<8 { if view.isHittable { break }; app.swipeDown() }
         XCTAssertTrue(view.waitForExistence(timeout: 10)); view.buttons["Goal progress"].tap()
         XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "snapshot.progress").firstMatch.waitForExistence(timeout: 10))
         app.swipeUp()
@@ -282,10 +284,9 @@ nonisolated final class ExpansionTests: XCTestCase {
         screenshot(app, "Exact bounds exclude collapsed huge value from overview")
         app.tabBars.buttons.element(boundBy: 1).tap()
         button(app, prefix: "tracker.", text: "SCORE").tap()
-        let period = app.buttons["snapshot.period"]
+        let period = app.segmentedControls["snapshot.period"]
         for _ in 0..<10 { if period.isHittable { break }; app.swipeUp() }
-        XCTAssertTrue(period.waitForExistence(timeout: 10)); period.tap()
-        app.buttons["30 days"].tap()
+        XCTAssertTrue(period.waitForExistence(timeout: 10)); period.buttons["30 days"].tap()
         let notice = app.staticTexts["snapshot.clipped"]
         for _ in 0..<8 { if notice.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(notice.waitForExistence(timeout: 10))
