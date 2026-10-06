@@ -245,6 +245,11 @@ struct EditorKeyboardDismissal: UIViewRepresentable {
             var view = touch.view
             while let current = view {
                 if current is UITextField || current is UITextView || current is UIInputView || current is ValueGestureSurface.Surface { return false }
+                // Native buttons own their taps; resigning focus here can consume row selection.
+                if current.accessibilityTraits.contains(.button) { return false }
+                if current.accessibilityElementCount() == 1,
+                   let action = current.accessibilityElement(at: 0) as? NSObject,
+                   action.accessibilityTraits.contains(.button) { return false }
                 view = current.superview
             }
             if let host, containsInput(at: touch.location(in: host), in: host) { return false }

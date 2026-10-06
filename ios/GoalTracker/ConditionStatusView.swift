@@ -135,7 +135,7 @@ struct ConditionStatusView: View {
     @State private var expanded = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        Group {
             DisclosureGroup(isExpanded: $expanded) {
                 VStack(alignment: .leading, spacing: 16) {
                     if tracker.resolvedConditionGroups.count > 1 {
@@ -174,7 +174,7 @@ struct ConditionStatusView: View {
                     .buttonStyle(.borderless).disabled(preview.isRefreshing).frame(minHeight: 44)
                     .accessibilityIdentifier("conditions.checkLocation")
             }
-        }.padding(.vertical, 4)
+        }
     }
     private func stateSymbol(_ state: ConditionState, loading: Bool) -> some View {
         Image(systemName: loading ? "questionmark.circle.fill" : state == .met ? "checkmark.circle.fill" : state == .unmet ? "xmark.circle.fill" : "questionmark.circle.fill")

@@ -284,9 +284,24 @@ struct TrackerContextMenu: View {
 
 private struct TodayDateSubtitle: ViewModifier {
     let date: Date?
+    @Environment(\.dynamicTypeSize) private var textSize
     @ViewBuilder func body(content: Content) -> some View {
         if #available(iOS 26, *), let date {
-            content.navigationSubtitle(date.formatted(Date.FormatStyle(locale: L.locale).month().day().weekday()))
+            if textSize.isAccessibilitySize {
+                content.toolbar {
+                    ToolbarItem(placement: .principal) {
+                        VStack(spacing: 2) {
+                            Text(L.text("Today")).font(.headline)
+                            Text(date.formatted(Date.FormatStyle(locale: L.locale).month().day().weekday()))
+                                .font(.caption).foregroundStyle(.secondary)
+                        }.dynamicTypeSize(...DynamicTypeSize.xLarge)
+                            .accessibilityElement(children: .combine)
+                            .accessibilityIdentifier("today.title.date")
+                    }
+                }
+            } else {
+                content.navigationSubtitle(date.formatted(Date.FormatStyle(locale: L.locale).month().day().weekday()))
+            }
         } else { content }
     }
 }
