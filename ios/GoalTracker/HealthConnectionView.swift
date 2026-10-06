@@ -14,7 +14,7 @@ struct HealthSettingsSheet: View {
         NavigationStack {
             ScrollView {
                 VStack(alignment: .leading, spacing: 24) {
-                    Image(systemName: "heart.fill").font(.system(size: 44)).foregroundStyle(.pink).accessibilityHidden(true)
+                    Image(systemName: "heart.fill").font(.largeTitle).foregroundStyle(.pink).accessibilityHidden(true)
                     Text(L.text("Use steps and sleep to check your goal conditions."))
                         .font(.title3.weight(.semibold)).fixedSize(horizontal: false, vertical: true)
                     Text(L.text("Goalooker only reads health data. It never writes to Apple Health."))

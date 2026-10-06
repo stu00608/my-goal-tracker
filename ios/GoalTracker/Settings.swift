@@ -75,11 +75,10 @@ struct SettingsView: View {
                     Text(L.text("Applies to new records only. You can change it for each record. Location is requested when you save."))
                 }
                 Section {
+                    // Opens a sheet, so no push chevron.
                     Button { healthSettings = true } label: {
-                        HStack {
-                            Label(L.text("Apple Health"), systemImage: "heart.fill").foregroundStyle(.primary)
-                            Spacer()
-                            Image(systemName: "chevron.right").font(.caption).foregroundStyle(.secondary)
+                        Label { Text(L.text("Apple Health")).foregroundStyle(.primary) } icon: {
+                            Image(systemName: "heart.fill").foregroundStyle(.pink)
                         }.frame(minHeight: 44)
                     }.accessibilityIdentifier("settings.health")
                 }

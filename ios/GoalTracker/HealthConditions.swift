@@ -100,8 +100,10 @@ nonisolated struct HealthConditionAccess {
         switch status { case .shouldRequest: return .requestNeeded; case .unnecessary: return .requested; default: return .requestNeeded }
     }
     func conditionAccess() async throws -> HealthConditionAccess {
-        let steps = try await setup(keys: [HealthFactKey(metric: .steps, window: .day)])
-        let sleep = try await setup(keys: [HealthFactKey(metric: .sleep, window: .day)])
+        // Each type fails independently so a sleep query error cannot hide configured steps.
+        let steps = (try? await setup(keys: [HealthFactKey(metric: .steps, window: .day)])) ?? .requestNeeded
+        try Task.checkCancellation()
+        let sleep = (try? await setup(keys: [HealthFactKey(metric: .sleep, window: .day)])) ?? .requestNeeded
         return HealthConditionAccess(steps: steps, sleep: sleep)
     }
     func observe(keys: Set<HealthFactKey>, owner: UUID) {
