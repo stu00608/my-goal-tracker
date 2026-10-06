@@ -17,7 +17,7 @@ struct DashboardView: View {
     @AppStorage("homeLayout") private var homeLayout = "grid"
     @Environment(\.colorScheme) private var colorScheme
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @State private var dailyControlCenters: [UUID: CGPoint] = [:]
+    @ScaledMetric(relativeTo: .title2) private var dailyControlTextInset = CardLayout.dailyControlTextInset
     private var active: [Tracker] { trackers.filter { !$0.archived } }
     private var grid: Bool { homeLayout != "list" && !dynamicTypeSize.isAccessibilitySize }
 
@@ -53,21 +53,18 @@ struct DashboardView: View {
         .buttonStyle(.plain)
         .accessibilityHint(L.text("Record progress"))
         .accessibilityIdentifier("card." + tracker.id.uuidString)
-        .coordinateSpace(name: tracker.id)
-        .onPreferenceChange(DailyControlPositions.self) { positions in
-            if dailyControlCenters[tracker.id] != positions[tracker.id] { dailyControlCenters[tracker.id] = positions[tracker.id] }
-        }
-        // Equatable, pixel-aligned geometry keeps stateful controls outside anchor layout feedback.
-        .overlay {
+        .overlayPreferenceValue(DailyControlAnchor.self) { anchor in
             if tracker.kind == .daily {
                 GeometryReader { geometry in
+                    let bounds = anchor.map { geometry[$0] }
                     let fallbackY: CGFloat = row.resolvedBackground == .map ? CardLayout.hiddenControlInset : geometry.size.height - CardLayout.hiddenControlInset
                     DailyCompletionButton(tracker: tracker, now: now,
                         recordLocationByDefault: recordLocationByDefault,
                         cancelForPresentation: cancelForPresentation,
                         onEditor: onRecord, onBegin: onBegin, onFailure: onFailure)
                         .tint(completionTint(row))
-                        .position(dailyControlCenters[tracker.id] ?? CGPoint(x: geometry.size.width - CardLayout.hiddenControlInset, y: fallbackY))
+                        .position(x: bounds.map { $0.maxX - dailyControlTextInset / 2 + 2 } ?? geometry.size.width - CardLayout.hiddenControlInset,
+                                  y: bounds?.midY ?? fallbackY)
                 }
             }
         }

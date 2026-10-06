@@ -497,7 +497,8 @@ nonisolated final class MilestoneFlows: XCTestCase {
                 let app = launch(extra: ["--condition-gate=unmet"], language: language, dark: dark, large: large)
                 let card = button(app, prefix: "card.", name: "GROUPED")
                 let action = button(app, prefix: "complete.", name: "GROUPED")
-                reveal(app, action); let before = card.frame
+                reveal(app, action)
+                let before = card.frame
                 action.tap()
                 let toast = app.staticTexts["home.conditions.error"]
                 XCTAssertTrue(toast.waitForExistence(timeout: 10))
