@@ -13,9 +13,9 @@ struct HealthConnectionView: View {
     private var signature: String { keys.map { $0.metric.rawValue }.sorted().joined(separator: ",") + String(describing: scenePhase) }
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 8) {
+        VStack(alignment: .leading, spacing: 16) {
             HStack(alignment: .firstTextBaseline) {
-                Label(L.text("Apple Health"), systemImage: "heart.fill").font(.subheadline.weight(.semibold))
+                Label(L.text("Apple Health"), systemImage: "heart.fill").font(.subheadline.weight(.semibold)).foregroundStyle(.primary)
                 Spacer(minLength: 8)
                 if setup == .requested {
                     Button { guidance = true } label: { Image(systemName: "info.circle").frame(minWidth: 44, minHeight: 44) }
@@ -27,16 +27,16 @@ struct HealthConnectionView: View {
             case .checking: ProgressView(L.text("Checking health access…"))
             case .requestNeeded:
                 Text(L.text("Connect to use the health data selected for your conditions. Only the selected types are requested."))
-                    .font(.caption).foregroundStyle(.secondary)
+                    .font(.subheadline).foregroundStyle(.secondary)
                 Button(L.text("Connect Apple Health"), action: connect)
                     .buttonStyle(.borderless).disabled(connecting).frame(minHeight: 44)
                     .accessibilityIdentifier("health.connect")
                 if connecting { ProgressView() }
             case .requested:
                 Label(L.text("Automatically reads available data"), systemImage: "arrow.triangle.2.circlepath")
-                    .font(.caption).foregroundStyle(.secondary).accessibilityIdentifier("health.configured")
+                    .font(.subheadline).foregroundStyle(.secondary).accessibilityIdentifier("health.configured")
             case .unavailable:
-                Text(L.text("Apple Health is unavailable on this device.")).font(.caption).foregroundStyle(.secondary)
+                Text(L.text("Apple Health is unavailable on this device.")).font(.subheadline).foregroundStyle(.secondary)
             }
         }
         .task(id: signature) {
@@ -49,7 +49,7 @@ struct HealthConnectionView: View {
         .sheet(isPresented: $guidance) {
             NavigationStack {
                 ScrollView {
-                    VStack(alignment: .leading, spacing: 20) {
+                    VStack(alignment: .leading, spacing: 16) {
                         Label(L.text("Apple Health"), systemImage: "heart.fill").font(.title2.weight(.semibold))
                         Text(L.text("In Apple Health, tap your profile, then Apps and Goalooker to review steps and sleep read access."))
                         Text(L.text("No readable samples can mean there is no data yet or read access is off. Apple Health keeps these cases private; Goalooker never assumes zero."))

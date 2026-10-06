@@ -147,6 +147,9 @@ nonisolated final class FeatureTests: XCTestCase {
         let goal = element(app, prefix: "tracker.", name: "每月出社")
         XCTAssertTrue(goal.waitForExistence(timeout: 10)); goal.tap()
         app.buttons["tracker.menu"].tap(); if app.buttons["Edit tracker"].waitForExistence(timeout: 1) { app.buttons["Edit tracker"].tap() }
+        let appearance = app.buttons["tracker.appearance"]
+        for _ in 0..<15 { if appearance.isHittable { break }; app.swipeUp() }
+        appearance.tap()
         let position = app.descendants(matching: .any).matching(identifier: "card.textPosition").firstMatch
         for _ in 0..<15 { if position.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(position.isHittable); position.tap()
@@ -503,7 +506,7 @@ nonisolated final class FeatureTests: XCTestCase {
         let name = app.textFields["tracker.name"]
         XCTAssertTrue(name.waitForExistence(timeout: 10)); name.tap(); name.typeText("FOCUS")
         XCTAssertEqual(name.value as? String, "FOCUS")
-        app.staticTexts["Tracker"].firstMatch.tap()
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.3)).tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 10))
         let unit = app.textFields["tracker.unit"]
         unit.tap(); unit.typeText("points")

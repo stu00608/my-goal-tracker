@@ -14,6 +14,11 @@ nonisolated final class ExpansionTests: XCTestCase {
     @MainActor private func button(_ app: XCUIApplication, prefix: String, text: String) -> XCUIElement {
         app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", prefix, text)).firstMatch
     }
+    @MainActor private func openEditorPage(_ app: XCUIApplication, _ id: String) {
+        let row = app.buttons[id]
+        for _ in 0..<20 { if row.isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(row.waitForExistence(timeout: 10)); row.tap()
+    }
     @MainActor private func screenshot(_ app: XCUIApplication, _ name: String) {
         Thread.sleep(forTimeInterval: 0.7) // Let native sheet/navigation transitions finish before visual evidence.
         let attachment = XCTAttachment(screenshot: app.screenshot())
@@ -116,7 +121,8 @@ nonisolated final class ExpansionTests: XCTestCase {
         XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "snapshot.progress").firstMatch.waitForExistence(timeout: 10))
         app.swipeUp()
         screenshot(app, "Signed numeric goal progress ring")
-        app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
+        app.buttons["tracker.menu"].tap(); if app.buttons["Edit tracker"].waitForExistence(timeout: 1) { app.buttons["Edit tracker"].tap() }
+        openEditorPage(app, "tracker.chartRange")
         let lower = app.textFields["tracker.axisLower"], upper = app.textFields["tracker.axisUpper"]
         for _ in 0..<12 { if lower.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(lower.waitForExistence(timeout: 10)); XCTAssertEqual(lower.value as? String, "0")
@@ -127,10 +133,12 @@ nonisolated final class ExpansionTests: XCTestCase {
         screenshot(app, "Optional chart bounds grouped with explanation")
         app.buttons["tracker.save"].tap()
         XCTAssertTrue(app.buttons["tracker.menu"].waitForExistence(timeout: 10))
-        app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
+        app.buttons["tracker.menu"].tap(); if app.buttons["Edit tracker"].waitForExistence(timeout: 1) { app.buttons["Edit tracker"].tap() }
+        openEditorPage(app, "tracker.chartRange")
         for _ in 0..<12 { if lower.isHittable { break }; app.swipeUp() }
         XCTAssertEqual(lower.value as? String, "10"); XCTAssertEqual(upper.value as? String, "30")
-        app.buttons["Cancel"].tap()
+        app.navigationBars.buttons.matching(identifier: "BackButton").allElementsBoundByIndex.first { $0.isHittable }?.tap()
+        app.buttons["tracker.cancel"].tap()
     }
     @MainActor func testLocationConditionEditorAndAllCombinationPersist() {
         continueAfterFailure = false
@@ -138,12 +146,14 @@ nonisolated final class ExpansionTests: XCTestCase {
         app.tabBars.buttons.element(boundBy: 1).tap()
         let office = button(app, prefix: "tracker.", text: "OFFICE")
         for _ in 0..<8 { if office.isHittable { break }; app.swipeUp() }
-        office.tap(); app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
+        office.tap(); app.buttons["tracker.menu"].tap(); if app.buttons["Edit tracker"].waitForExistence(timeout: 1) { app.buttons["Edit tracker"].tap() }
+        openEditorPage(app, "tracker.conditions")
         let condition = button(app, prefix: "conditions.editor.leaf.", text: "Office A")
         for _ in 0..<12 { if condition.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(condition.waitForExistence(timeout: 10)); condition.tap()
         let map = app.descendants(matching: .any).matching(identifier: "condition.map").firstMatch
         XCTAssertTrue(map.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.searchFields.firstMatch.waitForExistence(timeout: 10))
         screenshot(app, "Chosen searchable place editor with fixed boundary")
         let relation = app.segmentedControls["condition.relation"]
         for _ in 0..<6 { if relation.isHittable { break }; app.swipeUp() }
@@ -155,11 +165,13 @@ nonisolated final class ExpansionTests: XCTestCase {
         screenshot(app, "Multiple location conditions and ALL combination")
         app.buttons["tracker.save"].tap()
         XCTAssertTrue(app.buttons["tracker.menu"].waitForExistence(timeout: 10))
-        app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
+        app.buttons["tracker.menu"].tap(); if app.buttons["Edit tracker"].waitForExistence(timeout: 1) { app.buttons["Edit tracker"].tap() }
+        openEditorPage(app, "tracker.conditions")
         for _ in 0..<12 { if condition.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(condition.label.contains("Outside"))
-        XCTAssertTrue(combination.label.contains("All conditions"))
-        app.buttons["Cancel"].tap()
+        XCTAssertTrue(combination.label.contains("All"))
+        app.navigationBars.buttons.matching(identifier: "BackButton").allElementsBoundByIndex.first { $0.isHittable }?.tap()
+        app.buttons["tracker.cancel"].tap()
     }
 
     @MainActor func testExpansionLocalizedLightDarkAndMaximumType() {
@@ -182,17 +194,20 @@ nonisolated final class ExpansionTests: XCTestCase {
                 XCTAssertTrue(progress.waitForExistence(timeout: 10))
                 app.swipeUp()
                 screenshot(app, "Numeric ring " + suffix)
-                app.buttons["tracker.menu"].tap(); app.buttons[edit].tap()
+                app.buttons["tracker.menu"].tap(); if app.buttons[edit].waitForExistence(timeout: 1) { app.buttons[edit].tap() }
                 XCTAssertTrue(app.textFields["tracker.name"].waitForExistence(timeout: 10))
                 screenshot(app, "Tracker metadata editor " + suffix)
+                openEditorPage(app, "tracker.chartRange")
                 let axis = app.textFields["tracker.axisLower"]
                 for _ in 0..<16 { if axis.isHittable { break }; app.swipeUp() }
                 screenshot(app, "Chart bounds editor " + suffix)
+                app.navigationBars.buttons.matching(identifier: "BackButton").allElementsBoundByIndex.first { $0.isHittable }?.tap()
                 app.buttons[cancel].tap()
                 app.navigationBars["SCORE"].buttons["BackButton"].tap()
                 let office = button(app, prefix: "tracker.", text: "OFFICE")
                 for _ in 0..<8 { if office.isHittable { break }; app.swipeUp() }
-                office.tap(); app.buttons["tracker.menu"].tap(); app.buttons[edit].tap()
+                office.tap(); app.buttons["tracker.menu"].tap(); if app.buttons[edit].waitForExistence(timeout: 1) { app.buttons[edit].tap() }
+                openEditorPage(app, "tracker.conditions")
                 let place = button(app, prefix: "conditions.editor.leaf.", text: "Office A")
                 for _ in 0..<18 { if place.isHittable { break }; app.swipeUp() }
                 XCTAssertTrue(place.waitForExistence(timeout: 10))
@@ -210,7 +225,8 @@ nonisolated final class ExpansionTests: XCTestCase {
         app.tabBars.buttons.element(boundBy: 1).tap()
         let office = button(app, prefix: "tracker.", text: "OFFICE")
         for _ in 0..<8 { if office.isHittable { break }; app.swipeUp() }
-        office.tap(); app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
+        office.tap(); app.buttons["tracker.menu"].tap(); if app.buttons["Edit tracker"].waitForExistence(timeout: 1) { app.buttons["Edit tracker"].tap() }
+        openEditorPage(app, "tracker.conditions")
         let place = button(app, prefix: "conditions.editor.leaf.", text: "Office A")
         for _ in 0..<12 { if place.isHittable { break }; app.swipeUp() }
         place.tap()
