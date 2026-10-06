@@ -155,6 +155,9 @@ struct DailyCompletionButton: View {
     @State private var verification: Task<Void, Never>?
     @State private var pendingRemoval: (tracker: Tracker, entryID: UUID)?
     @State private var quickLocation = RecordLocationRecorder()
+    // Haptics follow the user's action, not `done`, which also flips at midnight or after restores.
+    @State private var feedbackTick = 0
+    @State private var feedbackCompleted = false
     private var done: Bool { tracker.entries.contains { $0.localDay == tracker.day(now) } }
     var body: some View {
         Button(action: toggle) {
@@ -164,7 +167,7 @@ struct DailyCompletionButton: View {
                         .contentTransition(reduceMotion ? .identity : .symbolEffect(.replace)) }
             }.frame(minWidth: 44, minHeight: 44)
         }.buttonStyle(.borderless).disabled(checking)
-            .sensoryFeedback(trigger: done) { _, completed in completed ? .success : .impact }
+            .sensoryFeedback(trigger: feedbackTick) { _, _ in feedbackCompleted ? .success : .impact }
             .animation(reduceMotion ? nil : .snappy, value: done)
             .accessibilityLabel(L.text(checking ? "Checking record conditions" : done ? "Undo completion" : "Mark complete") + ": " + tracker.name)
             .accessibilityIdentifier("complete." + tracker.id.uuidString)
@@ -183,10 +186,12 @@ struct DailyCompletionButton: View {
                     var candidate = original
                     candidate.entries.removeAll { $0.id == pending.entryID }
                     store.perform { try store.save(candidate) }
+                    feedback(completed: false)
                 }
                 Button(L.text("Cancel"), role: .cancel) { pendingRemoval = nil }
             } message: { Text(L.text("The record, notes and photos for today will be removed.")) }
     }
+    private func feedback(completed: Bool) { feedbackCompleted = completed; feedbackTick += 1 }
     private func toggle() {
         guard !checking, var original = store.trackers.first(where: { $0.id == tracker.id }) else { return }
         onBegin()
@@ -195,11 +200,13 @@ struct DailyCompletionButton: View {
             if !entry.note.isEmpty || !entry.photos.isEmpty || entry.location != nil { pendingRemoval = (original, entry.id); return }
             original.entries.removeAll { $0.localDay == day }
             store.perform { try store.save(original) }
+            feedback(completed: false)
             return
         }
         guard original.requiresConditionGate || recordLocationByDefault else {
             original.put(Entry(occurredAt: instant, localDay: day))
             store.perform { try store.save(original) }
+            feedback(completed: true)
             return
         }
         checking = true
@@ -225,6 +232,7 @@ struct DailyCompletionButton: View {
                 if recordLocationByDefault { entry.location = quickLocation.draft.applying(to: nil) }
                 candidate.put(entry)
                 try store.save(candidate)
+                feedback(completed: true)
             } catch is CancellationError { }
             catch {
                 if !Task.isCancelled {

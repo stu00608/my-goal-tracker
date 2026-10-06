@@ -63,7 +63,7 @@ struct ConditionStatusView: View {
                             }
                         }.font(.subheadline).padding(.top, 8)
                     } label: {
-                        statusRow(title: L.text(snapshot.loading ? "Checking conditions…" : snapshot.state == .met ? "Conditions met" : snapshot.state == .unmet ? "Conditions not met" : "Cannot determine yet"),
+                        statusRow(title: L.text(snapshot.loading ? "Checking conditions…" : snapshot.state == .met ? "Conditions met" : snapshot.state == .unmet ? "Conditions not met" : "Cannot determine yet"), stateInTitle: true,
                                   state: snapshot.state, loading: snapshot.loading)
                             .accessibilityIdentifier("conditions.overall")
                     }
@@ -95,9 +95,9 @@ struct ConditionStatusView: View {
             .onDisappear { stop(); health.stopObserving(owner: observerOwner) }
         }
     }
-    private func statusRow(title: String, state: ConditionState, loading: Bool) -> some View {
+    private func statusRow(title: String, stateInTitle: Bool = false, state: ConditionState, loading: Bool) -> some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
-            if loading { ProgressView().accessibilityLabel(L.text("Checking conditions…")) }
+            if loading { ProgressView().accessibilityHidden(true) }
             else {
                 Image(systemName: state == .met ? "checkmark.circle.fill" : state == .unmet ? "xmark.circle.fill" : "questionmark.circle.fill")
                     .foregroundStyle(state == .met ? Color.green : state == .unmet ? .orange : .secondary)
@@ -105,7 +105,7 @@ struct ConditionStatusView: View {
             }
             Text(title).foregroundStyle(Color.primary).fixedSize(horizontal: false, vertical: true)
         }.accessibilityElement(children: .combine)
-            .accessibilityValue(L.text(loading ? "Checking conditions…" : state == .met ? "Condition met" : state == .unmet ? "Condition not met" : "Condition unknown"))
+            .accessibilityValue(stateInTitle ? "" : L.text(loading ? "Checking conditions…" : state == .met ? "Condition met" : state == .unmet ? "Condition not met" : "Condition unknown"))
     }
     private func start() {
         guard scenePhase == .active else { return }

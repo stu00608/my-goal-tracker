@@ -3168,19 +3168,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Current iPhone location"
+            "value": "Current iPhone location, not where the record happened"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPhone 目前位置"
+            "value": "iPhone 目前位置，不是紀錄當時的位置"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "iPhoneの現在地"
+            "value": "iPhoneの現在地（記録時の場所ではありません）"
           }
         }
       }
