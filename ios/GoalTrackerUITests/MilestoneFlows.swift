@@ -291,11 +291,37 @@ nonisolated final class MilestoneFlows: XCTestCase {
         let overall = element(app, "conditions.overall")
         XCTAssertTrue(overall.waitForExistence(timeout: 10))
         XCTAssertTrue(overall.label.contains("Conditions not met"))
+        XCTAssertGreaterThanOrEqual(overall.frame.height, 44, "The native disclosure row retains its full tap target")
+        let note = app.textFields["entry.note"]
+        note.tap(); note.typeText("Condition draft")
+        overall.tap()
+        let leaf = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "conditions.leaf.")).firstMatch
+        XCTAssertTrue(leaf.waitForExistence(timeout: 5))
+        XCTAssertTrue(app.keyboards.firstMatch.exists, "Expanding a native row preserves input focus")
+        app.buttons["entry.keyboard.done"].tap()
+        XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 5))
+        capture(app, "Native condition expansion keeps summary anchored")
+        overall.tap()
+        let collapsed = overall.frame
+        for _ in 0..<3 {
+            overall.tap()
+            XCTAssertTrue(leaf.waitForExistence(timeout: 5))
+            XCTAssertEqual(overall.frame.minY, collapsed.minY, accuracy: 1)
+            overall.tap()
+            XCTAssertTrue(leaf.waitForNonExistence(timeout: 5))
+            XCTAssertEqual(overall.frame.minY, collapsed.minY, accuracy: 1)
+            XCTAssertEqual(note.value as? String, "Condition draft")
+        }
         capture(app, "Live grouped conditions before input")
         app.buttons["entry.save"].tap()
         XCTAssertTrue(app.staticTexts["editor.error"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.staticTexts["editor.error"].label.lowercased().contains("draft"))
+        RunLoop.current.run(until: Date().addingTimeInterval(9))
+        XCTAssertTrue(app.staticTexts["editor.error"].exists, "Save failures remain until explicitly dismissed")
+        XCTAssertEqual(note.value as? String, "Condition draft")
         app.buttons["entry.cancel"].tap()
+        XCTAssertTrue(app.buttons["entry.discard"].firstMatch.waitForExistence(timeout: 5))
+        app.buttons["entry.discard"].firstMatch.tap()
         app.terminate()
         let met = launch(extra: ["--condition-gate=met"])
         let toggle = button(met, prefix: "complete.", name: "GROUPED"); reveal(met, toggle); toggle.tap()
@@ -467,18 +493,30 @@ nonisolated final class MilestoneFlows: XCTestCase {
     }
     @MainActor func testToastDoesNotShiftGridAndIsDismissible() {
         for language in ["en", "ja", "zh-Hant"] {
-            for dark in [false, true] {
-                let app = launch(extra: ["--condition-gate=unmet"], language: language, dark: dark, large: language == "zh-Hant")
+            for (dark, large) in [(false, false), (true, false), (false, true), (true, true)] {
+                let app = launch(extra: ["--condition-gate=unmet"], language: language, dark: dark, large: large)
                 let card = button(app, prefix: "card.", name: "GROUPED")
                 let action = button(app, prefix: "complete.", name: "GROUPED")
                 reveal(app, action); let before = card.frame
                 action.tap()
                 let toast = app.staticTexts["home.conditions.error"]
                 XCTAssertTrue(toast.waitForExistence(timeout: 10))
+                let close = app.buttons["home.conditions.error.dismiss"]
+                XCTAssertEqual(toast.frame.midY, close.frame.midY, accuracy: 1, "Toast text and close control share a vertical center")
+                XCTAssertGreaterThanOrEqual(close.frame.width, 44)
+                XCTAssertGreaterThanOrEqual(close.frame.height, 44)
                 XCTAssertEqual(card.frame.minY, before.minY, accuracy: 1)
                 XCTAssertTrue(app.buttons["tracker.create"].isHittable, "Toast must not cover navigation")
-                capture(app, "Native toast without layout shift " + language + (dark ? " dark" : " light"))
-                app.buttons["home.conditions.error.dismiss"].tap()
+                capture(app, "Native toast without layout shift " + language + (dark ? " dark" : " light") + (large ? " AX maximum" : ""))
+                if language == "en", !dark {
+                    if large {
+                        RunLoop.current.run(until: Date().addingTimeInterval(9))
+                        XCTAssertTrue(toast.exists, "Accessibility-size messages require explicit dismissal")
+                        close.tap()
+                    } else {
+                        XCTAssertTrue(toast.waitForNonExistence(timeout: 10), "Transient messages dismiss automatically")
+                    }
+                } else { close.tap() }
                 XCTAssertFalse(toast.exists)
                 XCTAssertFalse(app.buttons["entry.save"].exists)
                 app.terminate()

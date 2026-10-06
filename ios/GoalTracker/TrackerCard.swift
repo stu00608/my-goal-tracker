@@ -74,10 +74,10 @@ nonisolated enum CardMapFraming {
     }
 }
 
-struct DailyControlAnchor: PreferenceKey {
-    static var defaultValue: Anchor<CGRect>? { nil }
-    static func reduce(value: inout Anchor<CGRect>?, nextValue: () -> Anchor<CGRect>?) {
-        if let next = nextValue() { value = next }
+struct DailyControlPositions: PreferenceKey {
+    static var defaultValue: [UUID: CGPoint] { [:] }
+    static func reduce(value: inout [UUID: CGPoint], nextValue: () -> [UUID: CGPoint]) {
+        value.merge(nextValue(), uniquingKeysWith: { _, next in next })
     }
 }
 
@@ -151,6 +151,7 @@ struct TrackerCardLabel: View {
     @ScaledMetric(relativeTo: .title2) private var dailyControlTextInset = CardLayout.dailyControlTextInset
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.colorScheme) private var colorScheme
+    @Environment(\.displayScale) private var displayScale
     private var hasImage: Bool { !monochrome && (row.hasPhoto || row.resolvedBackground == .map && row.locations?.isEmpty == false) }
     private var position: CardTextPosition { row.resolvedTextPosition }
 
@@ -189,7 +190,16 @@ struct TrackerCardLabel: View {
                         .accessibilityIdentifier("progress." + row.id.uuidString)
                     if row.kind == .daily && showsDailyStatus { dailyStatus }
                 }.padding(.trailing, reservesDailyControl ? dailyControlTextInset : 0)
-                    .anchorPreference(key: DailyControlAnchor.self, value: .bounds) { reservesDailyControl ? $0 : nil }
+                    .background {
+                        if reservesDailyControl {
+                            GeometryReader { geometry in
+                                let bounds = geometry.frame(in: .named(row.id))
+                                let x = bounds.maxX - dailyControlTextInset / 2 + 2
+                                let point = CGPoint(x: (x * displayScale).rounded() / displayScale, y: (bounds.midY * displayScale).rounded() / displayScale)
+                                Color.clear.preference(key: DailyControlPositions.self, value: [row.id: point])
+                            }.allowsHitTesting(false).accessibilityHidden(true)
+                        }
+                    }
             } else if row.kind == .daily && showsDailyStatus { dailyStatus }
             if row.kind != .daily || row.resolvedBackground == .progress { recordedDate }
         }

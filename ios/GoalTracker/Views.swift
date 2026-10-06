@@ -16,7 +16,7 @@ struct RootView: View {
     @State private var entryTracker: Tracker?
     @State private var gateNotice: String?
     var body: some View {
-        TimelineView(.everyMinute) { _ in screen(at: Date()) }
+        TimelineView(.everyMinute) { context in screen(at: context.date) }
     }
     private func screen(at date: Date) -> some View {
         TabView(selection: $selected) {

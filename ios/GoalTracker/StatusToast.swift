@@ -18,31 +18,33 @@ private struct StatusToast: ViewModifier {
 
     func body(content: Content) -> some View {
         content.overlay(alignment: .top) {
-            if let message {
-                HStack(alignment: .top, spacing: 12) {
-                    Image(systemName: "exclamationmark.circle.fill").font(.title3).foregroundStyle(.red).accessibilityHidden(true)
-                    Text(message).font(.subheadline.weight(.medium))
-                        .fixedSize(horizontal: false, vertical: true)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .accessibilityIdentifier(identifier)
-                    Button { self.message = nil } label: {
-                        Image(systemName: "xmark").font(.subheadline.weight(.semibold)).frame(width: 44, height: 44)
-                    }.buttonStyle(.plain).accessibilityLabel(L.text("Dismiss message"))
-                        .accessibilityIdentifier(identifier + ".dismiss")
+            Group {
+                if let message {
+                    HStack(spacing: 12) {
+                        Image(systemName: "exclamationmark.circle.fill").font(.title3).foregroundStyle(.red).accessibilityHidden(true)
+                        Text(message).font(.subheadline.weight(.medium))
+                            .fixedSize(horizontal: false, vertical: true)
+                            .frame(maxWidth: .infinity, alignment: .leading)
+                            .accessibilityIdentifier(identifier)
+                        Button { self.message = nil } label: {
+                            Image(systemName: "xmark").font(.subheadline.weight(.semibold)).frame(width: 44, height: 44).contentShape(Rectangle())
+                        }.buttonStyle(.plain).accessibilityLabel(L.text("Dismiss message"))
+                            .accessibilityIdentifier(identifier + ".dismiss")
+                    }
+                    .foregroundStyle(Color.primary).padding(.horizontal, 16).padding(.vertical, 8)
+                    .background {
+                        if reduceTransparency { RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color(uiColor: .secondarySystemBackground)) }
+                        else { RoundedRectangle(cornerRadius: 20, style: .continuous).fill(.regularMaterial) }
+                    }
+                    .overlay { RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(.primary.opacity(contrast == .increased ? 0.4 : 0.08)) }
+                    .shadow(color: .black.opacity(0.12), radius: 12, y: 5)
+                    .frame(maxWidth: 440).padding(.horizontal, 16).padding(.top, 8)
+                    .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
                 }
-                .foregroundStyle(Color.primary).padding(16)
-                .background {
-                    if reduceTransparency { RoundedRectangle(cornerRadius: 20, style: .continuous).fill(Color(uiColor: .secondarySystemBackground)) }
-                    else { RoundedRectangle(cornerRadius: 20, style: .continuous).fill(.regularMaterial) }
-                }
-                .overlay { RoundedRectangle(cornerRadius: 20, style: .continuous).strokeBorder(.primary.opacity(contrast == .increased ? 0.4 : 0.08)) }
-                .shadow(color: .black.opacity(0.12), radius: 12, y: 5)
-                .frame(maxWidth: 440).padding(.horizontal, 16).padding(.top, 8)
-                .transition(reduceMotion ? .opacity : .move(edge: .top).combined(with: .opacity))
             }
+            .animation(reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.32, dampingFraction: 1), value: message)
         }
         .sensoryFeedback(.error, trigger: message) { _, new in new != nil }
-        .animation(reduceMotion ? .easeOut(duration: 0.15) : .spring(response: 0.32, dampingFraction: 1), value: message)
         .task(id: message) {
             guard let shown = message else { return }
             UIAccessibility.post(notification: .announcement, argument: shown)
