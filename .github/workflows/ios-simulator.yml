@@ -1,0 +1,44 @@
+name: iOS Simulator
+
+# Manual only: the macOS Simulator job is slow, so it does not gate pull requests.
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ios-simulator-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  ios:
+    name: iOS Simulator tests
+    runs-on: macos-26
+    # CI covers native units and compilation. UI/E2E runs locally when needed.
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+      - run: python3 scripts/dev.py doctor
+      - name: Native unit and data tests
+        run: python3 scripts/dev.py test --unit-only
+      - name: Compile App and Widget
+        run: python3 scripts/dev.py build --scheme GoalTrackerWithWidget
+      - name: Upload test summaries
+        uses: actions/upload-artifact@v7
+        if: success()
+        with:
+          name: simulator-summaries
+          path: .artifacts/*.json
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+      - name: Upload failure diagnostics
+        uses: actions/upload-artifact@v7
+        if: failure() && !cancelled()
+        with:
+          name: simulator-failure-results
+          path: .artifacts/
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 1
