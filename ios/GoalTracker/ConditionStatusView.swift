@@ -6,7 +6,7 @@ import Observation
     private(set) var facts = ConditionFacts()
     private(set) var now = Date()
     private(set) var isRefreshing = false
-    private(set) var locationAuthorized = RecordConditions.hasLocationAuthorization
+    private(set) var locationAuthorized = false
     @ObservationIgnored private var tracker: Tracker?
     @ObservationIgnored private var observerOwner = UUID()
     @ObservationIgnored private var refreshQueued = false
@@ -41,8 +41,9 @@ import Observation
     }
     private func refresh(location: Bool = false, allHealth: Bool = false, onFailure: @escaping (String) -> Void = { _ in }) {
         guard let source = tracker else { return }
-        cancelRequest(); locationAuthorized = RecordConditions.hasLocationAuthorization; now = Date()
+        cancelRequest(); now = Date()
         let token = generation
+        if !source.resolvedConditions.isEmpty { locationAuthorized = RecordConditions.hasLocationAuthorization }
         if let fixture = RecordConditions.previewFixture(tracker: source, now: now) { facts = fixture; return }
         let needed = allHealth ? source.resolvedConditionGroups.flatMap(\.conditions)
             : ConditionEvaluation.neededLeaves(tracker: source, facts: facts, now: now)
@@ -58,7 +59,7 @@ import Observation
             defer {
                 if generation == token {
                     request = nil; isRefreshing = false; facts.loadingHealth = []; facts.loadingPlaces = false; now = Date()
-                    locationAuthorized = RecordConditions.hasLocationAuthorization
+                    if !source.resolvedConditions.isEmpty { locationAuthorized = RecordConditions.hasLocationAuthorization }
                     if refreshQueued { refreshQueued = false; automaticRefresh() }
                 }
             }
@@ -126,48 +127,47 @@ struct ConditionPreviewUpdates: ViewModifier {
     }
 }
 
-struct ConditionGateWarning: View {
-    @ScaledMetric(relativeTo: .headline) private var symbolSize = 40.0
-    var body: some View {
-        VStack(spacing: 10) {
-            Image(systemName: "xmark").font(.system(size: symbolSize, weight: .semibold)).accessibilityHidden(true)
-            Text(L.text("Conditions not met")).font(.headline)
-        }.foregroundStyle(.red).frame(maxWidth: .infinity).padding(.vertical, 16)
-            .accessibilityElement(children: .ignore).accessibilityLabel(L.text("Conditions not met"))
-            .accessibilityIdentifier("conditions.warning")
-    }
-}
-
 struct ConditionStatusView: View {
-    @ScaledMetric(relativeTo: .body) private var symbolSize = 20.0
     let tracker: Tracker
     let snapshot: ConditionStatus
     let preview: ConditionPreview
     var onFailure: (String) -> Void = { _ in }
+    @State private var expanded = false
 
     var body: some View {
-        VStack(alignment: .leading, spacing: 20) {
-            ForEach(Array(tracker.resolvedConditionGroups.enumerated()), id: \.element.id) { index, group in
-                if let result = snapshot.groups.first(where: { $0.id == group.id }) {
-                    VStack(alignment: .leading, spacing: 12) {
-                        if tracker.resolvedConditionGroups.count > 1 || group.name != nil {
-                            HStack(alignment: .firstTextBaseline) {
-                                Text(ConditionLabels.group(group, index: index)).font(.subheadline.weight(.semibold))
-                                Spacer(minLength: 8)
-                                if group.conditions.count > 1 {
-                                    Text(ConditionLabels.combination(group.combination)).font(.caption).foregroundStyle(.secondary)
+        VStack(alignment: .leading, spacing: 12) {
+            DisclosureGroup(isExpanded: $expanded) {
+                VStack(alignment: .leading, spacing: 16) {
+                    if tracker.resolvedConditionGroups.count > 1 {
+                        Text(L.text(tracker.resolvedOuterCombination == .all ? "All groups" : "Any group"))
+                            .foregroundStyle(.secondary)
+                    }
+                    ForEach(Array(tracker.resolvedConditionGroups.enumerated()), id: \.element.id) { index, group in
+                        if let result = snapshot.groups.first(where: { $0.id == group.id }) {
+                            VStack(alignment: .leading, spacing: 12) {
+                                if tracker.resolvedConditionGroups.count > 1 {
+                                    Text(ConditionLabels.group(group, index: index)).fontWeight(.semibold)
+                                        .accessibilityIdentifier("conditions.group." + group.id.uuidString)
+                                    if group.conditions.count > 1 {
+                                        Text(ConditionLabels.combination(group.combination)).foregroundStyle(.secondary)
+                                    }
                                 }
-                            }.accessibilityIdentifier("conditions.group." + group.id.uuidString)
-                        } else if group.conditions.count > 1 {
-                            Text(ConditionLabels.combination(group.combination)).font(.subheadline.weight(.semibold))
-                        }
-                        ForEach(group.conditions) { condition in
-                            if let leaf = result.leaves.first(where: { $0.id == condition.id }) {
-                                leafRow(condition: condition, status: leaf)
+                                ForEach(group.conditions) { condition in
+                                    if let leaf = result.leaves.first(where: { $0.id == condition.id }) {
+                                        leafRow(condition: condition, status: leaf)
+                                    }
+                                }
                             }
                         }
                     }
-                }
+                }.font(.subheadline).padding(.top, 8)
+            } label: {
+                HStack(alignment: .firstTextBaseline, spacing: 8) {
+                    stateSymbol(snapshot.state, loading: snapshot.loading)
+                    Text(L.text(snapshot.loading ? "Checking conditions…" : snapshot.state == .met ? "Conditions met" : snapshot.state == .unmet ? "Conditions not met" : "Cannot determine yet"))
+                        .foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true)
+                }.accessibilityElement(children: .combine)
+                    .accessibilityIdentifier("conditions.overall")
             }
             if preview.needsLocationCheck {
                 Button(L.text("Check current location")) { preview.checkLocation(onFailure: onFailure) }
@@ -176,18 +176,21 @@ struct ConditionStatusView: View {
             }
         }.padding(.vertical, 4)
     }
+    private func stateSymbol(_ state: ConditionState, loading: Bool) -> some View {
+        Image(systemName: loading ? "questionmark.circle.fill" : state == .met ? "checkmark.circle.fill" : state == .unmet ? "xmark.circle.fill" : "questionmark.circle.fill")
+            .foregroundStyle(loading ? Color.secondary : state == .met ? .green : state == .unmet ? .orange : .secondary)
+            .accessibilityHidden(true)
+    }
     private func leafRow(condition: AchievementCondition, status: ConditionLeafStatus) -> some View {
-        HStack(alignment: .center, spacing: 16) {
+        HStack(alignment: .firstTextBaseline, spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(ConditionLabels.summary(condition)).fixedSize(horizontal: false, vertical: true)
+                Text(ConditionLabels.leaf(condition)).foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true)
                 if let value = status.measurement, let key = condition.healthKey {
-                    Text(ConditionLabels.measurement(value, metric: key.metric)).font(.caption).foregroundStyle(.secondary)
+                    Text(ConditionLabels.measurement(value, metric: key.metric)).monospacedDigit().foregroundStyle(.secondary)
+                        .fixedSize(horizontal: false, vertical: true)
                 }
             }.frame(maxWidth: .infinity, alignment: .leading)
-            Image(systemName: status.state == .met ? "checkmark" : status.state == .unmet ? "xmark" : "questionmark")
-                .font(.system(size: symbolSize, weight: .bold)).frame(width: symbolSize, height: symbolSize)
-                .foregroundStyle(status.state == .met ? Color.green : status.state == .unmet ? Color.red : Color.orange)
-                .accessibilityHidden(true)
+            stateSymbol(status.state, loading: status.loading)
         }.accessibilityElement(children: .ignore)
             .accessibilityLabel(ConditionLabels.leaf(condition) + measurementLabel(condition: condition, status: status))
             .accessibilityValue(L.text(status.loading ? "Checking conditions…" : status.state == .met ? "Condition met" : status.state == .unmet ? "Condition not met" : "Condition unknown"))
@@ -197,16 +200,9 @@ struct ConditionStatusView: View {
         guard let value = status.measurement, let key = condition.healthKey else { return "" }
         return ", " + ConditionLabels.measurement(value, metric: key.metric)
     }
-
 }
 
 enum ConditionLabels {
-    static func summary(_ condition: AchievementCondition) -> String {
-        guard case .weekdays(let days) = condition.payload else { return leaf(condition) }
-        if Set(days) == Set(1...7) { return L.text("Every day") }
-        return WeekdayOrder.days(starting: L.firstWeekday).filter { days.contains($0) }
-            .map { L.locale.calendar.shortWeekdaySymbols[$0 - 1] }.joined(separator: " · ")
-    }
     static func group(_ group: ConditionGroup, index: Int) -> String {
         if let name = group.name, !name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty { return name }
         return String(format: L.text("Group %lld"), locale: L.locale, index + 1)
@@ -225,13 +221,14 @@ enum ConditionLabels {
         case .place(let p): return p.name + " · " + L.text(p.relation == .inside ? "Inside" : "Outside") + " · 200 m"
         case .time(let t): return t.startMinute == t.endMinute ? L.text("All day") : clock(t.startMinute) + "–" + clock(t.endMinute)
         case .weekdays(let days):
+            if Set(days).count == 7 { return L.text("Every day") }
             return WeekdayOrder.days(starting: L.firstWeekday).filter { days.contains($0) }
                 .map { L.locale.calendar.weekdaySymbols[$0 - 1] }.joined(separator: " · ")
         case .steps(let t), .sleep(let t):
-            let title = L.text(condition.isSleep ? "Sleep" : "Steps")
-            let number = t.threshold.replacingOccurrences(of: ".", with: L.locale.decimalSeparator ?? ".")
-            return title + " " + (t.comparison == .greater ? "> " : "< ") + number
-                + (condition.isSleep ? " " + L.text("hours") : "") + " · " + window(t.window)
+            let number = (Numbers.decimal(t.threshold).map { $0.formatted(.number.precision(.fractionLength(0...28)).locale(L.locale)) }) ?? t.threshold
+            let key = condition.isSleep ? (t.comparison == .greater ? "More than %@ hours" : "Less than %@ hours")
+                : (t.comparison == .greater ? "More than %@ steps" : "Fewer than %@ steps")
+            return String(format: L.text(key), locale: L.locale, number) + " · " + window(t.window)
         }
     }
 }

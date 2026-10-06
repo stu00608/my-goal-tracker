@@ -29,6 +29,10 @@ nonisolated final class FeatureTests: XCTestCase {
     @MainActor func photos(_ app: XCUIApplication) -> XCUIElementQuery {
         app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND NOT identifier BEGINSWITH %@", "entry.photo.", "entry.photo.remove."))
     }
+    @MainActor func cancelEntry(_ app: XCUIApplication) {
+        app.buttons["entry.cancel"].tap()
+        if app.buttons["entry.discard"].firstMatch.waitForExistence(timeout: 1) { app.buttons["entry.discard"].firstMatch.tap() }
+    }
     @MainActor func attach(_ app: XCUIApplication, _ name: String) {
         let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
     }
@@ -78,7 +82,7 @@ nonisolated final class FeatureTests: XCTestCase {
     @MainActor func testCalendarAndEmptyCustomChart() {
         continueAfterFailure = false
         let app = app()
-        app.tabBars.buttons["Goals"].tap()
+        app.tabBars.buttons.element(boundBy: 1).tap()
         element(app, prefix: "tracker.", name: "COOK").tap()
         var calendar = Calendar(identifier: .gregorian); calendar.timeZone = .current
         let month = calendar.date(byAdding: .month, value: -1, to: Date())!
@@ -95,7 +99,7 @@ nonisolated final class FeatureTests: XCTestCase {
         app.buttons["Cancel"].tap()
         for (label, id) in [("Bar chart", "completion.chart"), ("Progress bar", "completion.progress")] {
             for _ in 0..<4 { if app.descendants(matching: .any).matching(identifier: "completion.view").firstMatch.isHittable { break }; app.swipeDown() }
-            app.descendants(matching: .any).matching(identifier: "completion.view").firstMatch.tap(); app.buttons[label].tap()
+            app.segmentedControls["completion.view"].buttons[label].tap()
             let presentation = app.descendants(matching: .any).matching(identifier: id).firstMatch
             XCTAssertTrue(presentation.waitForExistence(timeout: 10))
             if id == "completion.chart" { XCTAssertTrue(app.staticTexts["Target"].exists) }
@@ -104,11 +108,10 @@ nonisolated final class FeatureTests: XCTestCase {
         }
         app.navigationBars["COOK"].buttons["BackButton"].tap()
         element(app, prefix: "tracker.", name: "EMPTY").tap()
-        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "snapshot.chart").firstMatch.waitForExistence(timeout: 10))
+        XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "snapshot.empty").firstMatch.waitForExistence(timeout: 10))
         for label in ["30 days", "90 days", "All", "Custom"] {
-            app.descendants(matching: .any).matching(identifier: "snapshot.period").firstMatch.tap()
-            app.buttons[label].tap()
-            XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "snapshot.chart").firstMatch.exists)
+            app.segmentedControls["snapshot.period"].buttons[label].tap()
+            XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "snapshot.empty").firstMatch.exists)
         }
         XCTAssertTrue(app.datePickers["snapshot.custom.start"].exists)
         XCTAssertTrue(app.datePickers["snapshot.custom.end"].exists)
@@ -142,7 +145,10 @@ nonisolated final class FeatureTests: XCTestCase {
         app.tabBars.buttons.element(boundBy: 1).tap()
         let goal = element(app, prefix: "tracker.", name: "每月出社")
         XCTAssertTrue(goal.waitForExistence(timeout: 10)); goal.tap()
-        app.buttons["tracker.menu"].tap(); app.buttons["Edit tracker"].tap()
+        app.buttons["tracker.menu"].tap(); if app.buttons["Edit tracker"].waitForExistence(timeout: 1) { app.buttons["Edit tracker"].tap() }
+        let appearance = app.buttons["tracker.appearance"]
+        for _ in 0..<15 { if appearance.isHittable { break }; app.swipeUp() }
+        appearance.tap()
         let position = app.descendants(matching: .any).matching(identifier: "card.textPosition").firstMatch
         for _ in 0..<15 { if position.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(position.isHittable); position.tap()
@@ -212,7 +218,7 @@ nonisolated final class FeatureTests: XCTestCase {
             element(app, prefix: "card.", name: "SCORE").tap()
             XCTAssertTrue(app.buttons["entry.save"].waitForExistence(timeout: 10))
             attach(app, "Record editor " + language + " " + appearance + (large ? " accessibility XXXL" : ""))
-            app.buttons["entry.cancel"].tap()
+            cancelEntry(app)
             app.tabBars.buttons.element(boundBy: 1).tap()
             element(app, prefix: "tracker.", name: "COOK").tap()
             XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "completion.view").firstMatch.waitForExistence(timeout: 10))
@@ -229,7 +235,7 @@ nonisolated final class FeatureTests: XCTestCase {
     @MainActor func testRecordedMapOpensEntry() {
         continueAfterFailure = false
         let app = app()
-        app.tabBars.buttons["Goals"].tap()
+        app.tabBars.buttons.element(boundBy: 1).tap()
         element(app, prefix: "tracker.", name: "TRAVEL").tap()
         let pin = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "location.")).firstMatch
         for _ in 0..<6 { if pin.isHittable { break }; app.swipeUp() }
@@ -241,7 +247,7 @@ nonisolated final class FeatureTests: XCTestCase {
         app.buttons["entry.keyboard.done"].tap()
         for _ in 0..<6 { if app.switches["entry.location"].exists { break }; app.swipeUp() }
         XCTAssertEqual(app.switches["entry.location"].value as? String, "1")
-        app.buttons["entry.cancel"].tap()
+        cancelEntry(app)
     }
 
     @MainActor private func dragCard(_ source: XCUIElement, to target: XCUIElement) async {
@@ -351,7 +357,7 @@ nonisolated final class FeatureTests: XCTestCase {
         XCTAssertEqual(numericField(app, id: "entry.change").value as? String, "-0.001")
         app.buttons["entry.keyboard.done"].tap()
         attach(app, "Vertical signed value scrub without page scrolling or keyboard")
-        app.buttons["entry.cancel"].tap()
+        cancelEntry(app)
     }
 
     @MainActor func testDefaultNumericInputModePersistsAndFallsBackForFirstRecord() {
@@ -367,17 +373,17 @@ nonisolated final class FeatureTests: XCTestCase {
         numericField(app, id: "entry.change").typeText("0.001")
         app.buttons["entry.keyboard.done"].tap()
         attach(app, "Reference centered bare change amount and inline preview")
-        app.buttons["entry.cancel"].tap()
+        cancelEntry(app)
         app.terminate()
         let reopened = self.app(reset: false)
         element(reopened, prefix: "card.", name: "SCORE").tap()
         XCTAssertTrue(reopened.descendants(matching: .any).matching(identifier: "entry.change.scrubber").firstMatch.waitForExistence(timeout: 10))
-        reopened.buttons["entry.cancel"].tap()
+        cancelEntry(reopened)
         element(reopened, prefix: "card.", name: "EMPTY").tap()
         XCTAssertTrue(reopened.descendants(matching: .any).matching(identifier: "entry.value.scrubber").firstMatch.waitForExistence(timeout: 10))
         XCTAssertFalse(reopened.buttons["entry.save"].isEnabled)
         attach(reopened, "First record uses direct input despite preference")
-        reopened.buttons["entry.cancel"].tap()
+        cancelEntry(reopened)
     }
 
     @MainActor func testLocationDefaultOnlyInitializesNewRecords() {
@@ -396,7 +402,7 @@ nonisolated final class FeatureTests: XCTestCase {
         XCTAssertTrue(app.switches["entry.location"].waitForExistence(timeout: 10))
         XCTAssertEqual(app.switches["entry.location"].value as? String, "1")
         XCTAssertFalse(XCUIApplication(bundleIdentifier: "com.apple.springboard").alerts.firstMatch.exists)
-        app.buttons["entry.cancel"].tap()
+        cancelEntry(app)
         app.terminate()
         let reopened = self.app(reset: false)
         reopened.tabBars.buttons.element(boundBy: 3).tap()
@@ -432,7 +438,7 @@ nonisolated final class FeatureTests: XCTestCase {
         for _ in 0..<6 { if list.switches["entry.location"].exists { break }; list.swipeUp() }
         XCTAssertTrue(list.switches["entry.location"].exists)
         attach(list, "Direct completion location result inspected in its record")
-        list.buttons["entry.cancel"].tap()
+        cancelEntry(list)
         completion.tap()
         let undo = list.buttons["Undo completion"]
         if undo.waitForExistence(timeout: 2) { undo.tap() }
@@ -450,7 +456,7 @@ nonisolated final class FeatureTests: XCTestCase {
         for _ in 0..<6 { if list.switches["entry.location"].exists { break }; list.swipeUp() }
         XCTAssertEqual(list.switches["entry.location"].value as? String, "0")
         attach(list, "Existing completion retains no-location state despite enabled default")
-        list.buttons["entry.cancel"].tap()
+        cancelEntry(list)
     }
 
     @MainActor func testPhotoRemovalIdentifiesTargetAndPreservesDraft() {
@@ -465,12 +471,9 @@ nonisolated final class FeatureTests: XCTestCase {
         let removal = app.buttons["entry.photo.remove." + secondID]
         XCTAssertGreaterThanOrEqual(removal.frame.width, 44)
         XCTAssertGreaterThanOrEqual(removal.frame.height, 44)
-        let circleRight = removal.frame.midX + 12
-        let circleTop = removal.frame.midY - 12
-        XCTAssertGreaterThan(circleRight, thumbnail.frame.maxX)
-        XCTAssertLessThan(circleTop, thumbnail.frame.minY)
+        XCTAssertTrue(thumbnail.frame.contains(removal.frame), "The complete removal target stays inside the thumbnail and is never clipped")
         XCTAssertTrue(app.windows.firstMatch.frame.contains(removal.frame))
-        attach(app, "Photo removal badges protrude from the upper right corners")
+        attach(app, "Palette removal badges with full 44pt targets")
         removal.tap()
         XCTAssertTrue(app.buttons["entry.photoRemoval.cancel"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "entry.photoRemoval.preview").firstMatch.exists)
@@ -482,7 +485,7 @@ nonisolated final class FeatureTests: XCTestCase {
         XCTAssertTrue(app.buttons[second].waitForNonExistence(timeout: 10)); XCTAssertTrue(app.buttons[first].exists)
         XCTAssertEqual(images.count, 1)
         XCTAssertEqual(app.textFields["entry.note"].value as? String, "Synthetic completion")
-        app.buttons["entry.cancel"].tap()
+        cancelEntry(app)
         element(app, prefix: "card.", name: "COOK").tap()
         XCTAssertEqual(photos(app).count, 2, "Cancel record must preserve the saved photo copies")
         let target = photos(app).element(boundBy: 1).identifier
@@ -492,7 +495,7 @@ nonisolated final class FeatureTests: XCTestCase {
         element(app, prefix: "card.", name: "COOK").tap()
         XCTAssertEqual(photos(app).count, 1)
         attach(app, "Compact photo rail preserves the correct saved copy")
-        app.buttons["entry.cancel"].tap()
+        cancelEntry(app)
     }
 
     @MainActor func testKeyboardDismissalAndFirstTapFocus() {
@@ -502,7 +505,7 @@ nonisolated final class FeatureTests: XCTestCase {
         let name = app.textFields["tracker.name"]
         XCTAssertTrue(name.waitForExistence(timeout: 10)); name.tap(); name.typeText("FOCUS")
         XCTAssertEqual(name.value as? String, "FOCUS")
-        app.staticTexts["Tracker"].firstMatch.tap()
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.98, dy: 0.3)).tap()
         XCTAssertTrue(app.keyboards.firstMatch.waitForNonExistence(timeout: 10))
         let unit = app.textFields["tracker.unit"]
         unit.tap(); unit.typeText("points")
@@ -527,7 +530,7 @@ nonisolated final class FeatureTests: XCTestCase {
         note.tap(); note.typeText("First tap still enters notes")
         XCTAssertEqual(note.value as? String, "First tap still enters notes")
         attach(app, "Focused notes and preserved numeric draft")
-        app.buttons["entry.cancel"].tap()
+        cancelEntry(app)
     }
 
     @MainActor func testExtremeContentRemainsReadable() {
@@ -544,11 +547,11 @@ nonisolated final class FeatureTests: XCTestCase {
             field.typeText("0.00000001")
             app.buttons["entry.keyboard.done"].tap()
             attach(app, "Extreme numeric workspace accessibility XXXL " + appearance)
-            app.buttons["entry.cancel"].tap()
+            cancelEntry(app)
             element(app, prefix: "card.", name: "COOK").tap()
             XCTAssertTrue(app.buttons["entry.photos"].waitForExistence(timeout: 10))
             attach(app, "Extreme photo workspace accessibility XXXL " + appearance)
-            app.buttons["entry.cancel"].tap()
+            cancelEntry(app)
             app.terminate()
         }
     }
@@ -570,8 +573,8 @@ nonisolated final class FeatureTests: XCTestCase {
             XCTAssertTrue(app.buttons["entry.photos"].isEnabled)
             XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "entry.photos.count").firstMatch.value as? String, "9/10")
             XCTAssertFalse(app.buttons[first].exists)
-            app.buttons["entry.cancel"].tap()
-            app.tabBars.buttons["Goals"].tap()
+            cancelEntry(app)
+            app.tabBars.buttons.element(boundBy: 1).tap()
             element(app, prefix: "tracker.", name: "SCORE").tap()
             let record = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "entry.", "Synthetic snapshot")).firstMatch
             // Drag in the List gutter, outside the interactive MapKit surface.
@@ -583,7 +586,56 @@ nonisolated final class FeatureTests: XCTestCase {
             XCTAssertTrue(record.waitForExistence(timeout: 10)); record.tap()
             XCTAssertTrue(app.buttons["entry.photos"].waitForExistence(timeout: 10))
             attach(app, (alternative ? "Alternative B numeric and photo workspace" : "Chosen A numeric and photo workspace") + (large ? " accessibility XXXL" : ""))
-            app.buttons["entry.cancel"].tap(); app.terminate()
+            cancelEntry(app); app.terminate()
         }
     }
+    @MainActor func testTodayContextMenuSupportsDetailsEditAndArchiveInBothLayouts() {
+        continueAfterFailure = false
+        for layout in ["grid", "list"] {
+            let app = app(extraArguments: ["-homeLayout", layout])
+            let row = element(app, prefix: layout == "grid" ? "card." : "tracker.", name: "SCORE")
+            XCTAssertTrue(row.waitForExistence(timeout: 10)); row.press(forDuration: 1)
+            XCTAssertTrue(app.buttons["tracker.context.details"].firstMatch.waitForExistence(timeout: 5))
+            attach(app, "Today native context menu " + layout)
+            app.buttons["tracker.context.details"].firstMatch.tap()
+            XCTAssertTrue(app.buttons["tracker.menu"].waitForExistence(timeout: 10))
+            app.navigationBars.buttons.element(boundBy: 0).tap()
+            row.press(forDuration: 1)
+            app.buttons["tracker.context.edit"].firstMatch.tap()
+            XCTAssertTrue(app.textFields["tracker.name"].waitForExistence(timeout: 10))
+            XCTAssertEqual(app.textFields["tracker.name"].value as? String, "SCORE")
+            app.buttons["tracker.cancel"].tap()
+            row.press(forDuration: 1)
+            app.buttons["tracker.context.archive"].firstMatch.tap()
+            XCTAssertTrue(row.waitForNonExistence(timeout: 10))
+            app.terminate()
+        }
+    }
+    @MainActor func testRecordDraftRequiresExplicitDiscardAndKeepsInput() {
+        continueAfterFailure = false
+        let app = app()
+        let row = element(app, prefix: "card.", name: "SCORE")
+        XCTAssertTrue(row.waitForExistence(timeout: 10)); row.tap()
+        XCTAssertTrue(app.navigationBars["SCORE"].exists)
+        XCTAssertFalse(app.staticTexts["entry.photos.count"].exists, "An empty photo rail has no zero count")
+        let display = app.descendants(matching: .any).matching(identifier: "entry.value.scrubber").firstMatch
+        XCTAssertTrue(display.label.contains("Value"))
+        numericField(app).typeText("19.125")
+        app.buttons["entry.keyboard.done"].tap()
+        app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.08))
+            .press(forDuration: 0.05, thenDragTo: app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.8)))
+        XCTAssertTrue(app.buttons["entry.save"].exists, "A swipe must preserve a dirty draft")
+        app.buttons["entry.cancel"].tap()
+        XCTAssertTrue(app.buttons["entry.discard"].firstMatch.waitForExistence(timeout: 5))
+        attach(app, "Record discard confirmation preserves the draft")
+        let keepEditing = app.buttons.matching(NSPredicate(format: "(label == %@ OR label == %@) AND identifier != %@", "Keep editing", "Cancel", "entry.cancel")).firstMatch
+        if keepEditing.exists { keepEditing.tap() }
+        else { app.coordinate(withNormalizedOffset: CGVector(dx: 0.5, dy: 0.85)).tap() } // Native popovers cancel by tapping outside.
+        XCTAssertEqual(numericField(app).value as? String, "19.125")
+        app.buttons["entry.keyboard.done"].tap()
+        app.buttons["entry.cancel"].tap(); app.buttons["entry.discard"].firstMatch.tap()
+        XCTAssertTrue(row.waitForExistence(timeout: 10)); row.tap()
+        XCTAssertEqual(numericField(app).value as? String, "Value", "Discard cannot create a saved record")
+    }
+
 }

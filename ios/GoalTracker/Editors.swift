@@ -37,19 +37,19 @@ struct EntryEditor: View {
     @State private var keyboard = EditorKeyboardControl()
     @State private var photoPresentation: EditorPhotoPresentation?
     @State private var photoRemoval: DraftPhoto?
+    @State private var discarding = false
+    @State private var initialValue = ""
+    @State private var initialChange = ""
+    @State private var initialMode = NumericEntryMode.direct
+    @State private var initialLocationEnabled = false
     @FocusState private var valueFocused: Bool
     @FocusState private var noteFocused: Bool
 
     var body: some View {
         NavigationStack {
             Form {
-                if currentTracker.requiresConditionGate && conditionPreview.status(for: currentTracker).state != .met {
-                    Section { ConditionGateWarning() }
-                        .listRowBackground(Color.clear)
-                        .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 0, trailing: 0))
-                }
                 Section {
-                    VStack(alignment: .leading, spacing: 16) {
+                    VStack(alignment: .leading, spacing: 12) {
                         if tracker.kind == .number {
                             VStack(spacing: 0) {
                                 if !isPersistedEntry {
@@ -63,7 +63,7 @@ struct EntryEditor: View {
                                         Spacer(minLength: 0)
                                     }
                                 } else {
-                                    Text(L.text(inputMode == .change ? "Change amount" : "New value")).font(.subheadline).foregroundStyle(TrackerColors.secondaryText)
+                                    Text(L.text(inputMode == .change ? "Change amount" : "New value")).font(.subheadline).foregroundStyle(Color.secondary)
                                 }
                                 numericArea
                             }
@@ -73,7 +73,7 @@ struct EntryEditor: View {
                         }
                     }.padding(.vertical, 4)
                 }.listRowBackground(Color.clear)
-                    .listRowInsets(EdgeInsets(top: 8, leading: 0, bottom: 8, trailing: 0))
+                    .listRowInsets(EdgeInsets(top: 8, leading: 20, bottom: 8, trailing: 20))
                     .disabled(saving)
                 if currentTracker.requiresConditionGate {
                     Section(L.text("Achievement conditions")) {
@@ -92,12 +92,10 @@ struct EntryEditor: View {
                     VStack(alignment: .leading, spacing: 8) {
                         Toggle(L.text("Record location"), isOn: Binding(get: { location.draft.enabled }, set: { endEditing(); location.setEnabled($0) }))
                             .accessibilityIdentifier("entry.location").disabled(saving)
-                        if let status = location.draft.status {
-                            Text(L.text(status.key)).font(.caption).foregroundStyle(TrackerColors.secondaryText)
+                        if location.draft.enabled {
+                            Text(L.text(location.draft.status?.key ?? "Current iPhone location, not the record’s historical location.")).font(.subheadline).foregroundStyle(Color.secondary)
                                 .accessibilityIdentifier("entry.location.status")
                         }
-                        Text(L.text("When enabled, use the first photo’s GPS or your current iPhone location. No background tracking."))
-                            .font(.caption).foregroundStyle(TrackerColors.secondaryText)
                         if gatePending {
                             ProgressView(L.text("Checking record conditions")).accessibilityIdentifier("entry.conditions.pending")
                         } else if saving {
@@ -112,14 +110,15 @@ struct EntryEditor: View {
                 }
             }
             .modifier(ConditionPreviewUpdates(preview: conditionPreview, tracker: currentTracker))
+            .listSectionSpacing(16)
             .statusToast(message: $error, identifier: "editor.error", autoDismiss: false)
             .scrollDismissesKeyboard(.interactively)
             .background(EditorKeyboardDismissal(keyboard: keyboard) { valueFocused = false; noteFocused = false })
             .background(EditorDismissalObserver(onDismiss: stopRequests))
-            .navigationTitle(L.text(isPersistedEntry ? "Record details" : "New record"))
+            .navigationTitle(tracker.name)
             .navigationBarTitleDisplayMode(.inline)
             .toolbar {
-                ToolbarItem(placement: .cancellationAction) { Button(L.text("Cancel")) { stopRequests(); dismiss() }.accessibilityIdentifier("entry.cancel") }
+                ToolbarItem(placement: .cancellationAction) { Button(L.text("Cancel")) { endEditing(); if dirty { discarding = true } else { stopRequests(); dismiss() } }.accessibilityIdentifier("entry.cancel") }
                 ToolbarItem(placement: .confirmationAction) {
                     Button(L.text("Save"), action: beginSave)
                         .disabled(saving || loading || note.count > 10000 || (tracker.kind == .number && numericInput.isEmpty))
@@ -152,6 +151,15 @@ struct EntryEditor: View {
                 }
                 inputMode = isPersistedEntry ? (raw?.change == nil ? .direct : .change) : NumericEntryMode.initial(preference: preferredInputMode, hasBaseline: numericBaseline != nil, editing: false)
                 location.draft = RecordLocationDraft(existing: raw?.location, defaultEnabled: !isPersistedEntry && recordLocationByDefault)
+                initialValue = value; initialChange = change; initialMode = inputMode
+                initialLocationEnabled = location.draft.enabled
+            }
+            .interactiveDismissDisabled(dirty || saving || loading)
+            .confirmationDialog(L.text("Discard changes?"), isPresented: $discarding, titleVisibility: .visible) {
+                Button(L.text("Discard changes"), role: .destructive) { stopRequests(); dismiss() }
+                    .accessibilityIdentifier("entry.discard")
+                Button(L.text("Keep editing"), role: .cancel) { }
+                    .accessibilityIdentifier("entry.keepEditing")
             }
             .onChange(of: isPresented) { _, presented in if !presented { stopRequests() } }
             .onDisappear { if !isPresented { stopRequests() } }
@@ -171,7 +179,7 @@ struct EntryEditor: View {
                                 .accessibilityLabel(L.text("Photo to remove")).accessibilityIdentifier("entry.photoRemoval.preview")
                         }
                         Text(L.text("This photo is removed only when you save the record."))
-                            .font(.subheadline).foregroundStyle(TrackerColors.secondaryText)
+                            .font(.subheadline).foregroundStyle(Color.secondary)
                     }.padding()
                         .navigationTitle(L.text("Photos")).navigationBarTitleDisplayMode(.inline)
                         .toolbar {
@@ -211,7 +219,7 @@ struct EntryEditor: View {
     private var numericArea: some View {
         VStack(spacing: 4) {
             NumericValueEditor(text: numericBinding, precision: tracker.precision, unit: tracker.unit,
-                               isChange: inputMode == .change, focus: $valueFocused)
+                               isChange: inputMode == .change, placeholder: numericBaseline?.value.flatMap(Numbers.decimal).map { Numbers.display($0, precision: tracker.precision, locale: L.locale) } ?? "0", focus: $valueFocused)
             if inputMode == .change, let baseline = numericBaseline {
                 HStack(spacing: 6) {
                     Text(localizedValue(baseline.value ?? ""))
@@ -225,32 +233,32 @@ struct EntryEditor: View {
                     case .failure:
                         Text("—").accessibilityLabel(L.text("Resulting value"))
                     }
-                }.font(.caption.monospacedDigit()).foregroundStyle(TrackerColors.secondaryText)
+                }.font(.subheadline.monospacedDigit()).foregroundStyle(Color.secondary)
                     .fixedSize(horizontal: false, vertical: true)
                 Text(baseline.occurredAt.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened, locale: L.locale, timeZone: tracker.calendar.timeZone)))
-                    .font(.caption2).foregroundStyle(TrackerColors.secondaryText)
+                    .font(.subheadline).foregroundStyle(Color.secondary)
                     .accessibilityLabel(L.text("Baseline date"))
                     .accessibilityValue(baseline.occurredAt.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened, locale: L.locale, timeZone: tracker.calendar.timeZone)))
                     .accessibilityIdentifier("entry.baselineDate")
                 if case .failure(let failure) = numericPreview, !change.isEmpty {
-                    Text(numericError(failure)).font(.caption).foregroundStyle(.red)
+                    Text(numericError(failure)).font(.subheadline).foregroundStyle(.red)
                 }
             } else if inputMode == .change, numericBaseline == nil {
                 Text(L.text(isPersistedEntry && inputMode == .change
                             ? "No earlier value at this position. Saving requires confirming conversion to the previous value."
                             : "No earlier value for this date. Enter a new value first."))
-                    .font(.caption).foregroundStyle(TrackerColors.secondaryText)
+                    .font(.subheadline).foregroundStyle(Color.secondary)
             }
             if isPersistedEntry, inputMode == .change {
                 Text(L.text("Editing this change recalculates later values until the next new value record."))
-                    .font(.caption).foregroundStyle(TrackerColors.secondaryText)
+                    .font(.subheadline).foregroundStyle(Color.secondary)
                     .accessibilityIdentifier("entry.change.explanation")
             }
         }.multilineTextAlignment(.center).padding(.bottom, 12)
     }
 
     private var photoArea: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             if dynamicTypeSize.isAccessibilitySize {
                 VStack(alignment: .leading, spacing: 12) {
                     photoHeading
@@ -264,19 +272,11 @@ struct EntryEditor: View {
                 }
             }
             if !photos.isEmpty {
-                if comparisonLayout && !dynamicTypeSize.isAccessibilitySize {
-                    ScrollView(.vertical) {
-                        LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 10) {
-                            ForEach(photos) { photoTile($0) }
-                        }
-                    }.frame(height: 250).accessibilityIdentifier("entry.photoRail")
-                } else {
-                ScrollView(.horizontal) {
-                    HStack(spacing: 10) {
-                        ForEach(photos) { photoTile($0) }
-                    }
-                }.scrollIndicators(.hidden).accessibilityIdentifier("entry.photoRail")
-                }
+                DraftPhotoRail(photos: photos, identifierPrefix: "entry", photoLabelKey: "Record photo %lld", removalDisabled: loading,
+                               vertical: comparisonLayout && !dynamicTypeSize.isAccessibilitySize, onOpen: { index in
+                    endEditing()
+                    photoPresentation = EditorPhotoPresentation(photos: photos.map(\.data), initialIndex: index)
+                }, onRemove: { endEditing(); photoRemoval = $0 })
             }
             if loading { ProgressView(L.text("Saving photo copies")) }
         }
@@ -285,53 +285,24 @@ struct EntryEditor: View {
     private var photoHeading: some View {
         HStack(alignment: .firstTextBaseline, spacing: 8) {
             Text(L.text("Photos")).font(.subheadline.weight(.semibold))
-            Text("\(photos.count)/\(Entry.photoLimit)").font(.caption).foregroundStyle(TrackerColors.secondaryText)
-                .fixedSize(horizontal: true, vertical: false)
-                .accessibilityLabel(L.text("Photos")).accessibilityValue("\(photos.count)/\(Entry.photoLimit)")
-                .accessibilityIdentifier("entry.photos.count")
+            if !photos.isEmpty {
+                Text("\(photos.count)/\(Entry.photoLimit)").font(.subheadline.monospacedDigit()).foregroundStyle(Color.secondary)
+                    .fixedSize(horizontal: true, vertical: false)
+                    .accessibilityLabel(L.text("Photos")).accessibilityValue("\(photos.count)/\(Entry.photoLimit)")
+                    .accessibilityIdentifier("entry.photos.count")
+            }
         }
     }
     private var addPhotos: some View {
         let accessibilitySize = dynamicTypeSize.isAccessibilitySize
         return PhotosPicker(selection: $selections, maxSelectionCount: max(1, Entry.photoLimit - photos.count), selectionBehavior: .ordered, matching: .images, preferredItemEncoding: .current) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Image(systemName: "plus").font(.system(size: 18)).accessibilityHidden(true)
+                Image(systemName: "plus").font(.body).accessibilityHidden(true)
                 Text(L.text("Add photos")).font(.subheadline)
                     .fixedSize(horizontal: false, vertical: true)
             }.frame(maxWidth: accessibilitySize ? .infinity : nil, minHeight: 44, alignment: .leading)
         }.buttonStyle(.borderless).simultaneousGesture(TapGesture().onEnded { endEditing() })
             .disabled(loading || photos.count == Entry.photoLimit).accessibilityIdentifier("entry.photos")
-    }
-
-    private func photoTile(_ photo: DraftPhoto) -> some View {
-        ZStack(alignment: .topTrailing) {
-            Button {
-                guard let index = photos.firstIndex(where: { $0.id == photo.id }) else { return }
-                endEditing()
-                photoPresentation = EditorPhotoPresentation(photos: photos.map(\.data), initialIndex: index)
-            } label: {
-                if let image = UIImage(data: photo.data) {
-                    Image(uiImage: image).renderingMode(.original).resizable().scaledToFill()
-                        .frame(width: 104, height: 104).clipped()
-                        .clipShape(RoundedRectangle(cornerRadius: 12))
-                }
-            }.frame(width: 104, height: 104).contentShape(Rectangle())
-                .buttonStyle(.plain).accessibilityLabel(photoLabel("Record photo %lld", photo: photo))
-                .accessibilityIdentifier("entry.photo.\(photo.id.uuidString)")
-            Button {
-                endEditing(); photoRemoval = photo
-            } label: {
-                Image(systemName: "xmark").font(.system(size: 11, weight: .bold)).foregroundStyle(.white)
-                    .frame(width: 24, height: 24).background(.red, in: Circle())
-                    .overlay { Circle().strokeBorder(.white.opacity(0.9), lineWidth: 1.5) }
-                    .frame(width: 44, height: 44).contentShape(Rectangle())
-            }.buttonStyle(.plain).disabled(loading)
-                .accessibilityLabel(photoLabel("Remove photo %lld", photo: photo))
-                .accessibilityIdentifier("entry.photo.remove.\(photo.id.uuidString)")
-                .offset(x: 18, y: -18)
-        }.frame(width: 104, height: 104)
-            // Reserve the complete hit target around the protruding corner badge.
-            .padding(.top, 18).padding(.trailing, 18)
     }
 
     private var comparisonLayout: Bool {
@@ -341,8 +312,9 @@ struct EntryEditor: View {
         false
 #endif
     }
-    private func photoLabel(_ key: String, photo: DraftPhoto) -> String {
-        String(format: L.text(key), locale: L.locale, (photos.firstIndex { $0.id == photo.id } ?? 0) + 1)
+    private var dirty: Bool {
+        initialized && (date != draftEntry.occurredAt || value != initialValue || change != initialChange || inputMode != initialMode
+            || note != draftEntry.note || photos.map(\.data) != draftEntry.photos || location.draft.enabled != initialLocationEnabled || loading)
     }
     private var currentTracker: Tracker { store.trackers.first { $0.id == tracker.id } ?? tracker }
     private var isPersistedEntry: Bool { existing.map { entry in currentTracker.entries.contains { $0.id == entry.id } } ?? false }
@@ -481,6 +453,51 @@ struct EntryEditor: View {
             } catch {
                 if !Task.isCancelled, editorActive { self.error = numericError(error) }
             }
+        }
+    }
+}
+
+/// Shared app-owned photo previews with separate preview and removal targets.
+struct DraftPhotoRail: View {
+    let photos: [DraftPhoto]
+    let identifierPrefix: String
+    let photoLabelKey: String
+    var removalDisabled = false
+    var vertical = false
+    let onOpen: (Int) -> Void
+    let onRemove: (DraftPhoto) -> Void
+
+    var body: some View {
+        Group {
+            if vertical {
+                ScrollView(.vertical) {
+                    LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 12) { tiles }
+                }.frame(height: 250)
+            } else {
+                ScrollView(.horizontal) { HStack(spacing: 12) { tiles } }.scrollIndicators(.hidden)
+            }
+        }.accessibilityIdentifier(identifierPrefix + ".photoRail")
+    }
+    private var tiles: some View {
+        ForEach(Array(photos.enumerated()), id: \.element.id) { index, photo in
+            ZStack(alignment: .topTrailing) {
+                Button { onOpen(index) } label: {
+                    if let image = UIImage(data: photo.data) {
+                        Image(uiImage: image).renderingMode(.original).resizable().scaledToFill()
+                            .frame(width: 104, height: 104)
+                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    }
+                }.frame(width: 104, height: 104).contentShape(Rectangle()).buttonStyle(.plain)
+                    .accessibilityLabel(String(format: L.text(photoLabelKey), locale: L.locale, index + 1))
+                    .accessibilityIdentifier(identifierPrefix + ".photo." + photo.id.uuidString)
+                Button { onRemove(photo) } label: {
+                    Image(systemName: "xmark.circle.fill").font(.title2).dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+                        .symbolRenderingMode(.palette).foregroundStyle(.white, .black.opacity(0.65))
+                        .frame(width: 44, height: 44).contentShape(Rectangle())
+                }.buttonStyle(.plain).disabled(removalDisabled)
+                    .accessibilityLabel(String(format: L.text("Remove photo %lld"), locale: L.locale, index + 1))
+                    .accessibilityIdentifier(identifierPrefix + ".photo.remove." + photo.id.uuidString)
+            }.frame(width: 104, height: 104)
         }
     }
 }

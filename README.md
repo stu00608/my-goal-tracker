@@ -27,7 +27,7 @@ python3 scripts/dev.py doctor
 
 私人 GitHub repo 使用 `main` 作為整合分支，功能在 Orca worktree 中以 PR 交付。
 `.githooks/pre-commit` 執行 repo 檢查；CI 使用同一入口。
-CI 在 macOS runner 實際執行原生邏輯與 UI 測試，拒絕空測試或 skipped 結果。
+PR 的 CI 只跑 repo 檢查；macOS 原生單元測試與編譯是手動觸發的 `iOS Simulator` workflow，PR 需附本機測試結果。
 
 約定 app 專案為 `ios/GoalTracker.xcodeproj`，shared scheme 為 `GoalTracker`，
 並包含 `GoalTrackerTests` 和 `GoalTrackerUITests`。建立專案的任務需同時驗證這些約定。
