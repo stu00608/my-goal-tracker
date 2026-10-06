@@ -271,9 +271,10 @@ struct TrackerEditor: View {
         axisLower.isEmpty && axisUpper.isEmpty ? L.text("Automatic") : (axisLower.isEmpty ? L.text("Automatic") : axisLower) + " – " + (axisUpper.isEmpty ? L.text("Automatic") : axisUpper)
     }
     private func archive() {
-        guard let existing, var current = store.trackers.first(where: { $0.id == existing.id }) else { return }
-        endEditing(); current.archived.toggle()
-        do { try store.save(current); dismiss() }
+        guard existing != nil else { return }
+        endEditing()
+        // Archive the draft so edits made in this sheet are not silently discarded.
+        do { var tracker = try preparedTracker(); tracker.archived.toggle(); try store.save(tracker); dismiss() }
         catch { self.error = L.error(error) }
     }
     private var goalSection: some View {

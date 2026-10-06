@@ -28,6 +28,7 @@ struct ConditionEditor: View {
             .navigationTitle(L.text("Place"))
             .navigationBarTitleDisplayMode(.inline)
             .searchable(text: $search.query, placement: .navigationBarDrawer(displayMode: .always), prompt: L.text("Search for a place or address"))
+            .textInputAutocapitalization(.words).autocorrectionDisabled()
             .onSubmit(of: .search) { search.findQuery { choose($0) } }
             .toolbar {
                 ToolbarItem(placement: .cancellationAction) { Button(L.text("Cancel")) { search.cancel(); dismiss() } }

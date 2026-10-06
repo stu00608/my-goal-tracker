@@ -160,7 +160,7 @@ nonisolated final class ExpansionTests: XCTestCase {
         app.buttons["condition.confirm"].tap()
         let combination = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "conditions.editor.combination.")).firstMatch
         XCTAssertTrue(combination.waitForExistence(timeout: 10)); combination.tap()
-        app.buttons["All"].tap()
+        app.buttons["All conditions"].tap()
         screenshot(app, "Multiple location conditions and ALL combination")
         app.buttons["tracker.save"].tap()
         XCTAssertTrue(app.buttons["tracker.menu"].waitForExistence(timeout: 10))

@@ -1571,19 +1571,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Completions"
+            "value": "Days completed"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "次數"
+            "value": "完成天數"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "回数"
+            "value": "完了した日数"
           }
         }
       }
@@ -5375,19 +5375,19 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "全部"
+            "value": "所有條件"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "すべて"
+            "value": "すべての条件"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "All"
+            "value": "All conditions"
           }
         }
       }
@@ -5421,19 +5421,19 @@
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "任一"
+            "value": "任一條件"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "いずれか"
+            "value": "いずれかの条件"
           }
         },
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Any"
+            "value": "Any condition"
           }
         }
       }
@@ -8246,19 +8246,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "All"
+            "value": "All groups"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "すべて"
+            "value": "すべてのグループ"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "全部"
+            "value": "全部條件組"
           }
         }
       }
@@ -8269,19 +8269,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Any"
+            "value": "Any group"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "いずれか"
+            "value": "いずれかのグループ"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "任一"
+            "value": "任一條件組"
           }
         }
       }
