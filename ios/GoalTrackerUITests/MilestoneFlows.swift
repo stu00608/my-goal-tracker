@@ -507,7 +507,7 @@ nonisolated final class MilestoneFlows: XCTestCase {
     @MainActor func testWeekdayConditionLocalizedAtMaximumType() {
         for language in ["en", "ja", "zh-Hant"] {
             let app = launch(language: language, dark: true, large: true)
-            openGoal(app, "MANUAL"); app.buttons["tracker.menu"].tap(); if app.buttons[edit].waitForExistence(timeout: 1) { app.buttons[edit].tap() }
+            openGoal(app, "MANUAL"); app.buttons["tracker.menu"].tap()
             addCondition(app, kind: "weekdays")
             let sunday = element(app, "condition.weekday.1")
             XCTAssertTrue(sunday.waitForExistence(timeout: 5)); sunday.tap()
