@@ -18,48 +18,6 @@ jobs:
     name: Repository checks
     runs-on: ubuntu-latest
     timeout-minutes: 5
-    outputs:
-      has_app: ${{ steps.project.outputs.has_app }}
     steps:
       - uses: actions/checkout@v7
       - run: python3 scripts/dev.py check
-      - id: project
-        run: |
-          if [ -f ios/GoalTracker.xcodeproj/project.pbxproj ]; then
-            echo "has_app=true" >> "$GITHUB_OUTPUT"
-          else
-            echo "has_app=false" >> "$GITHUB_OUTPUT"
-          fi
-
-  ios:
-    name: iOS Simulator tests
-    needs: repository
-    if: needs.repository.outputs.has_app == 'true'
-    runs-on: macos-26
-    # CI covers native units and compilation. UI/E2E runs locally when needed.
-    timeout-minutes: 25
-    steps:
-      - uses: actions/checkout@v7
-      - run: python3 scripts/dev.py doctor
-      - name: Native unit and data tests
-        run: python3 scripts/dev.py test --unit-only
-      - name: Compile App and Widget
-        run: python3 scripts/dev.py build --scheme GoalTrackerWithWidget
-      - name: Upload test summaries
-        uses: actions/upload-artifact@v7
-        if: success()
-        with:
-          name: simulator-summaries
-          path: .artifacts/*.json
-          include-hidden-files: true
-          if-no-files-found: error
-          retention-days: 7
-      - name: Upload failure diagnostics
-        uses: actions/upload-artifact@v7
-        if: failure() && !cancelled()
-        with:
-          name: simulator-failure-results
-          path: .artifacts/
-          include-hidden-files: true
-          if-no-files-found: warn
-          retention-days: 1

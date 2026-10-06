@@ -42,10 +42,10 @@ python3 scripts/dev.py screenshot --device <simulator-udid>
 
 沒有 app project、缺少 runtime、build/test 非零或 result bundle 無法解析時，命令失敗。
 錯誤輸出與測試結果保存在本 worktree 的 `.artifacts/`；DerivedData 在 `.build/`。
-沒有 app 時 CI 的 iOS job 是 skipped，不是 app 驗證通過。
-
-CI 不執行 UI/E2E，也不排程夜間 E2E；保留 repository checks、`GoalTrackerTests` 原生單元／資料測試
-及 `GoalTrackerWithWidget` App／Widget 編譯，iOS job 上限 25 分鐘。
+PR 與 main 的 Verify workflow 只執行 repository checks。macOS 的 `iOS Simulator` workflow 改為手動觸發
+（Actions 頁或 `gh workflow run ios-simulator.yml --ref <branch>`），執行 `GoalTrackerTests` 原生單元／資料測試
+及 `GoalTrackerWithWidget` App／Widget 編譯，上限 25 分鐘；不執行 UI/E2E，也不排程夜間 E2E。
+它不阻擋合併，所以 PR 需附本機 `test --unit-only` 與 Widget build 結果；需要乾淨環境證據時再手動執行。
 `test --unit-only` 明確選取單元 target，仍拒絕空測試、失敗、跳過或不完整結果。
 UI/E2E 留在本機，依變更風險執行受影響流程；單純修改按鈕不重跑整套。
 資料遷移、跨功能流程或無法縮小的回歸才需要完整本機套件。CI 通過不代表 UI／Widget 互動已驗收。
