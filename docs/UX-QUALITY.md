@@ -1,5 +1,7 @@
 # Native UX quality
 
+具體的 spacing、字級、顏色、元件、術語與已知反模式見 [DESIGN.md](../DESIGN.md)；本文件定義品質標準與驗收流程。
+
 本專案以 Awwwards、The Webby Awards、FWA 獲獎作品的設計完成度為目標，落實到原生 iPhone 的日常操作。設計與功能必須一起成立；用實際操作及畫面證據判定品質，不能以自評分數或測試通過取代 UX 檢查，也不能宣稱已獲外部獎項認證。
 
 ## 設計標準

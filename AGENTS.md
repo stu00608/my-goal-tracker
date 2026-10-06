@@ -17,9 +17,11 @@ deployment through one integration owner when the user requests parallel work.
 
 ## Design quality
 
-For UI, interaction, navigation or user-facing copy changes, read and apply
+For UI, interaction, navigation, Widget or user-facing copy changes, read and apply
+[DESIGN.md](DESIGN.md) (design system, components, terminology, known anti-patterns) and
 [Native UX quality](docs/UX-QUALITY.md). Use its render, critique and fix loop before delivery;
 keep one primary route per action and resolve every known visual or interaction issue.
+When delegating UI work, put DESIGN.md in the brief and review the result against its checklist.
 
 ## Engineering
 
