@@ -15,7 +15,7 @@ struct CardPresentationEditor: View {
                     Text(L.text(position.labelKey)).tag(position)
                 }
             }
-            .accessibilityIdentifier("card.textPosition")
+            .tint(.primary).accessibilityIdentifier("card.textPosition")
         }
         Toggle(L.text("Show last recorded date"), isOn: $showLastRecorded)
             .accessibilityIdentifier("card.showLastRecorded")
@@ -24,7 +24,7 @@ struct CardPresentationEditor: View {
                 Text(L.text("Percentage")).tag(RingProgressStyle.percent)
                 Text(L.text("Current / target")).tag(RingProgressStyle.fraction)
             }
-            .accessibilityIdentifier("card.ringStyle")
+            .tint(.primary).accessibilityIdentifier("card.ringStyle")
         }
     }
 }

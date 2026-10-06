@@ -12,6 +12,7 @@ struct NumericValueEditor: View {
     let precision: Int
     let unit: String
     let isChange: Bool
+    var placeholder = "0"
     let focus: FocusState<Bool>.Binding
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -20,6 +21,7 @@ struct NumericValueEditor: View {
     @State private var origin: String?
     @State private var lastStep = 0
     @State private var countingDown = false
+    @State private var selectionCount = 0
     @State private var adjustmentError: String?
     private var fieldID: String { isChange ? "entry.change" : "entry.value" }
 
@@ -36,16 +38,17 @@ struct NumericValueEditor: View {
                     display
                 }
             }
-            .font(.system(size: valueSize, weight: .medium)).monospacedDigit()
-            .lineLimit(1).minimumScaleFactor(0.2)
+            .font(.system(size: valueSize, weight: .semibold)).monospacedDigit()
+            .lineLimit(1).minimumScaleFactor(0.6)
             .frame(maxWidth: .infinity, minHeight: 88)
             if !unit.isEmpty {
-                Text(unit).font(.subheadline).foregroundStyle(TrackerColors.secondaryText)
+                Text(unit).font(.subheadline).foregroundStyle(Color.secondary)
                     .fixedSize(horizontal: false, vertical: true)
             }
             if let adjustmentError { Text(adjustmentError).font(.caption).foregroundStyle(.red) }
         }
         .frame(maxWidth: .infinity)
+        .sensoryFeedback(.selection, trigger: selectionCount)
         .onChange(of: scenePhase) { _, phase in if phase != .active { restore() } }
         .onChange(of: focus.wrappedValue) { _, focused in if !focused { editing = false } }
         .onChange(of: isChange) { _, _ in editing = false; focus.wrappedValue = false; restore(); adjustmentError = nil }
@@ -53,7 +56,7 @@ struct NumericValueEditor: View {
 
     @ViewBuilder private var display: some View {
         let label = Text(displayValue)
-            .foregroundStyle(text.isEmpty ? TrackerColors.secondaryText : Color.primary)
+            .foregroundStyle(text.isEmpty ? Color.secondary : Color.primary)
             .contentTransition(isChange && !reduceMotion ? .numericText(countsDown: countingDown) : .identity)
             .frame(maxWidth: .infinity, minHeight: 88)
             .contentShape(Rectangle())
@@ -82,11 +85,12 @@ struct NumericValueEditor: View {
     }
 
     private var displayValue: String {
-        if text.isEmpty { return "—" }
+        if text.isEmpty { return isChange ? "0" : placeholder }
         if isChange, !text.hasPrefix("-"), !text.hasPrefix("+") { return "+" + text }
         return text
     }
     private func setCounter(_ newValue: String, decreasing: Bool) {
+        selectionCount += 1
         countingDown = decreasing
         withAnimation(reduceMotion ? nil : .snappy(duration: 0.18, extraBounce: 0)) { text = newValue }
     }

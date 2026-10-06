@@ -114,7 +114,7 @@ struct Provider: AppIntentTimelineProvider {
         let format = UIGraphicsImageRendererFormat(); format.scale = 1; format.opaque = true
         let image = UIGraphicsImageRenderer(size: options.size, format: format).image { _ in
             snapshot.image.draw(in: CGRect(origin: .zero, size: options.size))
-            let marker = UIImage(systemName: "mappin.circle.fill")?.withTintColor(.systemTeal, renderingMode: .alwaysOriginal)
+            let marker = UIImage(systemName: "mappin.circle.fill")?.withTintColor(UIColor(TrackerColors.accent).resolvedColor(with: options.traitCollection), renderingMode: .alwaysOriginal)
             for location in locations {
                 let point = snapshot.point(for: CLLocationCoordinate2D(latitude: location.latitude, longitude: location.longitude))
                 marker?.draw(in: CGRect(x: point.x - 9, y: point.y - 18, width: 18, height: 18))
@@ -155,7 +155,7 @@ struct GoalWidgetView: View {
                     }
                 } else {
                     Text(text(entry.selectedID == nil ? "Open the app to add your first tracker." : "This tracker is unavailable. Edit the widget to choose another."))
-                        .font(.caption).foregroundStyle(.primary).padding(16)
+                        .font(.caption).foregroundStyle(.secondary).padding(CardLayout.textInset)
                         .frame(maxWidth: .infinity, maxHeight: .infinity)
                 }
             }.frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -183,18 +183,18 @@ struct GoalWidgetView: View {
                         Image(uiImage: image).resizable().widgetAccentedRenderingMode(.desaturated).scaledToFill()
                             .opacity(monochrome ? 0.22 : 1)
                             .overlay {
-                                if photo {
+                                if photo || row.resolvedBackground == .map {
                                     CardPhotoReadabilityGradient(position: row.resolvedTextPosition, monochrome: monochrome,
-                                                                 lightText: CardImageContrast.prefersLightText(data, position: row.resolvedTextPosition))
+                                                                 lightText: photo ? CardImageContrast.prefersLightText(data, position: row.resolvedTextPosition) : colorScheme == .dark)
                                 }
                             }
                     }
                 } else {
                     Image(uiImage: image).resizable().scaledToFill()
                         .overlay {
-                            if photo {
+                            if photo || row.resolvedBackground == .map {
                                 CardPhotoReadabilityGradient(position: row.resolvedTextPosition, monochrome: monochrome,
-                                                             lightText: CardImageContrast.prefersLightText(data, position: row.resolvedTextPosition))
+                                                             lightText: photo ? CardImageContrast.prefersLightText(data, position: row.resolvedTextPosition) : colorScheme == .dark)
                             }
                         }
                 }
