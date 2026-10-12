@@ -131,7 +131,20 @@ CI 沒有私人開發憑證，仍執行 ad-hoc 共用摘要及 URL 測試；其�
 Signing & Capabilities 選 Personal Team，連接並信任自己的 iPhone，依提示啟用 Developer Mode。
 選手機為 run destination 後由 Xcode build/run。Team ID 不寫進 shared project；
 需要共用 build setting 時使用被忽略的 `Signing.local.xcconfig`，不提交私人 signing 資訊。
-免費描述檔只有 7 天效期，過期後從 Xcode 重新部署。
+免費描述檔只有 7 天效期，過期後可在本專案執行：
+
+```sh
+python3 scripts/dev.py install
+```
+
+先用傳輸線連接並解鎖 iPhone。命令預設建置 `GoalTrackerWithWidget`，沿用本機簽署設定，
+允許 Xcode 更新免費描述檔，再以 `devicectl` 覆蓋安裝；不刪除 App、不重設資料，也不自動更新 Git。
+**不要先在手機上刪除 App**，刪除會移除本機紀錄。建議平時另存包含照片的完整 JSON 備份。
+安裝完成後在手機開啟 Goalooker；命令成功只證明安裝完成，尚需確認實際啟動與使用。
+有多台可用的已配對 iPhone 時，先執行 `xcrun devicectl list devices`，再用
+`python3 scripts/dev.py install --device <identifier>` 指定；未配對、不可用或不符的裝置會拒絕。
+若簽署失敗，回 Xcode Settings → Accounts 確認登入，並檢查本機 `Signing.local.xcconfig` 的
+`DEVELOPMENT_TEAM` 設定。配對、信任與 Developer Mode 仍依手機／Xcode 提示完成。
 參考 [免費帳號限制](https://developer.apple.com/help/account/basics/about-your-developer-account)。
 
 相機、相簿權限、通知／Focus、觸覺、效能與 widget signing 需要自己的 iPhone 實測。

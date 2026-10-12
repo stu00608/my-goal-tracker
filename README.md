@@ -50,6 +50,16 @@ Widget 只共享進度摘要，點擊回到今天。兩個版本保留同一份 
 私人的 Team ID 僅存在被忽略的 `Signing.local.xcconfig` 或本機 build setting。
 詳見 [Simulator 與真機驗證](docs/SIMULATOR.md)。
 
+重新安裝到自己的 iPhone（含 Widget），先連接並解鎖手機，再執行：
+
+```sh
+python3 scripts/dev.py install
+```
+
+命令沿用本機 Personal Team 設定，重新建置／簽署並覆蓋安裝，不先刪除 App 或重設資料。
+只有一台可用的已配對 iPhone 時自動選取；多台時需用 `--device <identifier>` 指定。
+免費描述檔到期時可重跑同一命令；首次帳號、信任與 Developer Mode 設定見上述真機文件。
+
 完整備份為版本化 JSON，包含照片的 app 自有 JPEG 副本。CSV 只供分析，不能還原。
 為避免過量匯入，第一版單一備份上限 100 MB、數值上限 28 位數字；
 照片每筆最多 6 張，保存時縮至 1600 像素，每張上限 2 MB。

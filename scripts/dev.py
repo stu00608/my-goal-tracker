@@ -10,6 +10,7 @@ import plistlib
 import shlex
 import subprocess
 import sys
+import tempfile
 from datetime import datetime
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -36,6 +37,21 @@ def choose_device(devices, requested=None):
     if not phones:
         raise ValueError("No matching available iPhone Simulator; install a runtime or check --device.")
     return sorted(phones, key=lambda device: (device["name"], device["udid"]))[0]
+
+
+def choose_iphone(devices, requested=None):
+    phones = [device for device in devices
+              if device.get("hardwareProperties", {}).get("deviceType") == "iPhone"
+              and device.get("connectionProperties", {}).get("pairingState") == "paired"
+              and device.get("connectionProperties", {}).get("tunnelState") in {"connected", "disconnected"}]
+    if requested:
+        phones = [device for device in phones if requested in
+                  {device["identifier"], device["hardwareProperties"]["udid"]}]
+    if not phones:
+        raise ValueError("No matching paired iPhone. Connect, unlock and trust your iPhone; check --device if supplied.")
+    if len(phones) != 1:
+        raise ValueError("More than one iPhone available. Use --device with an identifier from xcrun devicectl list devices.")
+    return phones[0]
 
 
 def test_summary(summary):
@@ -97,18 +113,25 @@ def test_selection(action, scheme, unit_only):
     return ["-only-testing:GoalTrackerTests"]
 
 
-def xcode(action, device=None, scheme="GoalTracker", unit_only=False):
+def xcode(action, device=None, scheme="GoalTracker", unit_only=False, physical=False):
     selection = test_selection(action, scheme, unit_only)
     if not (PROJECT / "project.pbxproj").is_file():
         raise ValueError("App project not created: ios/GoalTracker.xcodeproj")
     ARTIFACTS.mkdir(exist_ok=True)
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S-%f")
     result_path = ARTIFACTS / (action + "-" + stamp + ".xcresult")
+    destination = "generic/platform=iOS" if physical else (
+        "platform=iOS Simulator,id=" + device if device else "generic/platform=iOS Simulator")
+    if physical:
+        signing = ["-allowProvisioningUpdates"]
+    elif scheme == "GoalTrackerWithWidget":
+        signing = ["CODE_SIGNING_ALLOWED=YES", "CODE_SIGN_IDENTITY=-", "DEVELOPMENT_TEAM="]
+    else:
+        signing = ["CODE_SIGNING_ALLOWED=NO"]
     args = ["xcodebuild", "-project", PROJECT, "-scheme", scheme, "-configuration", "Debug",
-            "-destination", "platform=iOS Simulator,id=" + device if device else "generic/platform=iOS Simulator",
+            "-destination", destination,
             "-derivedDataPath", DERIVED, "-resultBundlePath", result_path,
-            *(["CODE_SIGNING_ALLOWED=YES", "CODE_SIGN_IDENTITY=-", "DEVELOPMENT_TEAM="]
-              if scheme == "GoalTrackerWithWidget" else ["CODE_SIGNING_ALLOWED=NO"]), *selection, action]
+            *signing, *selection, action]
     log = ARTIFACTS / (action + "-" + stamp + ".log")
     print("+ " + shlex.join([str(arg) for arg in args]), flush=True)
     with log.open("w", encoding="utf-8") as output:
@@ -128,13 +151,30 @@ def xcode(action, device=None, scheme="GoalTracker", unit_only=False):
     print("Evidence:", result_path)
 
 
+def install(device=None, scheme="GoalTrackerWithWidget"):
+    if sys.platform != "darwin":
+        raise ValueError("iPhone installation requires macOS with full Xcode.")
+    ARTIFACTS.mkdir(exist_ok=True)
+    with tempfile.TemporaryDirectory(prefix="iphone-", dir=ARTIFACTS) as directory:
+        inventory = Path(directory) / "devices.json"
+        run("xcrun", "devicectl", "list", "devices", "--timeout", "15", "--quiet", "--json-output", inventory)
+        phone = choose_iphone(json.loads(inventory.read_text())["result"]["devices"], device)
+    print("Using iPhone:", phone["deviceProperties"]["name"], flush=True)
+    xcode("build", scheme=scheme, physical=True)
+    app = DERIVED / ("Build/Products/Debug-iphoneos/" + scheme + ".app")
+    run("codesign", "--verify", "--deep", "--strict", app)
+    run("xcrun", "devicectl", "device", "install", "app", "--device", phone["identifier"], app, "--timeout", "120")
+    print("App installed without deleting the existing app or resetting its data. Open Goalooker on your iPhone.")
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("command", choices=["setup", "check", "doctor", "devices", "build", "test", "run", "screenshot"])
-    parser.add_argument("--device", help="Exact Simulator UDID; does not erase or delete the device")
-    parser.add_argument("--scheme", choices=["GoalTracker", "GoalTrackerWithWidget"], default="GoalTracker")
+    parser.add_argument("command", choices=["setup", "check", "doctor", "devices", "build", "test", "run", "screenshot", "install"])
+    parser.add_argument("--device", help="Exact Simulator UDID, or paired iPhone identifier/UDID for install; never erases the device")
+    parser.add_argument("--scheme", choices=["GoalTracker", "GoalTrackerWithWidget"], help="Defaults to GoalTrackerWithWidget for install, GoalTracker otherwise")
     parser.add_argument("--unit-only", action="store_true", help="Run native unit/data tests without UI/E2E (GoalTracker test only)")
     args = parser.parse_args()
+    args.scheme = args.scheme or ("GoalTrackerWithWidget" if args.command == "install" else "GoalTracker")
     test_selection(args.command, args.scheme, args.unit_only)
     if args.command == "setup":
         for key, value in [("core.hooksPath", ".githooks"), ("pull.ff", "only"), ("fetch.prune", "true")]:
@@ -148,6 +188,8 @@ def main():
         print(json.dumps(devices(), indent=2))
     elif args.command == "build":
         xcode("build", scheme=args.scheme)
+    elif args.command == "install":
+        install(args.device, args.scheme)
     else:
         if args.command == "screenshot" and not args.device:
             raise ValueError("screenshot requires --device to identify the session being inspected.")
