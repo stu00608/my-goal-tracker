@@ -93,7 +93,7 @@ nonisolated enum NumericEntry {
         return try Numbers.parse(signed, locale: locale)
     }
 
-    static func mutation(in original: Tracker, replacing entry: Entry? = nil, deleting id: UUID? = nil) throws -> NumericEntryMutation {
+    static func mutation(in original: Tracker, replacing entry: Entry? = nil, deleting id: UUID? = nil, folders: [GoalFolder] = []) throws -> NumericEntryMutation {
         let before = try original.resolveEntries()
         var candidate = original
         if let id { candidate.entries.removeAll { $0.id == id } }
@@ -109,7 +109,7 @@ nonisolated enum NumericEntry {
             candidate.entries[index].updatedAt = Date()
             _ = try candidate.resolveEntries()
         }
-        try Backup(trackers: [candidate]).validate()
+        try Backup(trackers: [candidate], folders: folders).validate()
         return NumericEntryMutation(tracker: candidate, orphan: orphan)
     }
 

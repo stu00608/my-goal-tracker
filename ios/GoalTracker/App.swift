@@ -62,7 +62,7 @@ nonisolated enum L {
             #endif
             let loaded = try AppStore(url: url)
             #if DEBUG
-            if ProcessInfo.processInfo.arguments.contains("--reset-test-store") && url != nil { try loaded.replace([]) }
+            if ProcessInfo.processInfo.arguments.contains("--reset-test-store") && url != nil { try loaded.replace([], folders: []) }
             #if targetEnvironment(simulator)
             if url != nil, ProcessInfo.processInfo.arguments.contains("--feature-test-fixture"), loaded.trackers.isEmpty {
                 let args = ProcessInfo.processInfo.arguments
@@ -186,7 +186,12 @@ nonisolated enum L {
                     fixture[4].conditions = nil; fixture[4].gateSave = false
                     if args.contains("--checkbox-map-top-left") { fixture[2].cardTextPosition = .topLeading }
                 }
-                try loaded.replace(fixture)
+                var folders: [GoalFolder] = []
+                if args.contains("--folders-test-fixture") {
+                    folders = [GoalFolder(name: "健康與生活 · Health and daily life · 健康と暮らし"), GoalFolder(name: "Learning")]
+                    fixture[0].folderID = folders[0].id; fixture[1].folderID = folders[0].id
+                }
+                try loaded.replace(fixture, folders: folders)
             }
             #endif
             #endif

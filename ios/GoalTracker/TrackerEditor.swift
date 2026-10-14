@@ -10,6 +10,8 @@ struct TrackerEditor: View {
     @Environment(\.scenePhase) private var scenePhase
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     var existing: Tracker?
+    var initialFolderID: UUID?
+    @State private var folderID: UUID?
     @State private var newTracker = Tracker(name: "", kind: .number)
     @State private var name = ""
     @State private var kind = TrackerKind.number
@@ -69,6 +71,16 @@ struct TrackerEditor: View {
                             Text(L.text("Number snapshot")).tag(TrackerKind.number)
                             Text(L.text("Completion record")).tag(TrackerKind.daily)
                         }.tint(.primary).accessibilityIdentifier("tracker.kind")
+                    }
+                }
+                if !store.folders.isEmpty {
+                    Section {
+                        Picker(L.text("Folder"), selection: $folderID) {
+                            Text(L.text("Unfiled")).tag(nil as UUID?)
+                            ForEach(store.folders) { folder in Text(folder.name).tag(Optional(folder.id)) }
+                        }.tint(.primary)
+                            .accessibilityValue(folderID.flatMap { id in store.folders.first { $0.id == id }?.name } ?? L.text("Unfiled"))
+                            .accessibilityIdentifier("tracker.folder")
                     }
                 }
                 numberSection
@@ -469,6 +481,7 @@ struct TrackerEditor: View {
     private func endEditing() { keyboard.dismiss(); focusedField = nil }
     private func initialize() {
         guard !initialized else { return }; initialized = true
+        folderID = existing?.folderID ?? initialFolderID
         guard let t = existing else { DispatchQueue.main.async { focusedField = .name }; return }
         name = t.name; kind = t.kind; unit = t.unit; precision = t.precision; direction = t.direction
         description = t.description ?? ""; website = t.website ?? ""
@@ -510,6 +523,7 @@ struct TrackerEditor: View {
         guard !(gateSave || remindWhenMet) || !configuredGroups.isEmpty else { throw ConditionError("Add an achievement condition first.") }
         guard !remindWhenMet || supportsConditionReminders else { throw ConditionError("Condition reminders require a location condition without health conditions.") }
         if reminder?.weekdays.isEmpty == true { throw ConditionError("Choose at least one weekday.") }
+        t.folderID = folderID
         t.name = name.trimmingCharacters(in: .whitespacesAndNewlines); t.kind = kind; t.unit = unit; t.precision = precision; t.direction = direction
         t.description = description.isEmpty ? nil : description; t.website = try TrackerFields.website(website)
         t.photos = photos.isEmpty ? nil : photos.map(\.data)
