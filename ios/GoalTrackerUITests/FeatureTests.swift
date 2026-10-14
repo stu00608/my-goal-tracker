@@ -639,3 +639,153 @@ nonisolated final class FeatureTests: XCTestCase {
     }
 
 }
+
+nonisolated final class FolderFlows: XCTestCase {
+    @MainActor private func launch(language: String = "en", dark: Bool = false, large: Bool = false, folders: Bool = false, reset: Bool = true, layout: String = "grid") -> XCUIApplication {
+        let app = XCUIApplication()
+        app.launchArguments = ["--uitesting", "--feature-test-fixture", "-language", language,
+            "-appearance", dark ? "dark" : "light", "-homeLayout", layout, "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
+        if reset { app.launchArguments.append("--reset-test-store") }
+        if folders { app.launchArguments.append("--folders-test-fixture") }
+        if large { app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] }
+        app.launch(); return app
+    }
+    @MainActor private func capture(_ app: XCUIApplication, _ name: String) {
+        let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.name = name
+        attachment.lifetime = .keepAlways; add(attachment)
+    }
+    @MainActor private func row(_ app: XCUIApplication, _ name: String) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "tracker.", name)).firstMatch
+    }
+    @MainActor private func folder(_ app: XCUIApplication, _ name: String) -> XCUIElement {
+        app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "folder.", name)).firstMatch
+    }
+    @MainActor private func back(_ app: XCUIApplication) { app.navigationBars.buttons.element(boundBy: 0).tap() }
+    @MainActor private func reveal(_ app: XCUIApplication, _ element: XCUIElement) {
+        for _ in 0..<12 {
+            if element.exists && element.isHittable && element.frame.midY < app.frame.height - 110 { return }
+            app.swipeUp()
+        }
+        XCTAssertTrue(element.exists && element.isHittable)
+    }
+    @MainActor private func replace(_ field: XCUIElement, with text: String) {
+        field.tap(); let value = field.value as? String ?? ""
+        field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: value.count) + text)
+    }
+    @MainActor func testCreateAssignRenameFilterReopenAndDeleteFolder() {
+        continueAfterFailure = false
+        var app = launch()
+        app.tabBars.buttons.element(boundBy: 1).tap()
+        app.buttons["goals.add"].tap(); app.buttons["folder.create"].tap()
+        XCTAssertTrue(app.textFields["folder.name"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["folder.save"].isEnabled)
+        app.textFields["folder.name"].typeText("健康")
+        app.buttons["folder.save"].tap()
+        XCTAssertTrue(folder(app, "健康").waitForExistence(timeout: 5))
+        folder(app, "健康").tap()
+        capture(app, "Folder created empty")
+        app.buttons["tracker.create"].tap()
+        XCTAssertTrue(app.textFields["tracker.name"].waitForExistence(timeout: 5))
+        app.textFields["tracker.name"].typeText("WALK")
+        XCTAssertEqual(app.buttons["tracker.folder"].value as? String, "健康")
+        app.buttons["tracker.save"].tap()
+        XCTAssertTrue(row(app, "WALK").waitForExistence(timeout: 10))
+        back(app); app.buttons["folder.unfiled"].tap()
+        row(app, "SCORE").tap(); app.buttons["tracker.menu"].tap()
+        app.buttons["tracker.folder"].tap(); app.buttons["健康"].tap()
+        app.buttons["tracker.save"].tap()
+        XCTAssertTrue(app.buttons["tracker.menu"].waitForExistence(timeout: 10))
+        back(app)
+        XCTAssertFalse(row(app, "SCORE").exists)
+        back(app); folder(app, "健康").tap()
+        XCTAssertTrue(row(app, "SCORE").waitForExistence(timeout: 5))
+        capture(app, "Assigned folder contents")
+        app.buttons["folder.actions"].tap(); app.buttons["folder.rename"].tap()
+        replace(app.textFields["folder.name"], with: "暮らし")
+        app.buttons["folder.save"].tap()
+        XCTAssertTrue(app.staticTexts["暮らし"].waitForExistence(timeout: 5))
+        app.tabBars.buttons.element(boundBy: 0).tap()
+        app.buttons["today.folder"].tap(); app.buttons["暮らし"].tap()
+        XCTAssertTrue(app.staticTexts["SCORE"].exists && app.staticTexts["WALK"].exists)
+        XCTAssertFalse(app.staticTexts["COOK"].exists)
+        app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "card.", "SCORE")).firstMatch.tap()
+        XCTAssertTrue(app.buttons["entry.cancel"].waitForExistence(timeout: 5))
+        let field = app.textFields["entry.value"]
+        if !field.exists { app.descendants(matching: .any).matching(identifier: "entry.value.scrubber").firstMatch.tap() }
+        field.tap(); field.typeText("19.25")
+        app.buttons["entry.save"].tap()
+        XCTAssertTrue(app.staticTexts["19.250"].waitForExistence(timeout: 10))
+        capture(app, "Today filtered folder")
+        app.terminate(); app = launch(reset: false)
+        app.tabBars.buttons.element(boundBy: 1).tap(); folder(app, "暮らし").tap()
+        XCTAssertTrue(row(app, "SCORE").waitForExistence(timeout: 5) && row(app, "WALK").exists)
+        app.buttons["folder.actions"].tap(); app.buttons["folder.delete"].tap()
+        XCTAssertTrue(app.buttons["folder.delete.cancel"].firstMatch.waitForExistence(timeout: 5))
+        capture(app, "Folder deletion confirmation")
+        app.buttons["folder.delete.cancel"].firstMatch.tap()
+        XCTAssertTrue(row(app, "SCORE").exists)
+        app.buttons["folder.actions"].tap(); app.buttons["folder.delete"].tap()
+        app.buttons["folder.delete.confirm"].firstMatch.tap()
+        XCTAssertTrue(row(app, "SCORE").waitForExistence(timeout: 5) && row(app, "WALK").exists)
+        capture(app, "Folder deletion retains items")
+    }
+    @MainActor func testNativeListFolderFilteringAndCreation() {
+        continueAfterFailure = false
+        let app = launch(folders: true, layout: "list")
+        let name = "健康與生活 · Health and daily life · 健康と暮らし"
+        app.buttons["today.folder"].tap(); app.buttons[name].tap()
+        XCTAssertTrue(row(app, "SCORE").waitForExistence(timeout: 5))
+        XCTAssertFalse(row(app, "TRAVEL").exists)
+        row(app, "SCORE").tap()
+        XCTAssertTrue(app.buttons["entry.cancel"].waitForExistence(timeout: 5)); app.buttons["entry.cancel"].tap()
+        capture(app, "Today native list folder filter")
+        app.buttons["tracker.create"].tap()
+        XCTAssertTrue(app.textFields["tracker.name"].waitForExistence(timeout: 5))
+        app.textFields["tracker.name"].typeText("LIST")
+        XCTAssertEqual(app.buttons["tracker.folder"].value as? String, name)
+        app.buttons["tracker.save"].tap()
+        XCTAssertTrue(row(app, "LIST").waitForExistence(timeout: 10))
+        app.buttons["today.folder"].tap(); app.buttons["Unfiled"].tap()
+        XCTAssertTrue(row(app, "TRAVEL").waitForExistence(timeout: 5))
+        XCTAssertFalse(row(app, "SCORE").exists || row(app, "LIST").exists)
+        capture(app, "Today native list unfiled")
+    }
+    @MainActor func testFolderScreensAcrossLanguagesAppearanceAndLargestText() {
+        continueAfterFailure = false
+        let longName = "健康與生活 · Health and daily life · 健康と暮らし"
+        for language in ["zh-Hant", "ja", "en"] {
+            for large in [false, true] {
+                let app = launch(language: language, dark: large, large: large, folders: true)
+                let suffix = language + (large ? " dark AX XXXL" : " light")
+                capture(app, "Today folder selector " + suffix)
+                app.buttons["today.folder"].tap(); app.buttons[longName].tap()
+                XCTAssertTrue(app.staticTexts["SCORE"].exists)
+                XCTAssertFalse(app.staticTexts["TRAVEL"].exists)
+                capture(app, "Today long folder selected " + suffix)
+                app.tabBars.buttons.element(boundBy: 1).tap()
+                XCTAssertTrue(folder(app, longName).waitForExistence(timeout: 5))
+                capture(app, "Folder library long names " + suffix)
+                folder(app, longName).tap()
+                XCTAssertTrue(row(app, "SCORE").waitForExistence(timeout: 5))
+                XCTAssertFalse(row(app, "TRAVEL").exists)
+                capture(app, "Folder contents " + suffix)
+                app.buttons["folder.actions"].tap(); app.buttons["folder.rename"].tap()
+                XCTAssertTrue(app.textFields["folder.name"].waitForExistence(timeout: 5))
+                capture(app, "Folder editor " + suffix)
+                app.buttons["folder.cancel"].tap()
+                back(app); reveal(app, folder(app, "Learning")); folder(app, "Learning").tap()
+                capture(app, "Empty folder " + suffix)
+                app.buttons["tracker.create"].tap()
+                XCTAssertTrue(app.textFields["tracker.name"].waitForExistence(timeout: 5))
+                app.textFields["tracker.name"].tap()
+                XCTAssertTrue(app.buttons["tracker.keyboard.done"].waitForExistence(timeout: 5))
+                app.buttons["tracker.keyboard.done"].tap()
+                reveal(app, app.buttons["tracker.folder"])
+                XCTAssertEqual(app.buttons["tracker.folder"].value as? String, "Learning")
+                capture(app, "Tracker folder assignment " + suffix)
+                app.buttons["tracker.cancel"].tap()
+                app.terminate()
+            }
+        }
+    }
+}

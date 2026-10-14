@@ -117,7 +117,7 @@ struct SettingsView: View {
             #if DEBUG && targetEnvironment(simulator)
             .onAppear {
                 if ProcessInfo.processInfo.arguments.contains("--uitesting") && ProcessInfo.processInfo.arguments.contains("--backup-confirmation-fixture") {
-                    pending = Backup(trackers: store.trackers)
+                    pending = store.backup
                     restoreConfirm = true
                 }
             }
@@ -154,7 +154,7 @@ struct SettingsView: View {
                 Button(L.text("Cancel"), role: .cancel) { pending = nil }
             } message: {
                 if let pending {
-                    let counts = [("Trackers", pending.trackers.count), ("Records", pending.trackers.flatMap(\.entries).count), ("Photos", allPhotos(pending.trackers).count)]
+                    let counts = [("Folders", pending.folders?.count ?? 0), ("Trackers", pending.trackers.count), ("Records", pending.trackers.flatMap(\.entries).count), ("Photos", allPhotos(pending.trackers).count)]
                     Text(counts.map { L.text($0.0) + " · " + $0.1.formatted(.number.locale(L.locale)) }.joined(separator: "\n"))
                 }
             }
@@ -165,7 +165,7 @@ struct SettingsView: View {
     }
     private func prepare(csv: Bool) {
         do {
-            let backup = Backup(trackers: store.trackers)
+            let backup = store.backup
             self.csv = csv
             export = ExportDocument(data: csv ? Data(backup.csv().utf8) : try backup.encoded())
             exportFilename = exportNames.next(csv: csv)

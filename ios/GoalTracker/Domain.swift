@@ -133,6 +133,11 @@ nonisolated struct PlaceCondition: Codable, Identifiable, Equatable {
     var relation = PlaceRelation.inside
 }
 
+nonisolated struct GoalFolder: Codable, Identifiable, Equatable {
+    var id = UUID()
+    var name: String
+}
+
 nonisolated struct Tracker: Codable, Identifiable, Equatable {
     var id = UUID()
     var name: String
@@ -164,6 +169,7 @@ nonisolated struct Tracker: Codable, Identifiable, Equatable {
     var ringStyle: RingProgressStyle?
     var lifecycle: TrackingLifecycle?
     var manualCompletion: AchievementSnapshot?
+    var folderID: UUID?
     var resolvedTextPosition: CardTextPosition { cardTextPosition ?? .bottomTrailing }
     var resolvedRingStyle: RingProgressStyle { ringStyle ?? .percent }
     var resolvedLifecycle: TrackingLifecycle { lifecycle ?? (kind == .daily ? .ongoing : .finite) }
@@ -326,15 +332,22 @@ nonisolated enum DataError: Error { case invalidNumber, invalidBackup, unsupport
 
 nonisolated struct Backup: Codable, Equatable {
     var format = "my-goal-tracker"
-    var version = 3
+    var version = 4
     var exportedAt = Date()
     var trackers: [Tracker]
+    var folders: [GoalFolder]?
 
     func validate() throws {
         guard Self.validDate(exportedAt) else { throw DataError.invalidBackup }
         guard format == "my-goal-tracker" else { throw DataError.invalidBackup }
-        guard (1...3).contains(version) else { throw DataError.unsupportedVersion }
+        guard (1...4).contains(version) else { throw DataError.unsupportedVersion }
         guard trackers.count <= 1000, Set(trackers.map(\.id)).count == trackers.count else { throw DataError.invalidBackup }
+        let folders = folders ?? []
+        let folderIDs = Set(folders.map(\.id))
+        guard folders.count <= 1000, folderIDs.count == folders.count,
+              folders.allSatisfy({ !$0.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty && $0.name.count <= 120 }),
+              version >= 4 || self.folders == nil && trackers.allSatisfy({ $0.folderID == nil }),
+              trackers.allSatisfy({ $0.folderID.map(folderIDs.contains) ?? true }) else { throw DataError.invalidBackup }
         var entryIDs = Set<UUID>()
         var ruleIDs = Set<UUID>()
         for t in trackers {
@@ -474,10 +487,12 @@ nonisolated struct Backup: Codable, Equatable {
             return "\"" + safe.replacingOccurrences(of: "\"", with: "\"\"") + "\""
         }
         let iso = ISO8601DateFormatter()
-        var rows = ["tracker_id,name,kind,unit,entry_id,occurred_at,local_day,time_zone,value,note,latitude,longitude,input_kind,change"]
-        for t in trackers { for e in t.resolvedEntries {
-            let fields = [t.id.uuidString, t.name, t.kind.rawValue, t.unit, e.id.uuidString, iso.string(from: e.occurredAt), e.localDay, t.timeZoneID, e.value ?? "", e.note, e.location.map { String($0.latitude) } ?? "", e.location.map { String($0.longitude) } ?? "", t.kind == .daily ? "" : (e.change == nil ? "value" : "change"), e.change ?? ""]
-            rows.append(fields.enumerated().map { escape($0.element, protect: [1, 3, 9].contains($0.offset)) }.joined(separator: ","))
+        var rows = ["tracker_id,name,kind,unit,entry_id,occurred_at,local_day,time_zone,value,note,latitude,longitude,input_kind,change,folder_id,folder_name"]
+        for t in trackers {
+            let folderName = folders?.first { $0.id == t.folderID }?.name ?? ""
+            for e in t.resolvedEntries {
+            let fields = [t.id.uuidString, t.name, t.kind.rawValue, t.unit, e.id.uuidString, iso.string(from: e.occurredAt), e.localDay, t.timeZoneID, e.value ?? "", e.note, e.location.map { String($0.latitude) } ?? "", e.location.map { String($0.longitude) } ?? "", t.kind == .daily ? "" : (e.change == nil ? "value" : "change"), e.change ?? "", t.folderID?.uuidString ?? "", folderName]
+            rows.append(fields.enumerated().map { escape($0.element, protect: [1, 3, 9, 15].contains($0.offset)) }.joined(separator: ","))
         } }
         return rows.joined(separator: "\r\n") + "\r\n"
     }

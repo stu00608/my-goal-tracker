@@ -10,9 +10,8 @@ struct RootView: View {
     @State private var todayPath: [UUID] = []
     @State private var editingTracker: Tracker?
     @State private var todayNavigationID = UUID()
-    @State private var editMode = EditMode.inactive
-    @State private var goalsNavigationID = UUID()
     @State private var creating = false
+    @State private var todayFolder = FolderScope.all
     @State private var entryTracker: Tracker?
     @State private var gateNotice: String?
     var body: some View {
@@ -21,15 +20,14 @@ struct RootView: View {
     private func screen(at date: Date) -> some View {
         TabView(selection: $selected) {
             NavigationStack(path: $todayPath) {
-                trackerList(today: true, at: date)
+                trackerList(at: date)
                     .statusToast(message: statusMessage, identifier: "home.conditions.error", autoDismiss: store.error == nil)
                     .navigationDestination(for: UUID.self) { TrackerDetail(id: $0, now: date) }
             }.id(todayNavigationID).tabItem { Label(L.text("Today"), systemImage: "checkmark.circle") }.tag(0)
-            NavigationStack { trackerList(today: false, at: date).statusToast(message: statusMessage, identifier: "home.conditions.error", autoDismiss: store.error == nil) }.id(goalsNavigationID).tabItem { Label(L.text("Goals"), systemImage: "chart.bar.fill") }.tag(1)
+            GoalsLibrary(now: date).id(todayNavigationID).tabItem { Label(L.text("Goals"), systemImage: "chart.bar.fill") }.tag(1)
             CompletedTab(trackers: store.trackers, now: date).tabItem { Label(L.text("Completed tab"), systemImage: "sparkles") }.tag(2)
             SettingsView(now: date).tabItem { Label(L.text("Settings"), systemImage: "gearshape") }.tag(3)
         }
-        .environment(\.editMode, $editMode)
         .onChange(of: selected) { _, _ in gateNotice = nil }
         .task(id: store.trackers) {
             do { try await Reminders.sync(store.trackers) }
@@ -38,89 +36,82 @@ struct RootView: View {
         }
         .onOpenURL { url in
             guard url.scheme == "goaltracker", url.host == "today" || url.host == "record" else { return }
-            creating = false; entryTracker = nil; editingTracker = nil; todayPath = []; selected = 0; editMode = .inactive; todayNavigationID = UUID(); goalsNavigationID = UUID()
+            creating = false; entryTracker = nil; editingTracker = nil; todayPath = []; selected = 0; todayFolder = .all; todayNavigationID = UUID()
             if url.host == "record", url.pathComponents.count == 2,
                let id = UUID(uuidString: url.pathComponents[1]) {
                 entryTracker = store.trackers.first { $0.id == id && !$0.archived }
             }
         }
         .sheet(item: $editingTracker) { TrackerEditor(existing: $0) }
-        .sheet(isPresented: $creating) { TrackerEditor() }
+        .sheet(isPresented: $creating) { TrackerEditor(initialFolderID: todayFolder.folderID) }
         .sheet(item: $entryTracker) { t in EntryEditor(tracker: t, existing: t.entries.first { $0.localDay == t.day(Date()) && t.kind == .daily }) }
 
     }
     private var statusMessage: Binding<String?> {
         Binding(get: { gateNotice ?? store.error }, set: { value in gateNotice = value; if value == nil { store.error = nil } })
     }
-    private func trackerList(today: Bool, at date: Date) -> some View {
-        let active = store.trackers.filter { !$0.archived }
+    private func trackerList(at date: Date) -> some View {
+        let active = store.trackers.filter { !$0.archived && todayFolder.contains($0) }
         return Group {
             if active.isEmpty {
-                ContentUnavailableView {
-                    Label(L.text("Make room for progress"), systemImage: "leaf")
-                } description: { Text(L.text("Track a number or mark a day. Start with one thing that matters to you.")) }
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-            } else if today && homeLayout != "list" {
-                DashboardView(trackers: store.trackers, now: date,
+                ScrollView {
+                    if !store.folders.isEmpty { FolderFilter(scope: $todayFolder).padding(.horizontal, 16) }
+                    ContentUnavailableView {
+                        Label(L.text(todayFolder == .all ? "Make room for progress" : "No items in this folder"), systemImage: "leaf")
+                    } description: {
+                        if todayFolder == .all { Text(L.text("Track a number or mark a day. Start with one thing that matters to you.")) }
+                    }.frame(maxWidth: .infinity, maxHeight: .infinity)
+                }
+            } else if homeLayout != "list" {
+                DashboardView(trackers: active, now: date, folderScope: $todayFolder,
                               onRecord: { entryTracker = $0 }, onDetails: { todayPath.append($0.id) },
                               onEdit: { editingTracker = $0 }, onArchive: archive, onReorder: reorder,
                               cancelForPresentation: entryTracker != nil || editingTracker != nil || creating || selected != 0,
                               onBegin: { gateNotice = nil }, onFailure: { gateNotice = $0 })
             } else {
                 List {
-                    ForEach(active) { tracker in
-                        HStack(spacing: 12) {
-                            if today {
+                    if !store.folders.isEmpty {
+                        Section { FolderFilter(scope: $todayFolder).listRowBackground(Color.clear) }
+                    }
+                    Section {
+                        ForEach(active) { tracker in
+                            HStack(spacing: 12) {
                                 Button { entryTracker = tracker } label: {
                                     TrackerSummary(tracker: tracker, now: date).frame(maxWidth: .infinity, alignment: .leading)
                                 }.buttonStyle(.borderless).accessibilityIdentifier("tracker." + tracker.id.uuidString)
-                            } else {
-                                NavigationLink { TrackerDetail(id: tracker.id, now: date) } label: { TrackerSummary(tracker: tracker, now: date) }
-                                    .accessibilityIdentifier("tracker." + tracker.id.uuidString)
-                            }
-                            if today && tracker.kind == .daily {
-                                DailyCompletionButton(tracker: tracker, now: date,
-                                    recordLocationByDefault: recordLocationByDefault,
-                                    cancelForPresentation: entryTracker != nil || editingTracker != nil || creating || selected != 0,
-                                    onEditor: { entryTracker = $0 }, onBegin: { gateNotice = nil },
-                                    onFailure: { gateNotice = $0 })
-                            }
-                            if today && tracker.kind == .number {
-                                Button { entryTracker = tracker } label: { Image(systemName: "plus.circle").font(.title2).foregroundStyle(Color.secondary).frame(minWidth: 44, minHeight: 44) }
-                                    .buttonStyle(.borderless).accessibilityLabel(L.text("Add a snapshot") + ": " + tracker.name)
-                                    .accessibilityIdentifier("snapshot." + tracker.id.uuidString)
-                            }
-                        }.padding(.vertical, 4)
-                        .contextMenu {
-                            if today {
-                                TrackerContextMenu(tracker: tracker, onDetails: { todayPath.append($0.id) },
-                                                   onEdit: { editingTracker = $0 }, onArchive: archive)
-                            }
-                        }
-                        .modifier(TrackerReorderInteraction(enabled: today, id: tracker.id, active: active, onReorder: reorder))
-                    }.onMove { indices, destination in
-                        store.perform {
-                            var reordered = active
-                            reordered.move(fromOffsets: indices, toOffset: destination)
-                            try store.replace(reordered + store.trackers.filter(\.archived))
+                                if tracker.kind == .daily {
+                                    DailyCompletionButton(tracker: tracker, now: date,
+                                        recordLocationByDefault: recordLocationByDefault,
+                                        cancelForPresentation: entryTracker != nil || editingTracker != nil || creating || selected != 0,
+                                        onEditor: { entryTracker = $0 }, onBegin: { gateNotice = nil },
+                                        onFailure: { gateNotice = $0 })
+                                } else {
+                                    Button { entryTracker = tracker } label: { Image(systemName: "plus.circle").font(.title2).foregroundStyle(Color.secondary).frame(minWidth: 44, minHeight: 44) }
+                                        .buttonStyle(.borderless).accessibilityLabel(L.text("Add a snapshot") + ": " + tracker.name)
+                                        .accessibilityIdentifier("snapshot." + tracker.id.uuidString)
+                                }
+                            }.padding(.vertical, 4)
+                                .contextMenu {
+                                    TrackerContextMenu(tracker: tracker, onDetails: { todayPath.append($0.id) },
+                                                       onEdit: { editingTracker = $0 }, onArchive: archive)
+                                }
+                                .modifier(TrackerReorderInteraction(id: tracker.id, active: active, onReorder: reorder))
                         }
                     }
                 }
             }
         }
-        .environment(\.editMode, today ? .constant(.inactive) : $editMode)
-        .navigationTitle(L.text(today ? "Today" : "Goals"))
-        .modifier(TodayDateSubtitle(date: today ? date : nil))
+        .environment(\.editMode, .constant(.inactive))
+        .navigationTitle(L.text("Today"))
+        .modifier(TodayDateSubtitle(date: date))
         .toolbar {
-            if !today && !active.isEmpty { ToolbarItem(placement: .topBarTrailing) {
-                Button(L.text(editMode.isEditing ? "Done" : "Edit")) {
-                    withAnimation { editMode = editMode.isEditing ? .inactive : .active }
-                }.accessibilityIdentifier("home.edit")
-            } }
             ToolbarItem(placement: .topBarTrailing) {
                 Button { creating = true } label: { Image(systemName: "plus") }
                     .accessibilityLabel(L.text("Create a tracker")).accessibilityIdentifier("tracker.create")
             }
+        }
+        .onChange(of: store.folders) { _, folders in
+            if let id = todayFolder.folderID, !folders.contains(where: { $0.id == id }) { todayFolder = .all }
         }
     }
     private func archive(_ tracker: Tracker) {
@@ -132,11 +123,11 @@ struct RootView: View {
     }
     private func reorder(_ source: UUID, _ target: UUID) {
         store.perform {
-            var active = store.trackers.filter { !$0.archived }
+            var active = store.trackers.filter { !$0.archived && todayFolder.contains($0) }
             guard source != target, let from = active.firstIndex(where: { $0.id == source }),
                   let to = active.firstIndex(where: { $0.id == target }) else { return }
             let tracker = active.remove(at: from); active.insert(tracker, at: to)
-            try store.replace(active + store.trackers.filter(\.archived))
+            try store.reorder(active.map(\.id))
         }
     }
 }

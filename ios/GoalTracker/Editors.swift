@@ -391,7 +391,7 @@ struct EntryEditor: View {
         do {
             let original = currentTracker
             let entry = try preparedEntry(in: original)
-            let mutation = try NumericEntry.mutation(in: original, replacing: entry)
+            let mutation = try NumericEntry.mutation(in: original, replacing: entry, folders: store.folders)
             error = nil; endEditing()
             let pending = PendingEntryMutation(original: original, mutation: mutation, entry: entry)
             if mutation.orphan != nil { pendingMutation = pending; confirmingOrphan = true }
@@ -401,7 +401,7 @@ struct EntryEditor: View {
     private func prepareDeletion() {
         do {
             let original = currentTracker
-            let mutation = try NumericEntry.mutation(in: original, deleting: existing?.id)
+            let mutation = try NumericEntry.mutation(in: original, deleting: existing?.id, folders: store.folders)
             let pending = PendingEntryMutation(original: original, mutation: mutation, entry: nil)
             if mutation.orphan != nil { pendingMutation = pending; confirmingOrphan = true }
             else { save(pending) }

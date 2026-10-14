@@ -264,3 +264,22 @@ struct NumericEntryTests {
         #expect(!NumericEntry.requiresGate(in: tracker, for: changed, editing: nil))
     }
 }
+
+@MainActor struct FolderNumericMutationTests {
+    @Test func assignedTrackerSupportsRecordMutationsAndKeepsMembership() throws {
+        let folder = GoalFolder(name: "Numbers")
+        var tracker = Tracker(name: "Score", kind: .number); tracker.folderID = folder.id
+        let start = Date().addingTimeInterval(-3600)
+        let first = Entry(occurredAt: start, localDay: tracker.day(start), value: "1.1234567890123456789")
+        tracker.put(first)
+        let change = Entry(occurredAt: Date(), localDay: tracker.day(Date()), change: "2")
+        let inserted = try NumericEntry.mutation(in: tracker, replacing: change, folders: [folder]).tracker
+        #expect(inserted.folderID == folder.id && inserted.latest?.value == "3.1234567890123456789")
+        var edited = change; edited.change = "-1"
+        let updated = try NumericEntry.mutation(in: inserted, replacing: edited, folders: [folder]).tracker
+        #expect(updated.folderID == folder.id && updated.latest?.value == "0.1234567890123456789")
+        let deleted = try NumericEntry.mutation(in: updated, deleting: first.id, folders: [folder])
+        #expect(deleted.orphan?.id == change.id && deleted.tracker.folderID == folder.id)
+        #expect(deleted.tracker.latest?.value == "0.1234567890123456789")
+    }
+}

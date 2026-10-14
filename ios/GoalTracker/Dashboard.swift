@@ -4,6 +4,8 @@ import MapKit
 struct DashboardView: View {
     let trackers: [Tracker]
     let now: Date
+    @Binding var folderScope: FolderScope
+    @Environment(AppStore.self) private var store
     let onRecord: (Tracker) -> Void
     // Move the source to the target's original index; adjacent targets implement move up/down.
     let onDetails: (Tracker) -> Void
@@ -25,8 +27,11 @@ struct DashboardView: View {
         GeometryReader { geometry in
             let edge = max(0, (geometry.size.width - CardLayout.screenInset * 2 - CardLayout.gridSpacing) / 2)
             ScrollView {
-                LazyVGrid(columns: grid ? Array(repeating: GridItem(.fixed(edge), spacing: CardLayout.gridSpacing), count: 2) : [GridItem(.flexible())], spacing: CardLayout.gridSpacing) {
-                    ForEach(active) { tracker in card(tracker, edge: grid ? edge : nil) }
+                VStack(alignment: .leading, spacing: 12) {
+                    if !store.folders.isEmpty { FolderFilter(scope: $folderScope) }
+                    LazyVGrid(columns: grid ? Array(repeating: GridItem(.fixed(edge), spacing: CardLayout.gridSpacing), count: 2) : [GridItem(.flexible())], spacing: CardLayout.gridSpacing) {
+                        ForEach(active) { tracker in card(tracker, edge: grid ? edge : nil) }
+                    }
                 }.padding(CardLayout.screenInset)
             }
         }

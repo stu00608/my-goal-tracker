@@ -260,10 +260,10 @@ import SwiftData
                      Entry(occurredAt: start.addingTimeInterval(172800), localDay: "2024-06-03", change: "2")]
         return t
     }
-    @Test func versionThreeRoundTripKeepsRawEventsAndCSVDerivedValuesWithInputProvenance() throws {
+    @Test func currentVersionRoundTripKeepsRawEventsAndCSVDerivedValuesWithInputProvenance() throws {
         let t = numericLedger()
         let backup = Backup(trackers: [t])
-        #expect(backup.version == 3)
+        #expect(backup.version == 4)
         let loaded = try Backup.decode(backup.encoded())
         #expect(loaded.trackers == [t])
         #expect(loaded.trackers[0].sortedEntries[1].value == nil)
@@ -279,11 +279,11 @@ import SwiftData
         withGoal.entries.remove(at: 1)
         #expect(!withGoal.achieved(rule))
         let csv = backup.csv()
-        #expect(csv.hasPrefix("tracker_id,name,kind,unit,entry_id,occurred_at,local_day,time_zone,value,note,latitude,longitude,input_kind,change\r\n"))
+        #expect(csv.hasPrefix("tracker_id,name,kind,unit,entry_id,occurred_at,local_day,time_zone,value,note,latitude,longitude,input_kind,change,folder_id,folder_name\r\n"))
         let rows = csv.components(separatedBy: "\r\n")
-        #expect(rows[1].contains("\"100.1234567890123456789\"") && rows[1].hasSuffix("\"value\",\"\""))
-        #expect(rows[2].contains("\"95.1234567890123456789\"") && rows[2].hasSuffix("\"change\",\"-5\""))
-        #expect(rows[3].contains("\"97.1234567890123456789\"") && rows[3].hasSuffix("\"change\",\"2\""))
+        #expect(rows[1].contains("\"100.1234567890123456789\"") && rows[1].hasSuffix("\"value\",\"\",\"\",\"\""))
+        #expect(rows[2].contains("\"95.1234567890123456789\"") && rows[2].hasSuffix("\"change\",\"-5\",\"\",\"\""))
+        #expect(rows[3].contains("\"97.1234567890123456789\"") && rows[3].hasSuffix("\"change\",\"2\",\"\",\"\""))
         #expect(backup.trackers == [t])
         #expect(throws: (any Error).self) { try Backup(trackers: [Tracker(name: "display", kind: .number, entries: t.resolvedEntries)]).validate() }
     }
@@ -318,7 +318,7 @@ import SwiftData
         let disk = try ModelContainer(for: Ledger.self, configurations: ModelConfiguration(url: url, cloudKitDatabase: .none))
         let diskContext = ModelContext(disk)
         let persisted = try #require(diskContext.fetch(FetchDescriptor<Ledger>()).first?.payload)
-        #expect(try Backup.decode(persisted).version == 3)
+        #expect(try Backup.decode(persisted).version == 4)
     }
     @Test func malformedRawLedgersAndMetadataRejectAtomicallyForSaveRestoreAndReopen() throws {
         let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
@@ -359,7 +359,7 @@ import SwiftData
             #expect(try AppStore(url: url).trackers == [original])
         }
         #expect(throws: (any Error).self) { try Backup(version: 1, trackers: [original]).validate() }
-        #expect(throws: DataError.unsupportedVersion) { try Backup(version: 4, trackers: [original]).validate() }
+        #expect(throws: DataError.unsupportedVersion) { try Backup(version: 5, trackers: [original]).validate() }
         var daily = tracker(); daily.entries = [Entry(occurredAt: daily.createdAt, localDay: daily.day(daily.createdAt), change: "1")]
         #expect(throws: (any Error).self) { try Backup(trackers: [daily]).validate() }
     }
@@ -437,4 +437,91 @@ import SwiftData
         #expect(throws: DataError.photoFailed) { try photoCopy(data as Data) }
     }
 
+}
+
+@MainActor struct FolderTests {
+    private func withStore(_ body: (AppStore, URL) throws -> Void) throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        try FileManager.default.createDirectory(at: directory, withIntermediateDirectories: true)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let url = directory.appendingPathComponent("store")
+        try body(AppStore(url: url), url)
+    }
+    @Test func foldersPersistAndDeletionPreservesActiveAndArchivedRawData() throws {
+        try withStore { store, url in
+            var folder = GoalFolder(name: "健康")
+            let empty = GoalFolder(name: "Empty")
+            var active = Tracker(name: "Score", kind: .number)
+            active.folderID = folder.id
+            active.put(Entry(occurredAt: Date(), localDay: active.day(Date()), value: "1.1234567890123456789", note: "原文"))
+            var archived = Tracker(name: "Cook", kind: .daily); archived.folderID = folder.id; archived.archived = true
+            try store.replace([active, archived], folders: [folder, empty])
+            try store.save(active)
+            folder.name = "暮らし"; try store.saveFolder(folder)
+            let reopened = try AppStore(url: url)
+            #expect(reopened.folders == [folder, empty])
+            #expect(reopened.trackers == [active, archived])
+            let bytes = try reopened.backup.encoded()
+            try store.removeFolder(folder.id)
+            active.folderID = nil; archived.folderID = nil
+            #expect(store.trackers == [active, archived])
+            #expect(store.folders == [empty])
+            #expect(try AppStore(url: url).trackers == [active, archived])
+            try store.restore(bytes)
+            active.folderID = folder.id; archived.folderID = folder.id
+            #expect(store.trackers == [active, archived] && store.folders == [folder, empty])
+        }
+    }
+    @Test func invalidFolderBackupsRejectWithoutChangingMemoryOrDisk() throws {
+        try withStore { store, url in
+            let folder = GoalFolder(name: "Valid")
+            var tracker = Tracker(name: "Original", kind: .daily); tracker.folderID = folder.id
+            try store.replace([tracker], folders: [folder])
+            var dangling = tracker; dangling.folderID = UUID()
+            let malformed = [Backup(trackers: [tracker], folders: []), Backup(trackers: [dangling], folders: [folder]),
+                Backup(trackers: [tracker], folders: [folder, folder]), Backup(trackers: [], folders: [GoalFolder(name: " \n ")]),
+                Backup(trackers: [], folders: [GoalFolder(name: String(repeating: "a", count: 121))])]
+            #expect(throws: (any Error).self) { try store.restore(JSONEncoder().encode(Backup(version: 3, trackers: [tracker], folders: [folder]))) }
+            for backup in malformed {
+                #expect(throws: (any Error).self) { try store.restore(JSONEncoder().encode(backup)) }
+                #expect(throws: (any Error).self) { try store.replace(backup.trackers, folders: backup.folders) }
+                #expect(store.trackers == [tracker] && store.folders == [folder])
+                let reopened = try AppStore(url: url)
+                #expect(reopened.trackers == [tracker] && reopened.folders == [folder])
+            }
+        }
+    }
+    @Test func legacyRestoreClearsPreviousFoldersAndScopedOrderingKeepsOtherSlots() throws {
+        try withStore { store, url in
+            let folder = GoalFolder(name: "Group")
+            var a = Tracker(name: "A", kind: .daily); a.folderID = folder.id
+            let b = Tracker(name: "B", kind: .number)
+            var c = Tracker(name: "C", kind: .daily); c.folderID = folder.id
+            var d = Tracker(name: "Archived", kind: .daily); d.archived = true
+            try store.replace([a, b, c, d], folders: [folder])
+            try store.reorder([c.id, a.id])
+            #expect(store.trackers == [c, b, a, d])
+            #expect(FolderScope.folder(folder.id).contains(a))
+            #expect(!FolderScope.folder(folder.id).contains(b))
+            #expect(FolderScope.unfiled.contains(b))
+            #expect(throws: (any Error).self) { try store.reorder([a.id, a.id]) }
+            #expect(throws: (any Error).self) { try store.reorder([UUID()]) }
+            for version in [1, 2, 3] {
+                try store.restore(Backup(version: version, trackers: [b]).encoded())
+                #expect(store.folders.isEmpty && store.trackers == [b])
+                #expect(try AppStore(url: url).folders.isEmpty)
+            }
+        }
+    }
+    @Test func folderCSVPreservesIdentityAndProtectsNamesWithoutChangingJSON() throws {
+        let folder = GoalFolder(name: "=HYPERLINK(\"example\")")
+        var tracker = Tracker(name: "Test", kind: .number); tracker.folderID = folder.id
+        tracker.put(Entry(occurredAt: Date(), localDay: tracker.day(Date()), value: "1"))
+        let backup = Backup(trackers: [tracker], folders: [folder])
+        #expect(try Backup.decode(backup.encoded()).folders == [folder])
+        let csv = backup.csv()
+        #expect(csv.contains("folder_id,folder_name\r\n"))
+        #expect(csv.contains(folder.id.uuidString))
+        #expect(csv.contains("\"'=HYPERLINK(\"\"example\"\")\""))
+    }
 }
