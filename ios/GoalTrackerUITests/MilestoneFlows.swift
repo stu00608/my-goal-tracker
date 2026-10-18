@@ -329,7 +329,7 @@ nonisolated final class MilestoneFlows: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [checked], timeout: 10), .completed)
         XCTAssertFalse(met.buttons["entry.save"].exists); XCTAssertFalse(met.alerts.firstMatch.exists)
     }
-    @MainActor func testHealthUnknownIsVisibleBeforeInput() {
+    @MainActor func testHealthUnavailableIsVisibleAndAllowsSavingAfterForeground() {
         let app = launch()
         let card = button(app, prefix: "card.", name: "HEALTH"); reveal(app, card); card.openRecord(in: app)
         XCTAssertTrue(element(app, "conditions.overall").waitForExistence(timeout: 10))
@@ -337,14 +337,82 @@ nonisolated final class MilestoneFlows: XCTestCase {
         element(app, "conditions.overall").tap()
         // Actual asynchronous HealthKit read/status, without a gate/authorization fixture.
         let readResult = app.descendants(matching: .any).matching(NSPredicate(
-            format: "identifier BEGINSWITH %@ AND value == %@", "conditions.leaf.", "Unknown")).firstMatch
+            format: "identifier BEGINSWITH %@ AND value == %@", "conditions.leaf.", "Unavailable")).firstMatch
         XCTAssertTrue(readResult.waitForExistence(timeout: 10), "Fresh async state must appear before the next minute tick")
         XCTAssertFalse(element(app, "conditions.warning").exists)
         XCTAssertFalse(app.buttons["conditions.connectHealth"].exists)
         XCTAssertFalse(app.buttons["conditions.refresh"].exists)
         XCTAssertFalse(app.staticTexts["Read at"].exists)
-        capture(app, "Health unknown uses concise right-hand symbols without an implicit request")
+        capture(app, "Health unavailable preserves honest status and allows recording")
         XCTAssertFalse(app.alerts.firstMatch.exists)
+        let note = app.textFields["entry.note"]
+        reveal(app, note); note.tap(); note.typeText("Unavailable health record")
+        app.buttons["entry.keyboard.done"].tap()
+        XCUIDevice.shared.press(.home); app.activate()
+        XCTAssertTrue(readResult.waitForExistence(timeout: 10))
+        XCTAssertEqual(note.value as? String, "Unavailable health record")
+        app.buttons["entry.save"].tap()
+        XCTAssertTrue(app.buttons["entry.save"].waitForNonExistence(timeout: 10))
+        let toggle = button(app, prefix: "complete.", name: "HEALTH")
+        reveal(app, toggle)
+        XCTAssertTrue(toggle.label.contains("Undo completion"))
+    }
+
+    @MainActor func testHealthUnavailableAndUnmetUseSameGateForAllSaveRoutes() {
+        for state in ["unknown", "unmet"] {
+            let app = launch(extra: ["--condition-gate=" + state, "--manual-health-condition"])
+            let card = button(app, prefix: "card.", name: "HEALTH")
+            reveal(app, card); card.openRecord(in: app)
+            XCTAssertTrue(element(app, "conditions.overall").waitForExistence(timeout: 10))
+            app.buttons["entry.save"].tap()
+            if state == "unknown" {
+                XCTAssertTrue(app.buttons["entry.save"].waitForNonExistence(timeout: 10))
+            } else {
+                XCTAssertTrue(app.staticTexts["editor.error"].waitForExistence(timeout: 10))
+                XCTAssertTrue(app.buttons["entry.save"].exists)
+                app.buttons["entry.cancel"].tap()
+            }
+            let toggle = button(app, prefix: "complete.", name: "HEALTH"); reveal(app, toggle)
+            if state == "unknown" { toggle.tap() } // Undo the editor's completion first.
+            toggle.tap()
+            if state == "unknown" {
+                let saved = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", "Undo completion"), object: toggle)
+                XCTAssertEqual(XCTWaiter.wait(for: [saved], timeout: 10), .completed)
+            } else {
+                XCTAssertTrue(app.staticTexts["home.conditions.error"].waitForExistence(timeout: 10))
+                XCTAssertTrue(toggle.label.contains("Mark complete"))
+                app.buttons["home.conditions.error.dismiss"].tap()
+            }
+            openGoal(app, "MANUAL")
+            let complete = app.buttons["tracker.complete"]; reveal(app, complete); complete.tap()
+            if state == "unknown" {
+                XCTAssertTrue(app.buttons["tracker.reopen"].waitForExistence(timeout: 10))
+            } else {
+                XCTAssertTrue(app.staticTexts["detail.error"].waitForExistence(timeout: 10))
+                XCTAssertFalse(app.staticTexts["goals.error"].exists)
+                XCTAssertTrue(complete.exists)
+                XCTAssertFalse(app.buttons["tracker.reopen"].exists)
+            }
+            capture(app, "Manual Health gate " + state)
+            app.terminate()
+        }
+    }
+
+    @MainActor func testHealthUnavailableAcrossLocalesThemesAndLargeType() {
+        for (language, title, dark, large) in [("en", "Unavailable", false, false), ("ja", "取得できません", true, false),
+            ("zh-Hant", "無法取得", false, false), ("zh-Hant", "無法取得", true, false), ("zh-Hant", "無法取得", true, true)] {
+            let app = launch(extra: ["--condition-gate=unknown"], language: language, dark: dark, large: large)
+            let card = button(app, prefix: "card.", name: "HEALTH"); reveal(app, card); card.openRecord(in: app)
+            let summary = element(app, "conditions.overall")
+            XCTAssertTrue(summary.waitForExistence(timeout: 10)); XCTAssertTrue(summary.label.contains(title))
+            reveal(app, summary); summary.tap()
+            let leaf = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@ AND value == %@", "conditions.leaf.", title)).firstMatch
+            XCTAssertTrue(leaf.waitForExistence(timeout: 10)); reveal(app, leaf)
+            capture(app, "Unavailable " + language + (dark ? " dark" : " light") + (large ? " AX XXXL" : ""))
+            app.buttons["entry.save"].tap()
+            XCTAssertTrue(app.buttons["entry.save"].waitForNonExistence(timeout: 10))
+            app.terminate()
+        }
     }
     @MainActor func testHealthSetupConnectsDuringEditingAndRemovesObsoleteButton() {
         exerciseHealthSetup(language: "en", dark: false, large: false)

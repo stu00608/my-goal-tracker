@@ -1,6 +1,52 @@
 {
   "sourceLanguage": "en",
   "strings": {
+    "Health data unavailable": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Unavailable"
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "取得できません"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無法取得"
+          }
+        }
+      }
+    },
+    "Health data is unavailable for the full period.": {
+      "extractionState": "manual",
+      "localizations": {
+        "en": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "Health data is unavailable for the full period."
+          }
+        },
+        "ja": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "期間全体のヘルスケアデータを取得できません。"
+          }
+        },
+        "zh-Hant": {
+          "stringUnit": {
+            "state": "translated",
+            "value": "無法取得完整期間的健康資料。"
+          }
+        }
+      }
+    },
     "Record history": {
       "extractionState": "manual",
       "localizations": {
@@ -9229,29 +9275,6 @@
         }
       }
     },
-    "Based on readable Apple Health data so far in this calendar period. Sleep is clipped to the period, not grouped by wake-up.": {
-      "extractionState": "manual",
-      "localizations": {
-        "en": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "Based on readable Apple Health data so far in this calendar period. Sleep is clipped to the period, not grouped by wake-up."
-          }
-        },
-        "ja": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "この期間で現在までに読み取れるAppleヘルスケアのデータに基づきます。睡眠は期間内の時間だけを集計し、起床日ではまとめません。"
-          }
-        },
-        "zh-Hant": {
-          "stringUnit": {
-            "state": "translated",
-            "value": "依據此日曆期間至目前可讀取的 Apple 健康資料。睡眠只計算期間內的部分，不依起床日歸組。"
-          }
-        }
-      }
-    },
     "Connect Apple Health": {
       "extractionState": "manual",
       "localizations": {
@@ -9948,19 +9971,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "No readable data means unknown, not zero."
+            "value": "If health data is unavailable, you can still save records."
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "読み取れるデータがない場合は不明として扱い、ゼロとはみなしません。"
+            "value": "ヘルスケアデータを取得できなくても記録を保存できます。"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "無可讀資料時視為未知，不當作零。"
+            "value": "無法取得健康資料時，仍可儲存紀錄。"
           }
         }
       }
