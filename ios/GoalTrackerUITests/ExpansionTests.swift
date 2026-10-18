@@ -8,11 +8,12 @@ nonisolated final class ExpansionTests: XCTestCase {
         if reset { app.launchArguments.append("--reset-test-store") }
         if large { app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] }
         app.launchArguments += extra
-        app.launch()
+        app.launch(); app.showItems()
         return app
     }
     @MainActor private func button(_ app: XCUIApplication, prefix: String, text: String) -> XCUIElement {
-        app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", prefix, text)).firstMatch
+        if prefix == "tracker." || prefix == "card." { return app.item(named: text) }
+        return app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", prefix, text)).firstMatch
     }
     @MainActor private func openEditorPage(_ app: XCUIApplication, _ id: String) {
         let row = app.buttons[id]
@@ -40,7 +41,7 @@ nonisolated final class ExpansionTests: XCTestCase {
         XCTAssertEqual(field.value as? String, "0.25", "Editing must load the original delta, not its derived absolute value")
         field.tap(); field.typeText(String(repeating: XCUIKeyboardKey.delete.rawValue, count: 4) + "-0.125")
         app.buttons["entry.save"].tap()
-        app.tabBars.buttons.element(boundBy: 0).tap()
+        app.showItems()
         XCTAssertTrue(app.staticTexts["18.375"].waitForExistence(timeout: 10))
         screenshot(app, "Raw delta edit recomputes resolved current value")
         app.terminate()
@@ -70,9 +71,9 @@ nonisolated final class ExpansionTests: XCTestCase {
         for _ in 0..<6 { if complete.isHittable { break }; app.swipeUp() }
         XCTAssertTrue(complete.waitForExistence(timeout: 10)); complete.tap()
         XCTAssertTrue(app.staticTexts["home.conditions.error"].waitForExistence(timeout: 10))
-        XCTAssertFalse(app.buttons["entry.save"].exists, "Failed quick completion stays in Today")
+        XCTAssertFalse(app.buttons["entry.save"].exists, "Failed quick completion stays in Items")
         XCTAssertTrue(complete.label.contains("Mark complete"))
-        button(app, prefix: "tracker.", text: "OFFICE").tap()
+        button(app, prefix: "tracker.", text: "OFFICE").openRecord(in: app)
         XCTAssertTrue(app.buttons["entry.save"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "conditions.overall").firstMatch.waitForExistence(timeout: 10))
         let note = app.textFields["entry.note"]

@@ -10,6 +10,39 @@ import SwiftData
     func tracker(_ kind: TrackerKind = .daily, zone: String = "Asia/Tokyo") -> Tracker {
         var t = Tracker(name: "Test", kind: kind); t.timeZoneID = zone; t.createdAt = date("2024-01-01T00:00:00Z"); return t
     }
+    @Test func todayUsesRecordedLocalDaysAndResolvesDeltasWithoutMutatingData() throws {
+        let now = date("2024-03-11T03:30:00Z")
+        var number = tracker(.number, zone: "America/New_York")
+        number.archived = true
+        let yesterday = date("2024-03-09T17:00:00Z")
+        number.put(Entry(occurredAt: yesterday, localDay: "2024-03-09", value: "18.125"))
+        let event = Entry(occurredAt: now.addingTimeInterval(-600), localDay: "2024-03-10", change: "0.125", note: "Today")
+        number.put(event)
+        number.put(Entry(occurredAt: now.addingTimeInterval(600), localDay: "2024-03-10", value: "99"))
+        var daily = tracker(zone: "Asia/Tokyo")
+        daily.put(Entry(occurredAt: now.addingTimeInterval(-300), localDay: "2024-03-11"))
+        // A backfilled record belongs to its recorded day, not its creation timestamp.
+        daily.put(Entry(occurredAt: now.addingTimeInterval(-86400), localDay: "2024-03-10", createdAt: now))
+        let records = TodayRecord.records(in: [number, daily], now: now)
+        #expect(records.map(\.tracker.id) == [daily.id, number.id])
+        #expect(records.last?.entry.value == "18.25")
+        #expect(records.last?.entry.change == "0.125")
+        #expect(number.entries.first(where: { $0.id == event.id }) == event)
+        #expect(TodayRecord.records(in: [number], now: date("2024-03-11T04:00:00Z")).isEmpty)
+    }
+
+    @Test func todayHasStableIdentityAndOrderForSimultaneousRecords() {
+        let now = date("2024-06-01T12:00:00Z")
+        var a = tracker(.number), b = tracker(.number)
+        let entry = Entry(occurredAt: now, localDay: a.day(now), value: "1", createdAt: now)
+        a.put(entry); b.put(entry)
+        let forward = TodayRecord.records(in: [a, b], now: now)
+        let reversed = TodayRecord.records(in: [b, a], now: now)
+        #expect(Set(forward.map(\.id)).count == 2)
+        #expect(forward.map(\.id) == reversed.map(\.id))
+        #expect(TodayRecord.records(in: [], now: now).isEmpty)
+    }
+
     @Test func duplicateAndPeriodBoundaries() throws {
         var t = tracker()
         let monday = date("2024-01-08T03:00:00Z")

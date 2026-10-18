@@ -12,10 +12,11 @@ nonisolated final class FlowTests: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["--uitesting", "-language", language, "-appearance", "system", "-homeLayout", "list"]
         if reset { app.launchArguments.append("--reset-test-store") }
-        app.launch(); return app
+        app.launch(); app.showItems(); return app
     }
     @MainActor func button(_ app: XCUIApplication, _ prefix: String, _ name: String) -> XCUIElement {
-        app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", prefix, name)).firstMatch
+        if prefix == "tracker." || prefix == "card." { return app.item(named: name) }
+        return app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", prefix, name)).firstMatch
     }
     @MainActor func type(_ app: XCUIApplication, _ field: XCUIElement, _ text: String) {
         let done = app.buttons.matching(NSPredicate(format: "identifier IN %@", ["entry.keyboard.done", "tracker.keyboard.done"])).firstMatch
@@ -31,7 +32,7 @@ nonisolated final class FlowTests: XCTestCase {
         let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
     }
     @MainActor func create(_ app: XCUIApplication, name: String, daily: Bool = false) {
-        app.buttons["tracker.create"].tap()
+        app.createTracker()
         type(app, app.textFields["tracker.name"], name)
         app.textFields["tracker.name"].typeText("\n")
         if daily {
@@ -75,7 +76,7 @@ nonisolated final class FlowTests: XCTestCase {
         let back = app.navigationBars["VOLFORCE"].buttons["BackButton"]
         XCTAssertTrue(back.waitForExistence(timeout: 10))
         back.tap()
-        app.tabBars.buttons["Today"].tap()
+        app.showItems()
         XCTAssertTrue(app.staticTexts["19.250"].waitForExistence(timeout: 10))
         create(app, name: "COOK", daily: true)
         button(app, "complete.", "COOK").tap()
@@ -104,7 +105,7 @@ nonisolated final class FlowTests: XCTestCase {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["--uitesting", "--reset-test-store", "-language", "en", "-appearance", "dark", "-homeLayout", "list", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
-        app.launch()
+        app.launch(); app.showItems()
         create(app, name: "A daily goal with a long name", daily: true)
         app.tabBars.buttons.element(boundBy: 1).tap()
         button(app, "tracker.", "A daily goal").tap()
@@ -124,7 +125,7 @@ nonisolated final class FlowTests: XCTestCase {
     @MainActor func testLocalizedInputAndScreens() {
         for (language, name) in [("zh-Hant", "煮飯"), ("ja", "入浴"), ("en", "Read")] {
             let app = app(language: language)
-            app.buttons["tracker.create"].tap(); type(app, app.textFields["tracker.name"], name)
+            app.createTracker(); type(app, app.textFields["tracker.name"], name)
             app.buttons["tracker.save"].tap()
             XCTAssertTrue(button(app, "tracker.", name).waitForExistence(timeout: 10))
             screenshot(app, "Today " + language)
@@ -134,5 +135,35 @@ nonisolated final class FlowTests: XCTestCase {
             screenshot(app, "Settings " + language)
             app.terminate()
         }
+    }
+}
+
+extension XCUIApplication {
+    @MainActor func showItems() {
+        tabBars.buttons.element(boundBy: 1).tap()
+        for _ in 0..<6 {
+            let back = navigationBars.buttons.matching(identifier: "BackButton").firstMatch
+            if !back.exists { break }
+            back.tap()
+        }
+    }
+    @MainActor func item(named name: String) -> XCUIElement {
+        buttons.matching(NSPredicate(format: "(identifier BEGINSWITH %@ OR identifier BEGINSWITH %@) AND label CONTAINS %@", "card.", "tracker.", name)).firstMatch
+    }
+    @MainActor func createTracker() {
+        if buttons["goals.add"].exists {
+            buttons["goals.add"].tap()
+            buttons["folder.createTracker"].tap()
+        } else { buttons["tracker.create"].tap() }
+    }
+}
+
+extension XCUIElement {
+    @MainActor func openRecord(in app: XCUIApplication) {
+        XCTAssertTrue(waitForExistence(timeout: 10))
+        press(forDuration: 1)
+        let record = app.buttons["tracker.context.record"].firstMatch
+        XCTAssertTrue(record.waitForExistence(timeout: 5)); record.tap()
+        XCTAssertTrue(app.buttons["entry.save"].waitForExistence(timeout: 10))
     }
 }

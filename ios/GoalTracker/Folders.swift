@@ -24,6 +24,7 @@ struct GoalsLibrary: View {
     @Environment(AppStore.self) private var store
     @State private var path: [FolderScope] = []
     @State private var editMode = EditMode.inactive
+    @AppStorage("homeLayout") private var homeLayout = "grid"
     @State private var creatingTracker: Tracker?
     @State private var editingFolder: GoalFolder?
     @State private var deletingFolder: GoalFolder?
@@ -37,10 +38,11 @@ struct GoalsLibrary: View {
                 if store.folders.isEmpty && active.isEmpty {
                     ContentUnavailableView(L.text("Make room for progress"), systemImage: "leaf",
                         description: Text(L.text("Track a number or mark a day. Start with one thing that matters to you.")))
+                } else if store.folders.isEmpty {
+                    ItemsCollection(trackers: active, now: now, cancelForPresentation: creatingTracker != nil || editingFolder != nil)
                 } else {
                     List {
-                        if store.folders.isEmpty { GoalRows(trackers: active, now: now) }
-                        else {
+                        Group {
                             Section {
                                 folderLink(.all, symbol: "tray.full")
                                 folderLink(.unfiled, symbol: "tray")
@@ -71,7 +73,8 @@ struct GoalsLibrary: View {
             .environment(\.editMode, $editMode)
             .navigationTitle(L.text("Goals"))
             .toolbar {
-                if !active.isEmpty || !store.folders.isEmpty {
+                if store.folders.isEmpty && !active.isEmpty { ToolbarItem(placement: .topBarTrailing) { ItemsLayoutPicker() } }
+                if (!active.isEmpty && homeLayout == "list") || !store.folders.isEmpty {
                     ToolbarItem(placement: .topBarTrailing) {
                         Button(L.text(editMode.isEditing ? "Done" : "Edit")) { editMode = editMode.isEditing ? .inactive : .active }
                             .accessibilityIdentifier("home.edit")
@@ -89,7 +92,8 @@ struct GoalsLibrary: View {
             }
             .navigationDestination(for: FolderScope.self) { scope in
                 FolderContents(scope: scope, now: now, onCreate: { create(in: scope) },
-                    onRename: { editingFolder = $0 }, onDelete: { deletingFolder = $0 })
+                    onRename: { editingFolder = $0 }, onDelete: { deletingFolder = $0 },
+                    cancelForPresentation: creatingTracker != nil || editingFolder != nil || deletingFolder != nil)
             }
             .onChange(of: store.folders) { _, folders in
                 if path.contains(where: { scope in scope.folderID.map { id in !folders.contains { $0.id == id } } ?? false }) { path = [] }
@@ -137,8 +141,10 @@ private struct FolderContents: View {
     let onCreate: () -> Void
     let onRename: (GoalFolder) -> Void
     let onDelete: (GoalFolder) -> Void
+    var cancelForPresentation = false
     @Environment(AppStore.self) private var store
     @State private var editMode = EditMode.inactive
+    @AppStorage("homeLayout") private var homeLayout = "grid"
     private var active: [Tracker] { store.trackers.filter { !$0.archived && scope.contains($0) } }
     var body: some View {
         Group {
@@ -150,28 +156,26 @@ private struct FolderContents: View {
                     }.padding(.top, 16)
                 }
             } else {
-                List {
-                    Section { GoalRows(trackers: active, now: now) } header: {
-                        if scope.folderID != nil { folderHeading }
-                    }
-                }
+                ItemsCollection(trackers: active, now: now,
+                    heading: scope.folderID == nil ? nil : scope.title(in: store.folders), cancelForPresentation: cancelForPresentation)
             }
         }
         .environment(\.editMode, $editMode)
         .navigationTitle(scope.folderID == nil ? scope.title(in: store.folders) : L.text("Folder"))
         .navigationBarTitleDisplayMode(.inline)
         .toolbar {
+            if !active.isEmpty { ToolbarItem(placement: .topBarTrailing) { ItemsLayoutPicker() } }
             ToolbarItem(placement: .topBarTrailing) {
                 if let folder = store.folders.first(where: { $0.id == scope.folderID }) {
                     Menu {
                         Button(L.text("Rename folder")) { onRename(folder) }.accessibilityIdentifier("folder.rename")
-                        if !active.isEmpty {
+                        if !active.isEmpty && homeLayout == "list" {
                             Button(L.text(editMode.isEditing ? "Done" : "Reorder items")) { editMode = editMode.isEditing ? .inactive : .active }
                         }
                         Button(L.text("Delete folder"), role: .destructive) { onDelete(folder) }.accessibilityIdentifier("folder.delete")
                     } label: { Image(systemName: "ellipsis") }
                         .accessibilityLabel(L.text("Folder actions")).accessibilityIdentifier("folder.actions")
-                } else if !active.isEmpty {
+                } else if !active.isEmpty && homeLayout == "list" {
                     Button(L.text(editMode.isEditing ? "Done" : "Edit")) { editMode = editMode.isEditing ? .inactive : .active }
                         .accessibilityIdentifier("home.edit")
                 }
@@ -188,21 +192,89 @@ private struct FolderContents: View {
     }
 }
 
-private struct GoalRows: View {
+private struct ItemsLayoutPicker: View {
+    @AppStorage("homeLayout") private var layout = "grid"
+    var body: some View {
+        Menu {
+            Picker(L.text("Items layout"), selection: $layout) {
+                Label(L.text("Grid"), systemImage: "square.grid.2x2").tag("grid")
+                Label(L.text("List"), systemImage: "list.bullet").tag("list")
+            }
+        } label: {
+            Label(L.text("Items layout"), systemImage: layout == "list" ? "list.bullet" : "square.grid.2x2")
+        }.accessibilityIdentifier("items.layout")
+    }
+}
+
+private struct ItemsCollection: View {
     let trackers: [Tracker]
     let now: Date
+    var heading: String?
+    var cancelForPresentation = false
     @Environment(AppStore.self) private var store
+    @AppStorage("homeLayout") private var layout = "grid"
+    @AppStorage("recordLocationByDefault", store: L.defaults) private var recordLocationByDefault = false
+    @State private var recording: Tracker?
+    @State private var editing: Tracker?
+    @State private var notice: String?
     var body: some View {
-        ForEach(trackers) { tracker in
-            NavigationLink { TrackerDetail(id: tracker.id, now: now) } label: { TrackerSummary(tracker: tracker, now: now) }
-                .accessibilityIdentifier("tracker." + tracker.id.uuidString)
-        }.onMove { indices, destination in
-            store.perform {
-                var next = trackers
-                next.move(fromOffsets: indices, toOffset: destination)
-                try store.reorder(next.map(\.id))
+        Group {
+            if layout != "list" {
+                DashboardView(trackers: trackers, now: now, heading: heading, onRecord: { recording = $0 },
+                    onEdit: { editing = $0 }, onArchive: archive, onReorder: reorder,
+                    cancelForPresentation: cancelForPresentation || recording != nil || editing != nil,
+                    onBegin: { notice = nil }, onFailure: { notice = $0 })
+            } else {
+                List {
+                    Section {
+                        ForEach(trackers) { tracker in
+                            HStack(spacing: 12) {
+                                NavigationLink { TrackerDetail(id: tracker.id, now: now) } label: {
+                                    TrackerSummary(tracker: tracker, now: now)
+                                }.accessibilityIdentifier("tracker." + tracker.id.uuidString)
+                                if tracker.kind == .daily {
+                                    DailyCompletionButton(tracker: tracker, now: now, recordLocationByDefault: recordLocationByDefault,
+                                        cancelForPresentation: cancelForPresentation || recording != nil || editing != nil, onEditor: { recording = $0 },
+                                        onBegin: { notice = nil }, onFailure: { notice = $0 })
+                                } else {
+                                    Button { recording = tracker } label: {
+                                        Image(systemName: "plus.circle").font(.title2).foregroundStyle(Color.secondary).frame(minWidth: 44, minHeight: 44)
+                                    }.buttonStyle(.borderless).accessibilityLabel(L.text("Add a snapshot") + ": " + tracker.name)
+                                        .accessibilityIdentifier("snapshot." + tracker.id.uuidString)
+                                }
+                            }.contextMenu {
+                                TrackerContextMenu(tracker: tracker, onRecord: { recording = $0 }, onEdit: { editing = $0 }, onArchive: archive)
+                            }
+                        }.onMove { offsets, destination in
+                            var reordered = trackers
+                            reordered.move(fromOffsets: offsets, toOffset: destination)
+                            store.perform { try store.reorder(reordered.map(\.id)) }
+                        }
+                    } header: {
+                        if let heading { Text(heading).font(.title2.weight(.semibold)).foregroundStyle(.primary).textCase(nil) }
+                    }
+                }
             }
         }
+        .statusToast(message: $notice, identifier: "home.conditions.error")
+        .sheet(item: $editing) { TrackerEditor(existing: $0) }
+        .sheet(item: $recording) { tracker in
+            EntryEditor(tracker: tracker, existing: tracker.kind == .daily ? tracker.entries.first { $0.localDay == tracker.day(Date()) } : nil)
+        }
+    }
+    private func archive(_ tracker: Tracker) {
+        store.perform {
+            guard var current = store.trackers.first(where: { $0.id == tracker.id }) else { return }
+            current.archived = true
+            try store.save(current)
+        }
+    }
+    private func reorder(_ source: UUID, _ target: UUID) {
+        var active = trackers
+        guard source != target, let from = active.firstIndex(where: { $0.id == source }),
+              let to = active.firstIndex(where: { $0.id == target }) else { return }
+        let tracker = active.remove(at: from); active.insert(tracker, at: to)
+        store.perform { try store.reorder(active.map(\.id)) }
     }
 }
 
@@ -248,26 +320,5 @@ private struct FolderEditor: View {
             }
             .onAppear { name = folder.name; focused = true }
         }
-    }
-}
-
-struct FolderFilter: View {
-    @Binding var scope: FolderScope
-    @Environment(AppStore.self) private var store
-    var body: some View {
-        Menu {
-            Picker(L.text("Folder"), selection: $scope) {
-                Text(L.text("All items")).tag(FolderScope.all)
-                Text(L.text("Unfiled")).tag(FolderScope.unfiled)
-                ForEach(store.folders) { Text($0.name).tag(FolderScope.folder($0.id)) }
-            }
-        } label: {
-            HStack(alignment: .firstTextBaseline, spacing: 8) {
-                Image(systemName: "folder").foregroundStyle(TrackerColors.accent)
-                Text(scope.title(in: store.folders)).foregroundStyle(Color.primary).fixedSize(horizontal: false, vertical: true)
-                Spacer(minLength: 8)
-                Image(systemName: "chevron.up.chevron.down").font(.caption).foregroundStyle(Color.secondary)
-            }.font(.subheadline).frame(minHeight: 44).contentShape(Rectangle())
-        }.buttonStyle(.plain).accessibilityIdentifier("today.folder")
     }
 }
