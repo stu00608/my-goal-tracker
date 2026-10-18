@@ -4,31 +4,25 @@ import MapKit
 
 struct RootView: View {
     @Environment(AppStore.self) private var store
-    @AppStorage("homeLayout") private var homeLayout = "grid"
-    @AppStorage("recordLocationByDefault", store: L.defaults) private var recordLocationByDefault = false
     @State private var selected = 0
-    @State private var todayPath: [UUID] = []
-    @State private var editingTracker: Tracker?
-    @State private var todayNavigationID = UUID()
+    @State private var navigationID = UUID()
+    @State private var recording: RecordingRequest?
     @State private var creating = false
-    @State private var todayFolder = FolderScope.all
-    @State private var entryTracker: Tracker?
-    @State private var gateNotice: String?
+
     var body: some View {
         TimelineView(.everyMinute) { _ in screen(at: Date()) }
     }
     private func screen(at date: Date) -> some View {
-        TabView(selection: $selected) {
-            NavigationStack(path: $todayPath) {
-                trackerList(at: date)
-                    .statusToast(message: statusMessage, identifier: "home.conditions.error", autoDismiss: store.error == nil)
-                    .navigationDestination(for: UUID.self) { TrackerDetail(id: $0, now: date) }
-            }.id(todayNavigationID).tabItem { Label(L.text("Today"), systemImage: "checkmark.circle") }.tag(0)
-            GoalsLibrary(now: date).id(todayNavigationID).tabItem { Label(L.text("Goals"), systemImage: "chart.bar.fill") }.tag(1)
+        @Bindable var store = store
+        return TabView(selection: $selected) {
+            NavigationStack {
+                TodayJournal(now: date, onRecord: { recording = RecordingRequest() }, onCreate: { creating = true })
+                    .statusToast(message: $store.error, identifier: "today.error", autoDismiss: false)
+            }.id(navigationID).tabItem { Label(L.text("Today"), systemImage: "sun.max") }.tag(0)
+            GoalsLibrary(now: date).id(navigationID).tabItem { Label(L.text("Goals"), systemImage: "square.grid.2x2") }.tag(1)
             CompletedTab(trackers: store.trackers, now: date).tabItem { Label(L.text("Completed tab"), systemImage: "sparkles") }.tag(2)
             SettingsView(now: date).tabItem { Label(L.text("Settings"), systemImage: "gearshape") }.tag(3)
         }
-        .onChange(of: selected) { _, _ in gateNotice = nil }
         .task(id: store.trackers) {
             do { try await Reminders.sync(store.trackers) }
             catch is CancellationError { }
@@ -36,98 +30,219 @@ struct RootView: View {
         }
         .onOpenURL { url in
             guard url.scheme == "goaltracker", url.host == "today" || url.host == "record" else { return }
-            creating = false; entryTracker = nil; editingTracker = nil; todayPath = []; selected = 0; todayFolder = .all; todayNavigationID = UUID()
+            creating = false; recording = nil; selected = 0; navigationID = UUID()
             if url.host == "record", url.pathComponents.count == 2,
-               let id = UUID(uuidString: url.pathComponents[1]) {
-                entryTracker = store.trackers.first { $0.id == id && !$0.archived }
+               let id = UUID(uuidString: url.pathComponents[1]), store.trackers.contains(where: { $0.id == id && !$0.archived }) {
+                recording = RecordingRequest(trackerID: id)
             }
         }
-        .sheet(item: $editingTracker) { TrackerEditor(existing: $0) }
-        .sheet(isPresented: $creating) { TrackerEditor(initialFolderID: todayFolder.folderID) }
-        .sheet(item: $entryTracker) { t in EntryEditor(tracker: t, existing: t.entries.first { $0.localDay == t.day(Date()) && t.kind == .daily }) }
+        .sheet(isPresented: $creating, onDismiss: { if store.trackers.contains(where: { !$0.archived }) { selected = 1 } }) { TrackerEditor() }
+        .sheet(item: $recording) { RecordingSheet(selectedID: $0.trackerID) }
+    }
+}
 
+private struct RecordingRequest: Identifiable {
+    let id = UUID()
+    var trackerID: UUID?
+}
+
+private struct RecordingSheet: View {
+    @Environment(AppStore.self) private var store
+    @Environment(\.dismiss) private var dismiss
+    @State var selectedID: UUID?
+    @State private var search = ""
+    private var trackers: [Tracker] {
+        store.trackers.filter { !$0.archived && (search.isEmpty || $0.name.localizedStandardContains(search)) }
     }
-    private var statusMessage: Binding<String?> {
-        Binding(get: { gateNotice ?? store.error }, set: { value in gateNotice = value; if value == nil { store.error = nil } })
-    }
-    private func trackerList(at date: Date) -> some View {
-        let active = store.trackers.filter { !$0.archived && todayFolder.contains($0) }
-        return Group {
-            if active.isEmpty {
-                ScrollView {
-                    if !store.folders.isEmpty { FolderFilter(scope: $todayFolder).padding(.horizontal, 16) }
-                    ContentUnavailableView {
-                        Label(L.text(todayFolder == .all ? "Make room for progress" : "No items in this folder"), systemImage: "leaf")
-                    } description: {
-                        if todayFolder == .all { Text(L.text("Track a number or mark a day. Start with one thing that matters to you.")) }
-                    }.frame(maxWidth: .infinity, maxHeight: .infinity)
+    var body: some View {
+        if let tracker = store.trackers.first(where: { $0.id == selectedID && !$0.archived }) {
+            EntryEditor(tracker: tracker, existing: tracker.kind == .daily ? tracker.entries.first { $0.localDay == tracker.day(Date()) } : nil)
+        } else {
+            NavigationStack {
+                List(trackers) { tracker in
+                    Button { selectedID = tracker.id } label: {
+                        Label(tracker.name, systemImage: tracker.kind == .number ? "number" : "checkmark.circle")
+                            .foregroundStyle(Color.primary).padding(.vertical, 8)
+                    }.accessibilityIdentifier("record.choose." + tracker.id.uuidString)
                 }
-            } else if homeLayout != "list" {
-                DashboardView(trackers: active, now: date, folderScope: $todayFolder,
-                              onRecord: { entryTracker = $0 }, onDetails: { todayPath.append($0.id) },
-                              onEdit: { editingTracker = $0 }, onArchive: archive, onReorder: reorder,
-                              cancelForPresentation: entryTracker != nil || editingTracker != nil || creating || selected != 0,
-                              onBegin: { gateNotice = nil }, onFailure: { gateNotice = $0 })
-            } else {
-                List {
-                    if !store.folders.isEmpty {
-                        Section { FolderFilter(scope: $todayFolder).listRowBackground(Color.clear) }
+                .overlay { if trackers.isEmpty { ContentUnavailableView(L.text("No matching items"), systemImage: "magnifyingglass", description: Text(search)) } }
+                .searchable(text: $search, prompt: L.text("Search items"))
+                .navigationTitle(L.text("Record progress")).navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .cancellationAction) {
+                        Button(L.text("Cancel")) { dismiss() }.accessibilityIdentifier("record.cancel")
                     }
+                }
+            }
+        }
+    }
+}
+
+private struct TodayJournal: View {
+    @Environment(AppStore.self) private var store
+    let now: Date
+    let onRecord: () -> Void
+    let onCreate: () -> Void
+    private var records: [TodayRecord] { TodayRecord.records(in: store.trackers, now: now) }
+    private var canRecord: Bool { store.trackers.contains { !$0.archived } }
+
+    var body: some View {
+        Group {
+            if records.isEmpty {
+                ContentUnavailableView {
+                    Label { Text(L.text("No records today")) } icon: { Image(systemName: "sun.max").accessibilityHidden(true) }
+                } description: {
+                    Text(L.text(canRecord ? "Your records for today will appear here." : "Create an item to start recording."))
+                } actions: {
+                    if !canRecord {
+                        Button(L.text("Create a tracker"), action: onCreate)
+                            .buttonStyle(.borderedProminent).controlSize(.large).accessibilityIdentifier("tracker.create")
+                    }
+                }
+            } else {
+                ScrollView {
+                    LazyVStack(spacing: 20) {
+                        ForEach(records) { record in
+                            NavigationLink {
+                                JournalRecordDetail(trackerID: record.tracker.id, entryID: record.entry.id, now: now)
+                            } label: {
+                                JournalRecordCard(record: record)
+                            }.buttonStyle(.plain).accessibilityIdentifier("today.record." + record.id)
+                        }
+                    }.padding(16)
+                }.accessibilityIdentifier("today.journal")
+            }
+        }
+        .background(Color(uiColor: .systemGroupedBackground))
+        .navigationTitle(L.text("Today"))
+        .modifier(TodayDateSubtitle(date: now))
+        .toolbar {
+            if canRecord {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button(action: onRecord) { HStack(spacing: 6) { Image(systemName: "plus"); Text(L.text("Record now")) } }
+                        .accessibilityIdentifier("today.record")
+                }
+            }
+        }
+    }
+}
+
+private struct JournalRecordCard: View {
+    let record: TodayRecord
+    var body: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            ViewThatFits(in: .horizontal) {
+                HStack(alignment: .firstTextBaseline, spacing: 12) { name; Spacer(minLength: 12); time.fixedSize() }
+                VStack(alignment: .leading, spacing: 4) { name; time }
+            }
+            JournalRecordValue(tracker: record.tracker, entry: record.entry)
+                .font(.title2.weight(.semibold)).foregroundStyle(Color.primary)
+            if !record.entry.note.isEmpty {
+                Text(record.entry.note).font(.subheadline).foregroundStyle(Color.secondary).lineLimit(3)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+            }
+            if let data = record.entry.photos.first, let photo = UIImage(data: data) {
+                Color.clear.aspectRatio(16 / 9, contentMode: .fit)
+                    .overlay { Image(uiImage: photo).resizable().scaledToFill() }
+                    .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(alignment: .bottomTrailing) {
+                        if record.entry.photos.count > 1 {
+                            Label(record.entry.photos.count.formatted(.number.locale(L.locale)), systemImage: "photo.on.rectangle")
+                                .font(.subheadline.monospacedDigit()).padding(8)
+                                .background(.regularMaterial, in: Capsule()).padding(8)
+                        }
+                    }.accessibilityElement(children: .ignore)
+                    .accessibilityLabel(L.text("Photos") + " · " + record.entry.photos.count.formatted(.number.locale(L.locale)))
+            }
+        }
+        .padding(16).frame(maxWidth: .infinity, alignment: .leading)
+        .background(Color(uiColor: .secondarySystemGroupedBackground), in: RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .contentShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+        .accessibilityElement(children: .combine).accessibilityHint(L.text("View record"))
+    }
+    private var name: some View {
+        Text(record.tracker.name).font(.headline).foregroundStyle(Color.primary).fixedSize(horizontal: false, vertical: true)
+    }
+    private var time: some View {
+        Text(record.entry.occurredAt.formatted(Date.FormatStyle(date: .omitted, time: .shortened, locale: L.locale, timeZone: record.tracker.calendar.timeZone)))
+            .font(.subheadline.monospacedDigit()).foregroundStyle(Color.secondary)
+    }
+}
+
+private struct JournalRecordValue: View {
+    let tracker: Tracker
+    let entry: Entry
+    var body: some View {
+        if let value = entry.value.flatMap(Numbers.decimal) {
+            Text(Numbers.display(value, precision: tracker.precision, locale: L.locale) + (tracker.unit.isEmpty ? "" : " " + tracker.unit))
+                .monospacedDigit().fixedSize(horizontal: false, vertical: true)
+        } else {
+            Label { Text(L.text("Recorded completion")) } icon: {
+                Image(systemName: "checkmark.circle.fill").foregroundStyle(TrackerColors.accent)
+            }
+        }
+    }
+}
+
+private struct JournalRecordDetail: View {
+    let trackerID: UUID
+    let entryID: UUID
+    let now: Date
+    @Environment(AppStore.self) private var store
+    @State private var editing = false
+    @State private var photoPreview: TrackerPhotoPreview?
+    private var tracker: Tracker? { store.trackers.first { $0.id == trackerID } }
+    var body: some View {
+        Group {
+            if let tracker, let entry = tracker.resolvedEntries.first(where: { $0.id == entryID }) {
+                List {
                     Section {
-                        ForEach(active) { tracker in
-                            HStack(spacing: 12) {
-                                Button { entryTracker = tracker } label: {
-                                    TrackerSummary(tracker: tracker, now: date).frame(maxWidth: .infinity, alignment: .leading)
-                                }.buttonStyle(.borderless).accessibilityIdentifier("tracker." + tracker.id.uuidString)
-                                if tracker.kind == .daily {
-                                    DailyCompletionButton(tracker: tracker, now: date,
-                                        recordLocationByDefault: recordLocationByDefault,
-                                        cancelForPresentation: entryTracker != nil || editingTracker != nil || creating || selected != 0,
-                                        onEditor: { entryTracker = $0 }, onBegin: { gateNotice = nil },
-                                        onFailure: { gateNotice = $0 })
-                                } else {
-                                    Button { entryTracker = tracker } label: { Image(systemName: "plus.circle").font(.title2).foregroundStyle(Color.secondary).frame(minWidth: 44, minHeight: 44) }
-                                        .buttonStyle(.borderless).accessibilityLabel(L.text("Add a snapshot") + ": " + tracker.name)
-                                        .accessibilityIdentifier("snapshot." + tracker.id.uuidString)
-                                }
-                            }.padding(.vertical, 4)
-                                .contextMenu {
-                                    TrackerContextMenu(tracker: tracker, onDetails: { todayPath.append($0.id) },
-                                                       onEdit: { editingTracker = $0 }, onArchive: archive)
-                                }
-                                .modifier(TrackerReorderInteraction(id: tracker.id, active: active, onReorder: reorder))
+                        VStack(alignment: .leading, spacing: 12) {
+                            JournalRecordValue(tracker: tracker, entry: entry).font(.largeTitle.weight(.semibold))
+                            Text(entry.occurredAt.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened, locale: L.locale, timeZone: tracker.calendar.timeZone)))
+                                .font(.subheadline).foregroundStyle(.secondary)
+                        }.padding(.vertical, 12)
+                    }.listRowBackground(Color.clear)
+                    if !entry.note.isEmpty { Section(L.text("Notes")) { Text(entry.note).textSelection(.enabled) } }
+                    if !entry.photos.isEmpty {
+                        Section(L.text("Photos")) {
+                            ForEach(entry.photos.indices, id: \.self) { index in
+                                Button { photoPreview = TrackerPhotoPreview(photos: entry.photos, index: index) } label: {
+                                    if let photo = UIImage(data: entry.photos[index]) {
+                                        Image(uiImage: photo).resizable().scaledToFit()
+                                            .clipShape(RoundedRectangle(cornerRadius: 12, style: .continuous))
+                                    }
+                                }.buttonStyle(.plain)
+                                    .accessibilityLabel(String(format: L.text("Photo %lld of %lld"), locale: L.locale, Int64(index + 1), Int64(entry.photos.count)))
+                                    .accessibilityIdentifier("record.photo.\(index)")
+                            }
                         }
                     }
+                    if let location = entry.location {
+                        Section(L.text("Location")) {
+                            Map(initialPosition: .rect(CardMapFraming.rect(locations: [location], textPosition: .hidden) ?? .world), interactionModes: []) {
+                                Marker(tracker.name, coordinate: CLLocationCoordinate2D(latitude: location.latitude, longitude: location.longitude))
+                            }.frame(height: DetailStyle.chartHeight).tint(TrackerColors.accent)
+                        }
+                    }
+                    Section {
+                        NavigationLink { TrackerDetail(id: tracker.id, now: now) } label: {
+                            Label(L.text("View item"), systemImage: "square.grid.2x2")
+                        }.accessibilityIdentifier("record.item")
+                    }
                 }
-            }
-        }
-        .environment(\.editMode, .constant(.inactive))
-        .navigationTitle(L.text("Today"))
-        .modifier(TodayDateSubtitle(date: date))
-        .toolbar {
-            ToolbarItem(placement: .topBarTrailing) {
-                Button { creating = true } label: { Image(systemName: "plus") }
-                    .accessibilityLabel(L.text("Create a tracker")).accessibilityIdentifier("tracker.create")
-            }
-        }
-        .onChange(of: store.folders) { _, folders in
-            if let id = todayFolder.folderID, !folders.contains(where: { $0.id == id }) { todayFolder = .all }
-        }
-    }
-    private func archive(_ tracker: Tracker) {
-        store.perform {
-            guard var current = store.trackers.first(where: { $0.id == tracker.id }) else { return }
-            current.archived = true
-            try store.save(current)
-        }
-    }
-    private func reorder(_ source: UUID, _ target: UUID) {
-        store.perform {
-            var active = store.trackers.filter { !$0.archived && todayFolder.contains($0) }
-            guard source != target, let from = active.firstIndex(where: { $0.id == source }),
-                  let to = active.firstIndex(where: { $0.id == target }) else { return }
-            let tracker = active.remove(at: from); active.insert(tracker, at: to)
-            try store.reorder(active.map(\.id))
+                .navigationTitle(tracker.name).navigationBarTitleDisplayMode(.inline)
+                .accessibilityIdentifier("record.detail")
+                .toolbar {
+                    ToolbarItem(placement: .topBarTrailing) {
+                        Button(L.text("Edit")) { editing = true }.accessibilityIdentifier("record.edit")
+                    }
+                }
+                .sheet(isPresented: $editing) {
+                    if let raw = tracker.entries.first(where: { $0.id == entryID }) { EntryEditor(tracker: tracker, existing: raw) }
+                }
+                .fullScreenCover(item: $photoPreview) { PhotoViewer(photos: $0.photos, initialIndex: $0.index) }
+            } else { ContentUnavailableView(L.text("No records yet"), systemImage: "tray") }
         }
     }
 }
@@ -260,12 +375,12 @@ struct TrackerSummary: View {
 
 struct TrackerContextMenu: View {
     let tracker: Tracker
-    let onDetails: (Tracker) -> Void
+    let onRecord: (Tracker) -> Void
     let onEdit: (Tracker) -> Void
     let onArchive: (Tracker) -> Void
     var body: some View {
-        Button { onDetails(tracker) } label: { Label(L.text("View details"), systemImage: "chart.bar") }
-            .accessibilityIdentifier("tracker.context.details")
+        Button { onRecord(tracker) } label: { Label(L.text("Record progress"), systemImage: "plus") }
+            .accessibilityIdentifier("tracker.context.record")
         Button { onEdit(tracker) } label: { Label(L.text("Edit"), systemImage: "pencil") }
             .accessibilityIdentifier("tracker.context.edit")
         Button { onArchive(tracker) } label: { Label(L.text("Archive"), systemImage: "archivebox") }
@@ -279,7 +394,7 @@ private struct TodayDateSubtitle: ViewModifier {
     @ViewBuilder func body(content: Content) -> some View {
         if #available(iOS 26, *), let date {
             if textSize.isAccessibilitySize {
-                content.toolbar {
+                content.navigationBarTitleDisplayMode(.inline).toolbar {
                     ToolbarItem(placement: .principal) {
                         VStack(spacing: 2) {
                             Text(L.text("Today")).font(.headline)

@@ -4,13 +4,11 @@ import MapKit
 struct DashboardView: View {
     let trackers: [Tracker]
     let now: Date
-    @Binding var folderScope: FolderScope
-    @Environment(AppStore.self) private var store
+    var heading: String?
     let onRecord: (Tracker) -> Void
-    // Move the source to the target's original index; adjacent targets implement move up/down.
-    let onDetails: (Tracker) -> Void
     let onEdit: (Tracker) -> Void
     let onArchive: (Tracker) -> Void
+    // Move the source to the target's original index; adjacent targets implement move up/down.
     let onReorder: (UUID, UUID) -> Void
     var cancelForPresentation = false
     var onBegin: () -> Void = {}
@@ -28,7 +26,7 @@ struct DashboardView: View {
             let edge = max(0, (geometry.size.width - CardLayout.screenInset * 2 - CardLayout.gridSpacing) / 2)
             ScrollView {
                 VStack(alignment: .leading, spacing: 12) {
-                    if !store.folders.isEmpty { FolderFilter(scope: $folderScope) }
+                    if let heading { Text(heading).font(.title2.weight(.semibold)).fixedSize(horizontal: false, vertical: true).accessibilityAddTraits(.isHeader) }
                     LazyVGrid(columns: grid ? Array(repeating: GridItem(.fixed(edge), spacing: CardLayout.gridSpacing), count: 2) : [GridItem(.flexible())], spacing: CardLayout.gridSpacing) {
                         ForEach(active) { tracker in card(tracker, edge: grid ? edge : nil) }
                     }
@@ -37,11 +35,10 @@ struct DashboardView: View {
         }
         .background(Color(uiColor: .systemGroupedBackground))
         .accessibilityIdentifier(grid ? "dashboard.grid" : "dashboard.list")
-        .navigationTitle(L.text("Today"))
     }
     private func card(_ tracker: Tracker, edge: CGFloat?) -> some View {
         let row = WidgetRow(tracker, now: now)
-        return Button { onRecord(tracker) } label: {
+        return NavigationLink { TrackerDetail(id: tracker.id, now: now) } label: {
             TrackerCardSurface(row: row, now: now, locale: L.locale, text: L.text, minimumHeight: grid ? 0 : CardLayout.listHeight, fillsHeight: grid, showsDailyStatus: false) {
                 if row.resolvedBackground == .map, let locations = row.locations, !locations.isEmpty {
                     Map(position: .constant(.rect(CardMapFraming.rect(locations: locations, textPosition: row.resolvedTextPosition) ?? .world)), interactionModes: []) {
@@ -56,7 +53,7 @@ struct DashboardView: View {
             .contentShape(RoundedRectangle(cornerRadius: CardLayout.radius, style: .continuous))
         }
         .buttonStyle(.plain)
-        .accessibilityHint(L.text("Record progress"))
+        .accessibilityHint(L.text("View details"))
         .accessibilityIdentifier("card." + tracker.id.uuidString)
         .overlayPreferenceValue(DailyControlAnchor.self) { anchor in
             if tracker.kind == .daily {
@@ -73,7 +70,7 @@ struct DashboardView: View {
                 }
             }
         }
-        .contextMenu { TrackerContextMenu(tracker: tracker, onDetails: onDetails, onEdit: onEdit, onArchive: onArchive) }
+        .contextMenu { TrackerContextMenu(tracker: tracker, onRecord: onRecord, onEdit: onEdit, onArchive: onArchive) }
         .modifier(TrackerReorderInteraction(id: tracker.id, active: active, onReorder: onReorder))
     }
     private func completionTint(_ row: WidgetRow) -> Color {
@@ -82,7 +79,7 @@ struct DashboardView: View {
     }
 }
 
-/// Both Today layouts share native lift/drop and the same accessible move destinations.
+/// Item cards share native lift/drop and accessible move destinations.
 struct TrackerReorderInteraction: ViewModifier {
     var enabled = true
     let id: UUID

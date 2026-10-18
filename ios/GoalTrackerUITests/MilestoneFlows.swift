@@ -16,7 +16,7 @@ nonisolated final class W3DetailFlows: XCTestCase {
         if !empty { app.launchArguments += ["--feature-test-fixture", "--goalooker-test-fixture"] }
         if milestones { app.launchArguments += ["--milestones-test-fixture"] }
         if large { app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] }
-        app.launch()
+        app.launch(); app.showItems()
         return app
     }
     @MainActor private func element(_ app: XCUIApplication, _ id: String) -> XCUIElement {
@@ -40,8 +40,8 @@ nonisolated final class W3DetailFlows: XCTestCase {
         else { XCTAssertFalse(item.frame.intersection(app.frame.insetBy(dx: 0, dy: 120)).isEmpty) }
     }
     @MainActor private func open(_ app: XCUIApplication, _ name: String) {
-        app.tabBars.buttons.element(boundBy: 1).tap()
-        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "tracker.", name)).firstMatch
+        app.showItems()
+        let row = app.item(named: name)
         reveal(app, row); row.tap()
         XCTAssertTrue(app.buttons["tracker.menu"].waitForExistence(timeout: 10))
     }
@@ -193,13 +193,14 @@ nonisolated final class MilestoneFlows: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["--uitesting", "--reset-test-store", "--feature-test-fixture", "--goalooker-test-fixture", "--milestones-test-fixture", "-language", language, "-appearance", dark ? "dark" : "light", "-homeLayout", "grid", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"] + extra
         if large { app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] }
-        app.launch(); return app
+        app.launch(); app.showItems(); return app
     }
     @MainActor private func element(_ app: XCUIApplication, _ id: String) -> XCUIElement {
         app.descendants(matching: .any).matching(identifier: id).firstMatch
     }
     @MainActor private func button(_ app: XCUIApplication, prefix: String, name: String) -> XCUIElement {
-        app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", prefix, name)).firstMatch
+        if prefix == "tracker." || prefix == "card." { return app.item(named: name) }
+        return app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", prefix, name)).firstMatch
     }
     @MainActor private func reveal(_ app: XCUIApplication, _ item: XCUIElement) {
         var direction = -1.0
@@ -232,7 +233,7 @@ nonisolated final class MilestoneFlows: XCTestCase {
         let attachment = XCTAttachment(screenshot: app.screenshot()); attachment.name = name; attachment.lifetime = .keepAlways; add(attachment)
     }
     @MainActor private func openGoal(_ app: XCUIApplication, _ name: String) {
-        app.tabBars.buttons.element(boundBy: 1).tap()
+        app.showItems()
         let goal = button(app, prefix: "tracker.", name: name); reveal(app, goal); goal.tap()
         XCTAssertTrue(app.buttons["tracker.menu"].waitForExistence(timeout: 10))
     }
@@ -254,11 +255,10 @@ nonisolated final class MilestoneFlows: XCTestCase {
                 date.coordinate(withNormalizedOffset: CGVector(dx: 0.92, dy: 0.5)).tap()
                 XCTAssertEqual(date.value as? String, "0")
                 app.buttons["tracker.save"].tap()
-                app.tabBars.buttons.element(boundBy: 0).tap()
+                app.showItems()
                 XCTAssertTrue(score.waitForExistence(timeout: 10))
                 capture(app, "Centered ring with date hidden")
-                // Each tab retains its navigation stack; Goals resumes the open SCORE detail.
-                app.tabBars.buttons.element(boundBy: 1).tap()
+                openGoal(app, "SCORE")
                 XCTAssertTrue(app.buttons["tracker.menu"].waitForExistence(timeout: 10))
                 app.buttons["tracker.menu"].tap()
                 openEditorPage(app, "tracker.appearance")
@@ -281,13 +281,13 @@ nonisolated final class MilestoneFlows: XCTestCase {
         toggle.tap()
         let undone = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", "Mark complete"), object: toggle)
         XCTAssertEqual(XCTWaiter.wait(for: [undone], timeout: 10), .completed)
-        button(app, prefix: "card.", name: "CHECK").tap()
+        button(app, prefix: "card.", name: "CHECK").openRecord(in: app)
         XCTAssertTrue(app.buttons["entry.save"].waitForExistence(timeout: 10))
         capture(app, "Card surface opens recording sheet")
     }
     @MainActor func testGroupedGatePreviewAndFreshSave() {
         let app = launch(extra: ["--condition-gate=unmet"])
-        button(app, prefix: "card.", name: "GROUPED").tap()
+        button(app, prefix: "card.", name: "GROUPED").openRecord(in: app)
         let overall = element(app, "conditions.overall")
         XCTAssertTrue(overall.waitForExistence(timeout: 10))
         XCTAssertTrue(overall.label.contains("Conditions not met"))
@@ -331,7 +331,7 @@ nonisolated final class MilestoneFlows: XCTestCase {
     }
     @MainActor func testHealthUnknownIsVisibleBeforeInput() {
         let app = launch()
-        let card = button(app, prefix: "card.", name: "HEALTH"); reveal(app, card); card.tap()
+        let card = button(app, prefix: "card.", name: "HEALTH"); reveal(app, card); card.openRecord(in: app)
         XCTAssertTrue(element(app, "conditions.overall").waitForExistence(timeout: 10))
         XCTAssertEqual(app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "conditions.leaf.")).count, 0)
         element(app, "conditions.overall").tap()
@@ -459,7 +459,7 @@ nonisolated final class MilestoneFlows: XCTestCase {
         for (language, dark, large) in [("en", false, false), ("ja", true, false), ("zh-Hant", false, false), ("zh-Hant", true, false), ("zh-Hant", true, true)] {
             for state in ["met", "unmet", "unknown"] {
                 let app = launch(extra: ["--condition-gate=" + state], language: language, dark: dark, large: large)
-                button(app, prefix: "card.", name: "GROUPED").tap()
+                button(app, prefix: "card.", name: "GROUPED").openRecord(in: app)
                 let summary = element(app, "conditions.overall")
                 XCTAssertTrue(summary.waitForExistence(timeout: 10))
                 XCTAssertFalse(element(app, "conditions.warning").exists)
@@ -482,7 +482,7 @@ nonisolated final class MilestoneFlows: XCTestCase {
     }
     @MainActor func testCompactHealthMeasurementsRemainVisible() {
         let app = launch(extra: ["--condition-gate=unmet", "--condition-health-values"])
-        let card = button(app, prefix: "card.", name: "HEALTH"); reveal(app, card); card.tap()
+        let card = button(app, prefix: "card.", name: "HEALTH"); reveal(app, card); card.openRecord(in: app)
         let summary = element(app, "conditions.overall"); XCTAssertTrue(summary.waitForExistence(timeout: 10)); summary.tap()
         let steps = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "conditions.leaf.", "5,000 steps")).firstMatch
         let sleep = app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "conditions.leaf.", "6.00 hours")).firstMatch
@@ -508,7 +508,7 @@ nonisolated final class MilestoneFlows: XCTestCase {
                 XCTAssertGreaterThanOrEqual(close.frame.width, 44)
                 XCTAssertGreaterThanOrEqual(close.frame.height, 44)
                 XCTAssertEqual(card.frame.minY, before.minY, accuracy: 1)
-                XCTAssertTrue(app.buttons["tracker.create"].isHittable, "Toast must not cover navigation")
+                XCTAssertTrue(app.buttons["goals.add"].isHittable, "Toast must not cover navigation")
                 capture(app, "Native toast without layout shift " + language + (dark ? " dark" : " light") + (large ? " AX maximum" : ""))
                 if language == "en", !dark {
                     if large {
@@ -577,7 +577,7 @@ nonisolated final class MilestoneFlows: XCTestCase {
         XCTAssertGreaterThan(UIPasteboard.general.changeCount, clipboardChange)
         XCTAssertTrue(UIPasteboard.general.hasImages, "The system Copy action must publish the fixed poster image")
         app.terminate()
-        let reopened = XCUIApplication(); reopened.launchArguments = ["--uitesting", "-language", "en", "-homeLayout", "list"]; reopened.launch()
+        let reopened = XCUIApplication(); reopened.launchArguments = ["--uitesting", "-language", "en", "-homeLayout", "list"]; reopened.launch(); reopened.showItems()
         openGoal(reopened, "MANUAL")
         reveal(reopened, reopened.buttons["tracker.reopen"]); reopened.buttons["tracker.reopen"].tap()
         let reopen = reopened.sheets.buttons["Undo Completion"].firstMatch
@@ -724,7 +724,7 @@ nonisolated final class MilestoneFlows: XCTestCase {
     }
     @MainActor func testConditionPreviewRemainsResponsiveAcrossMinuteUpdates() {
         let app = launch(extra: ["--condition-gate=unmet"])
-        button(app, prefix: "card.", name: "GROUPED").tap()
+        button(app, prefix: "card.", name: "GROUPED").openRecord(in: app)
         XCTAssertTrue(element(app, "conditions.overall").waitForExistence(timeout: 10))
         capture(app, "Condition preview before minute updates")
         // Two real minute boundaries catch the observed native TimelineView/List layout loop.
@@ -762,7 +762,7 @@ nonisolated final class TrackerEditorFlows: XCTestCase {
         let app = XCUIApplication()
         app.launchArguments = ["--uitesting", "--reset-test-store", "--feature-test-fixture", "--goalooker-test-fixture", "--milestones-test-fixture", "--health-setup=needed", "-language", language, "-appearance", dark ? "dark" : "light", "-homeLayout", "grid", "-firstWeekday", "2", "-AppleLanguages", "(en)", "-AppleLocale", "en_US"]
         if large { app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] }
-        app.launch(); return app
+        app.launch(); app.showItems(); return app
     }
     @MainActor private func item(_ app: XCUIApplication, _ id: String) -> XCUIElement {
         app.descendants(matching: .any).matching(identifier: id).firstMatch
@@ -782,8 +782,8 @@ nonisolated final class TrackerEditorFlows: XCTestCase {
     }
     @MainActor private func back(_ app: XCUIApplication) { tapEditorBack(app) }
     @MainActor private func edit(_ app: XCUIApplication, _ name: String) {
-        app.tabBars.buttons.element(boundBy: 1).tap()
-        let row = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "tracker.", name)).firstMatch
+        app.showItems()
+        let row = app.item(named: name)
         reveal(app, row); row.tap(); app.buttons["tracker.menu"].tap()
     }
     @MainActor private func shot(_ app: XCUIApplication, _ name: String) {
@@ -793,7 +793,7 @@ nonisolated final class TrackerEditorFlows: XCTestCase {
     }
     @MainActor func testFirstConditionAndSubpagesPreserveDraft() {
         let app = launch()
-        app.buttons["tracker.create"].tap()
+        app.createTracker()
         let name = app.textFields["tracker.name"]
         XCTAssertTrue(app.keyboards.firstMatch.waitForExistence(timeout: 5), "Creation autofocuses the name")
         if app.buttons["Continue"].waitForExistence(timeout: 1) { app.buttons["Continue"].tap() }
@@ -833,7 +833,7 @@ nonisolated final class TrackerEditorFlows: XCTestCase {
         page(app, "tracker.content")
         XCTAssertEqual(text.value as? String, "Draft description")
         app.buttons["tracker.save"].tap()
-        XCTAssertTrue(app.buttons["tracker.create"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["goals.add"].waitForExistence(timeout: 10))
         edit(app, "EDITOR DRAFT"); page(app, "tracker.conditions")
         XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "conditions.editor.leaf.")).count, 1)
         back(app); app.buttons["tracker.cancel"].tap()
@@ -842,7 +842,7 @@ nonisolated final class TrackerEditorFlows: XCTestCase {
         var app = launch(); edit(app, "MANUAL")
         page(app, "tracker.archive")
         XCTAssertTrue(app.buttons["tracker.cancel"].waitForNonExistence(timeout: 5))
-        app.tabBars.buttons.element(boundBy: 0).tap()
+        app.showItems()
         XCTAssertFalse(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "card.", "MANUAL")).firstMatch.exists)
         app.terminate(); app = launch(); edit(app, "MANUAL")
         page(app, "tracker.delete")

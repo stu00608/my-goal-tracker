@@ -29,7 +29,6 @@ struct SettingsView: View {
     @Environment(AppStore.self) private var store
     @AppStorage("appearance") private var appearance = "system"
     @AppStorage("language") private var language = "system"
-    @AppStorage("homeLayout") private var homeLayout = "grid"
     @AppStorage("recordLocationByDefault", store: L.defaults) private var recordLocationByDefault = false
     @AppStorage("numericInputMode", store: L.defaults) private var numericInputMode = NumericEntryMode.direct.rawValue
     @AppStorage("remindersEnabled", store: L.defaults) private var remindersEnabled = true
@@ -49,10 +48,6 @@ struct SettingsView: View {
         NavigationStack {
             Form {
                 Section(L.text("Appearance")) {
-                    Picker(L.text("Home layout"), selection: $homeLayout) {
-                        Text(L.text("Grid")).tag("grid")
-                        Text(L.text("List")).tag("list")
-                    }.accessibilityIdentifier("settings.homeLayout")
                     Picker(L.text("Appearance"), selection: $appearance) {
                         Text(L.text("System")).tag("system"); Text(L.text("Light")).tag("light"); Text(L.text("Dark")).tag("dark")
                     }.accessibilityIdentifier("settings.appearance")
