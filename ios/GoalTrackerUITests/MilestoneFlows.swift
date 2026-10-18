@@ -105,13 +105,13 @@ nonisolated final class W3DetailFlows: XCTestCase {
         capture(app, "W3 direct goal empty action " + suffix)
         app.buttons["detail.setGoal"].tap()
         XCTAssertTrue(app.buttons["tracker.cancel"].waitForExistence(timeout: 5)); app.buttons["tracker.cancel"].tap()
-        app.tabBars.buttons.element(boundBy: 3).tap()
+        app.tabBars.buttons.element(boundBy: 2).tap()
         capture(app, "W3 appearance and recording settings " + suffix)
         reveal(app, app.buttons["backup.export"]); capture(app, "W3 data settings " + suffix)
         app.swipeUp(); capture(app, "W3 about settings " + suffix)
         app.terminate()
         app = launch(language: language, dark: dark, large: large, milestones: true)
-        app.tabBars.buttons.element(boundBy: 2).tap()
+        app.tabBars.buttons.element(boundBy: 1).tap()
         capture(app, "W3 poster thumbnail grid " + suffix)
         let poster = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "achievements.tracker.", "SCORE")).firstMatch
         XCTAssertTrue(poster.waitForExistence(timeout: 5)); poster.tap()
@@ -121,7 +121,7 @@ nonisolated final class W3DetailFlows: XCTestCase {
         if large { app.swipeUp(); capture(app, "W3 achievement poster bottom " + suffix) }
         app.terminate()
         app = launch(language: language, dark: dark, large: large, empty: true)
-        app.tabBars.buttons.element(boundBy: 2).tap()
+        app.tabBars.buttons.element(boundBy: 1).tap()
         XCTAssertTrue(element(app, "achievements.empty").exists)
         capture(app, "W3 empty completed tab " + suffix)
         app.terminate()
@@ -152,7 +152,7 @@ nonisolated final class W3DetailFlows: XCTestCase {
 
     @MainActor func testBackupSummaryStaysInConfirmation() {
         let app = launch(language: "zh-Hant", restorePreview: true)
-        app.tabBars.buttons.element(boundBy: 3).tap()
+        app.tabBars.buttons.element(boundBy: 2).tap()
         XCTAssertTrue(app.buttons["backup.restore"].waitForExistence(timeout: 10))
         XCTAssertTrue(app.staticTexts.matching(NSPredicate(format: "label CONTAINS %@ AND label CONTAINS %@", "項目數 · 5", "照片 ·")).firstMatch.exists)
         capture(app, "W3 validated backup summary in native restore confirmation")
@@ -405,7 +405,7 @@ nonisolated final class MilestoneFlows: XCTestCase {
         app.buttons["condition.cancel"].tap()
         tapEditorBack(app); revealFromAbove(app, name); XCTAssertEqual(name.value as? String, "HEALTH draft")
         app.buttons["tracker.cancel"].tap()
-        app.tabBars.buttons.element(boundBy: 3).tap()
+        app.tabBars.buttons.element(boundBy: 2).tap()
         let settings = app.buttons["settings.health"]; reveal(app, settings); settings.tap()
         XCTAssertTrue(element(app, "health.accessGuidance").waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["health.connect"].exists)
@@ -423,7 +423,7 @@ nonisolated final class MilestoneFlows: XCTestCase {
         XCTAssertFalse(app.buttons["conditions.healthSetup"].exists)
         capture(app, "Existing step setup keeps choices without repeated Health introduction")
         app.buttons["Steps"].tap(); app.buttons["condition.cancel"].tap(); tapEditorBack(app); app.buttons["tracker.cancel"].tap()
-        app.tabBars.buttons.element(boundBy: 3).tap()
+        app.tabBars.buttons.element(boundBy: 2).tap()
         let settings = app.buttons["settings.health"]; reveal(app, settings); settings.tap()
         XCTAssertTrue(app.buttons["health.connect"].waitForExistence(timeout: 10))
         capture(app, "Additional health access stays in global settings")
@@ -442,7 +442,7 @@ nonisolated final class MilestoneFlows: XCTestCase {
     }
     @MainActor func testAccessibleHealthGuidanceUsesAvailableHeight() {
         let app = launch(extra: ["--health-setup=configured"], dark: true, large: true)
-        app.tabBars.buttons.element(boundBy: 3).tap()
+        app.tabBars.buttons.element(boundBy: 2).tap()
         let settings = app.buttons["settings.health"]; reveal(app, settings); settings.tap()
         let title = app.navigationBars["Apple Health"]
         XCTAssertTrue(title.waitForExistence(timeout: 10))
@@ -453,7 +453,7 @@ nonisolated final class MilestoneFlows: XCTestCase {
         // Use the native toolbar target; AX bounds and rounded hit regions differ.
         done.tap()
         XCTAssertFalse(app.buttons["health.done"].exists)
-        XCTAssertTrue(app.tabBars.buttons.element(boundBy: 3).exists)
+        XCTAssertTrue(app.tabBars.buttons.element(boundBy: 2).exists)
     }
     @MainActor func testCompactConditionStatesAcrossLocalesAndThemes() {
         for (language, dark, large) in [("en", false, false), ("ja", true, false), ("zh-Hant", false, false), ("zh-Hant", true, false), ("zh-Hant", true, true)] {
@@ -498,7 +498,6 @@ nonisolated final class MilestoneFlows: XCTestCase {
                 let card = button(app, prefix: "card.", name: "GROUPED")
                 let action = button(app, prefix: "complete.", name: "GROUPED")
                 reveal(app, action)
-                if large { XCTAssertTrue(element(app, "today.title.date").exists, "The accessible toolbar retains the Today date") }
                 let before = card.frame
                 action.tap()
                 let toast = app.staticTexts["home.conditions.error"]
@@ -531,7 +530,7 @@ nonisolated final class MilestoneFlows: XCTestCase {
         reveal(app, app.buttons["tracker.complete"]); app.buttons["tracker.complete"].tap()
         reveal(app, app.buttons["tracker.reopen"])
         XCTAssertTrue(app.buttons["tracker.reopen"].waitForExistence(timeout: 10))
-        app.tabBars.buttons.element(boundBy: 2).tap()
+        app.tabBars.buttons.element(boundBy: 1).tap()
         let collection = button(app, prefix: "achievements.tracker.", name: "MANUAL")
         XCTAssertTrue(collection.waitForExistence(timeout: 10)); collection.tap()
         let history = collection
@@ -638,7 +637,7 @@ nonisolated final class MilestoneFlows: XCTestCase {
     }
     @MainActor func testWeekdayPreferenceReordersCalendarWithoutChangingRecords() {
         let app = launch()
-        app.tabBars.buttons.element(boundBy: 3).tap()
+        app.tabBars.buttons.element(boundBy: 2).tap()
         let order = element(app, "settings.firstWeekday"); reveal(app, order); order.tap()
         app.buttons["Monday"].tap()
         openGoal(app, "CHECK")
@@ -648,10 +647,10 @@ nonisolated final class MilestoneFlows: XCTestCase {
         XCTAssertTrue(monday.waitForExistence(timeout: 5))
         XCTAssertLessThan(monday.frame.minX, sunday.frame.minX)
         capture(app, "Monday-first calendar retains true weekday identifiers")
-        app.tabBars.buttons.element(boundBy: 3).tap()
+        app.tabBars.buttons.element(boundBy: 2).tap()
         let changed = element(app, "settings.firstWeekday"); reveal(app, changed); changed.tap()
         app.buttons["Sunday"].tap()
-        app.tabBars.buttons.element(boundBy: 1).tap()
+        app.tabBars.buttons.element(boundBy: 0).tap()
         let first = element(app, "calendar.weekday.1"); reveal(app, first)
         XCTAssertLessThan(first.frame.minX, element(app, "calendar.weekday.2").frame.minX)
         capture(app, "Sunday-first calendar preference")
@@ -740,14 +739,14 @@ nonisolated final class MilestoneFlows: XCTestCase {
         for language in ["en", "ja", "zh-Hant"] {
             let app = launch(language: language, dark: true, large: true)
             capture(app, "Milestone grid dark AX maximum " + language)
-            app.tabBars.buttons.element(boundBy: 2).tap()
+            app.tabBars.buttons.element(boundBy: 1).tap()
             let score = button(app, prefix: "achievements.tracker.", name: "SCORE")
             XCTAssertTrue(score.waitForExistence(timeout: 10)); score.tap()
             XCTAssertTrue(element(app, "achievement.poster").waitForExistence(timeout: 10))
             capture(app, "Achievement dark AX maximum " + language)
             XCTAssertTrue(app.buttons["achievement.share"].waitForExistence(timeout: 10))
             XCTAssertTrue(app.buttons["achievement.share"].isHittable)
-            app.tabBars.buttons.element(boundBy: 3).tap()
+            app.tabBars.buttons.element(boundBy: 2).tap()
             reveal(app, element(app, "settings.firstWeekday"))
             XCTAssertTrue(element(app, "settings.firstWeekday").exists)
             capture(app, "First weekday preferences " + language)

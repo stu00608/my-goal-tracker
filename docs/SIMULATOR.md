@@ -173,7 +173,7 @@ python3 scripts/dev.py run --scheme GoalTrackerWithWidget --device <simulator-ud
 
 Widget XCTest 使用獨立 UI test store。只有 DEBUG Simulator 的 `--widgettesting`
 會把測試摘要發到該 Simulator 的 Widget 共用容器；真機與 release 不開放此入口。
-XCTest 驗證共用摘要成功保存、完成計數，以及 Widget URL 從詳情／目標分頁回到今天。
+XCTest 驗證共用摘要成功保存、完成計數，以及 Widget record URL 開啟記錄表單、既有 today URL 開啟紀錄頁的今天篩選、無效 record URL 回到項目首頁。
 原生 gallery 與主畫面 Widget 另外透過 Orca 實際操作並檢視截圖；Widget 內容
 由系統渲染，XCTest 的 gallery 搜尋結果未暴露可點擊的 accessibility 節點，
 不能把背景上同名的 App 標籤當成 gallery 控制項。

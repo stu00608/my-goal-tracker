@@ -83,7 +83,7 @@ nonisolated final class FeatureTests: XCTestCase {
     @MainActor func testCalendarAndEmptyCustomChart() {
         continueAfterFailure = false
         let app = app()
-        app.tabBars.buttons.element(boundBy: 1).tap()
+        app.tabBars.buttons.element(boundBy: 0).tap()
         element(app, prefix: "tracker.", name: "COOK").tap()
         var calendar = Calendar(identifier: .gregorian); calendar.timeZone = .current
         let month = calendar.date(byAdding: .month, value: -1, to: Date())!
@@ -143,7 +143,7 @@ nonisolated final class FeatureTests: XCTestCase {
         XCTAssertLessThan(upperRight.frame.midY, mapCard.frame.midY)
         XCTAssertGreaterThan(upperRight.frame.midX, mapCard.frame.midX)
         attach(app, "Map top-right copy and completion keep the pin visible")
-        app.tabBars.buttons.element(boundBy: 1).tap()
+        app.tabBars.buttons.element(boundBy: 0).tap()
         let goal = element(app, prefix: "tracker.", name: "每月出社")
         XCTAssertTrue(goal.waitForExistence(timeout: 10)); goal.tap()
         app.buttons["tracker.menu"].tap(); if app.buttons["Edit tracker"].waitForExistence(timeout: 1) { app.buttons["Edit tracker"].tap() }
@@ -220,7 +220,7 @@ nonisolated final class FeatureTests: XCTestCase {
             XCTAssertTrue(app.buttons["entry.save"].waitForExistence(timeout: 10))
             attach(app, "Record editor " + language + " " + appearance + (large ? " accessibility XXXL" : ""))
             cancelEntry(app)
-            app.tabBars.buttons.element(boundBy: 1).tap()
+            app.tabBars.buttons.element(boundBy: 0).tap()
             element(app, prefix: "tracker.", name: "COOK").tap()
             XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "completion.view").firstMatch.waitForExistence(timeout: 10))
             attach(app, "Completion calendar " + language + " " + appearance + (large ? " accessibility XXXL" : ""))
@@ -236,7 +236,7 @@ nonisolated final class FeatureTests: XCTestCase {
     @MainActor func testRecordedMapOpensEntry() {
         continueAfterFailure = false
         let app = app()
-        app.tabBars.buttons.element(boundBy: 1).tap()
+        app.tabBars.buttons.element(boundBy: 0).tap()
         element(app, prefix: "tracker.", name: "TRAVEL").tap()
         let pin = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "location.")).firstMatch
         for _ in 0..<6 { if pin.isHittable { break }; app.swipeUp() }
@@ -364,7 +364,7 @@ nonisolated final class FeatureTests: XCTestCase {
     @MainActor func testDefaultNumericInputModePersistsAndFallsBackForFirstRecord() {
         continueAfterFailure = false
         let app = app()
-        app.tabBars.buttons.element(boundBy: 3).tap()
+        app.tabBars.buttons.element(boundBy: 2).tap()
         app.buttons["settings.numericInputMode"].tap(); app.buttons["Change amount"].tap()
         attach(app, "Default numeric input preference")
         app.showItems()
@@ -390,7 +390,7 @@ nonisolated final class FeatureTests: XCTestCase {
     @MainActor func testLocationDefaultOnlyInitializesNewRecords() {
         continueAfterFailure = false
         let app = app()
-        app.tabBars.buttons.element(boundBy: 3).tap()
+        app.tabBars.buttons.element(boundBy: 2).tap()
         let preference = app.switches["settings.recordLocationDefault"]
         XCTAssertTrue(preference.waitForExistence(timeout: 10)); XCTAssertEqual(preference.value as? String, "0")
         preference.coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
@@ -406,7 +406,7 @@ nonisolated final class FeatureTests: XCTestCase {
         cancelEntry(app)
         app.terminate()
         let reopened = self.app(reset: false)
-        reopened.tabBars.buttons.element(boundBy: 3).tap()
+        reopened.tabBars.buttons.element(boundBy: 2).tap()
         XCTAssertEqual(reopened.switches["settings.recordLocationDefault"].value as? String, "1")
         reopened.showItems(); reopened.buttons["items.layout"].tap(); reopened.buttons["List"].tap()
         reopened.showItems()
@@ -418,7 +418,7 @@ nonisolated final class FeatureTests: XCTestCase {
         XCTAssertTrue(name.waitForExistence(timeout: 10)); name.tap(); name.typeText("DEFAULT COOK")
         list.buttons["tracker.kind"].tap(); list.buttons["Completion record"].tap()
         list.buttons["tracker.save"].tap()
-        XCTAssertTrue(list.keyboards.firstMatch.waitForNonExistence(timeout: 10), "Saving a tracker must dismiss its keyboard before returning to Today")
+        XCTAssertTrue(list.keyboards.firstMatch.waitForNonExistence(timeout: 10), "Saving a tracker must dismiss its keyboard before returning to Items")
         let completion = element(list, prefix: "complete.", name: "DEFAULT COOK")
         attach(list, "Location default new completion before reveal")
         for _ in 0..<8 { if completion.exists && completion.isHittable { break }; list.swipeUp() }
@@ -446,11 +446,11 @@ nonisolated final class FeatureTests: XCTestCase {
         let removed = XCTNSPredicateExpectation(predicate: NSPredicate(format: "label CONTAINS %@", "Mark complete"), object: completion)
         XCTAssertEqual(XCTWaiter.wait(for: [removed], timeout: 10), .completed)
         // Create a different record with the default OFF. Turning it ON must not change that saved record.
-        list.tabBars.buttons.element(boundBy: 3).tap()
+        list.tabBars.buttons.element(boundBy: 2).tap()
         list.switches["settings.recordLocationDefault"].coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
         list.showItems()
         completion.tap()
-        list.tabBars.buttons.element(boundBy: 3).tap()
+        list.tabBars.buttons.element(boundBy: 2).tap()
         list.switches["settings.recordLocationDefault"].coordinate(withNormalizedOffset: CGVector(dx: 0.9, dy: 0.5)).tap()
         list.showItems()
         element(list, prefix: "tracker.", name: "DEFAULT COOK").openRecord(in: list)
@@ -575,7 +575,7 @@ nonisolated final class FeatureTests: XCTestCase {
             XCTAssertEqual(app.descendants(matching: .any).matching(identifier: "entry.photos.count").firstMatch.value as? String, "9/10")
             XCTAssertFalse(app.buttons[first].exists)
             cancelEntry(app)
-            app.tabBars.buttons.element(boundBy: 1).tap()
+            app.tabBars.buttons.element(boundBy: 0).tap()
             element(app, prefix: "tracker.", name: "SCORE").tap()
             let record = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "entry.", "Synthetic snapshot")).firstMatch
             // Drag in the List gutter, outside the interactive MapKit surface.
@@ -678,7 +678,7 @@ nonisolated final class FolderFlows: XCTestCase {
     @MainActor func testCreateAssignRenameFilterReopenAndDeleteFolder() {
         continueAfterFailure = false
         var app = launch()
-        app.tabBars.buttons.element(boundBy: 1).tap()
+        app.tabBars.buttons.element(boundBy: 0).tap()
         app.buttons["goals.add"].tap(); app.buttons["folder.create"].tap()
         XCTAssertTrue(app.textFields["folder.name"].waitForExistence(timeout: 5))
         XCTAssertFalse(app.buttons["folder.save"].isEnabled)
@@ -719,7 +719,7 @@ nonisolated final class FolderFlows: XCTestCase {
         XCTAssertTrue(app.staticTexts["19.250"].waitForExistence(timeout: 10))
         capture(app, "Folder records preserve the selected scope")
         app.terminate(); app = launch(reset: false)
-        app.tabBars.buttons.element(boundBy: 1).tap(); folder(app, "暮らし").tap()
+        app.tabBars.buttons.element(boundBy: 0).tap(); folder(app, "暮らし").tap()
         XCTAssertTrue(row(app, "SCORE").waitForExistence(timeout: 5) && row(app, "WALK").exists)
         app.buttons["folder.actions"].tap(); app.buttons["folder.delete"].tap()
         XCTAssertTrue(app.buttons["folder.delete.cancel"].firstMatch.waitForExistence(timeout: 5))
@@ -785,9 +785,9 @@ nonisolated final class FolderFlows: XCTestCase {
         }
     }
 }
-nonisolated final class TodayFlows: XCTestCase {
+nonisolated final class JournalFlows: XCTestCase {
     @MainActor private func launch(language: String = "en", dark: Bool = false, large: Bool = false,
-                                   fixture: Bool = true, reset: Bool = true, layout: String? = "grid", extra: [String] = []) -> XCUIApplication {
+                                   fixture: Bool = true, reset: Bool = true, history: Bool = true, layout: String? = "grid", extra: [String] = []) -> XCUIApplication {
         continueAfterFailure = false
         let app = XCUIApplication()
         app.launchArguments = ["--uitesting", "-language", language, "-appearance", dark ? "dark" : "light",
@@ -797,10 +797,12 @@ nonisolated final class TodayFlows: XCTestCase {
         if let layout { app.launchArguments += ["-homeLayout", layout] }
         if large { app.launchArguments += ["-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"] }
         app.launchArguments += extra
-        app.launch(); return app
+        app.launch()
+        if history { app.showRecords(today: true) }
+        return app
     }
     @MainActor private func record(_ app: XCUIApplication, _ name: String) -> XCUIElement {
-        app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "today.record.", name)).firstMatch
+        app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "journal.record.", name)).firstMatch
     }
     @MainActor private func capture(_ app: XCUIApplication, _ name: String) {
         let attachment = XCTAttachment(screenshot: app.screenshot())
@@ -816,7 +818,7 @@ nonisolated final class TodayFlows: XCTestCase {
         XCTAssertTrue(record(app, "COOK").waitForExistence(timeout: 10))
         XCTAssertTrue(record(app, "TRAVEL").exists)
         XCTAssertFalse(record(app, "SCORE").exists || record(app, "EMPTY").exists)
-        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "today.record.")).count, 2)
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "journal.record.")).count, 2)
         capture(app, "Today actual records")
         record(app, "COOK").tap()
         XCTAssertTrue(app.buttons["record.edit"].waitForExistence(timeout: 5))
@@ -834,7 +836,7 @@ nonisolated final class TodayFlows: XCTestCase {
     }
     @MainActor func testRecordPickerSavesAndReopensTodaysExistingCompletion() {
         let app = launch()
-        app.buttons["today.record"].tap()
+        app.buttons["records.add"].tap()
         let choice = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "record.choose.", "SCORE")).firstMatch
         XCTAssertTrue(choice.waitForExistence(timeout: 5)); capture(app, "Choose item to record"); choice.tap()
         XCTAssertTrue(app.buttons["entry.save"].waitForExistence(timeout: 5))
@@ -843,13 +845,13 @@ nonisolated final class TodayFlows: XCTestCase {
         XCTAssertTrue(record(app, "SCORE").waitForExistence(timeout: 10))
         XCTAssertTrue(record(app, "SCORE").label.contains("19.125"))
         capture(app, "New record appears on Today")
-        app.buttons["today.record"].tap()
+        app.buttons["records.add"].tap()
         let cook = app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@ AND label CONTAINS %@", "record.choose.", "COOK")).firstMatch
         XCTAssertTrue(cook.waitForExistence(timeout: 5)); cook.tap()
         XCTAssertTrue(app.buttons["entry.save"].waitForExistence(timeout: 5))
         XCTAssertEqual(app.textFields["entry.note"].value as? String, "Synthetic completion")
         app.buttons["entry.cancel"].tap()
-        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "today.record.")).count, 3)
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "journal.record.")).count, 3)
     }
     @MainActor func testTodayEditingDeltaLoadsRawChangeAndKeepsResolvedDisplay() {
         let app = launch(extra: ["--goalooker-test-fixture", "--goalooker-orphan-fixture"])
@@ -885,26 +887,71 @@ nonisolated final class TodayFlows: XCTestCase {
         XCTAssertTrue(reopened.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "tracker.")).firstMatch.waitForExistence(timeout: 5))
         XCTAssertFalse(reopened.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "card.")).firstMatch.exists)
     }
-    @MainActor func testEmptyTodayCreatesItemWithoutInventingARecord() {
-        let app = launch(fixture: false)
-        XCTAssertTrue(app.buttons["tracker.create"].waitForExistence(timeout: 10))
-        XCTAssertGreaterThanOrEqual(app.buttons["tracker.create"].frame.height, 44)
-        capture(app, "No items empty Today")
-        app.buttons["tracker.create"].tap()
+    @MainActor func testItemsIsHomeAndHistoryCanSwitchBetweenAllDatesAndToday() {
+        let app = launch(history: false)
+        XCTAssertEqual(app.tabBars.buttons.count, 3)
+        XCTAssertTrue(app.navigationBars["Items"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.tabBars.buttons.element(boundBy: 0).isSelected)
+        XCTAssertFalse(app.tabBars.buttons["Today"].exists)
+        app.showRecords()
+        let filter = app.segmentedControls["records.scope"]
+        XCTAssertTrue(filter.buttons["All dates"].isSelected)
+        for _ in 0..<5 { if record(app, "SCORE").isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(record(app, "SCORE").isHittable, "Older records are available across items")
+        capture(app, "All dates includes older records")
+        filter.buttons["Today"].tap()
+        XCTAssertTrue(record(app, "TRAVEL").waitForExistence(timeout: 5))
+        XCTAssertFalse(record(app, "SCORE").exists)
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "journal.record.")).count, 2)
+        filter.buttons["All dates"].tap()
+        for _ in 0..<5 { if record(app, "SCORE").isHittable { break }; app.swipeUp() }
+        XCTAssertTrue(record(app, "SCORE").isHittable)
+        app.showItems()
+        XCTAssertTrue(app.item(named: "SCORE").waitForExistence(timeout: 5))
+        app.terminate()
+        let reopened = launch(reset: false, history: false)
+        XCTAssertTrue(reopened.navigationBars["Items"].waitForExistence(timeout: 5))
+        XCTAssertFalse(reopened.segmentedControls["records.scope"].exists)
+    }
+    @MainActor func testHistoryWorksAlongsideFolderNavigation() {
+        let app = launch(history: false, extra: ["--folders-test-fixture"])
+        XCTAssertTrue(app.buttons["folder.all"].waitForExistence(timeout: 5))
+        app.showRecords(today: true)
+        XCTAssertTrue(record(app, "TRAVEL").waitForExistence(timeout: 5))
+        XCTAssertTrue(record(app, "COOK").exists, "History includes records across folder membership")
+        capture(app, "History across folders")
+        app.showItems(); app.buttons["folder.unfiled"].tap()
+        XCTAssertTrue(app.item(named: "TRAVEL").waitForExistence(timeout: 5))
+        XCTAssertFalse(app.item(named: "SCORE").exists)
+        app.showRecords()
+        XCTAssertTrue(app.segmentedControls["records.scope"].buttons["All dates"].isSelected)
+        capture(app, "History reopens on all dates after folder browsing")
+        app.showItems(); app.buttons["folder.all"].tap()
+        XCTAssertTrue(app.item(named: "SCORE").waitForExistence(timeout: 5))
+    }
+    @MainActor func testEmptyItemsCreatesItemWithoutInventingARecord() {
+        let app = launch(fixture: false, history: false)
+        XCTAssertTrue(app.buttons["goals.add"].waitForExistence(timeout: 10))
+        capture(app, "No items home")
+        app.showRecords()
+        XCTAssertTrue(app.staticTexts["No records yet"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["records.add"].exists)
+        capture(app, "No items history")
+        app.showItems(); app.createTracker()
         let name = app.textFields["tracker.name"]; XCTAssertTrue(name.waitForExistence(timeout: 5)); name.tap(); name.typeText("FIRST")
         app.buttons["tracker.save"].tap()
         XCTAssertTrue(app.item(named: "FIRST").waitForExistence(timeout: 10))
-        app.tabBars.buttons.element(boundBy: 0).tap()
-        XCTAssertTrue(app.buttons["today.record"].waitForExistence(timeout: 5))
-        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "today.record.")).count, 0)
-        capture(app, "No records empty Today")
-        app.buttons["today.record"].tap()
+        app.showRecords()
+        XCTAssertTrue(app.buttons["records.add"].waitForExistence(timeout: 5))
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "journal.record.")).count, 0)
+        capture(app, "No records history")
+        app.buttons["records.add"].tap()
         XCTAssertTrue(app.buttons["record.cancel"].waitForExistence(timeout: 5)); app.buttons["record.cancel"].tap()
-        XCTAssertTrue(app.buttons["today.record"].waitForExistence(timeout: 5))
+        XCTAssertTrue(app.buttons["records.add"].waitForExistence(timeout: 5))
     }
     @MainActor func testLongNegativeRecordAndPickerSearchAtLargestType() {
         let app = launch(language: "zh-Hant", dark: true, large: true, extra: ["--ux-extreme-fixture"])
-        app.buttons["today.record"].tap()
+        app.buttons["records.add"].tap()
         let search = app.searchFields.firstMatch
         XCTAssertTrue(search.waitForExistence(timeout: 5)); search.tap(); search.typeText("NO MATCH")
         XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH %@", "record.choose.")).count, 0)
@@ -928,11 +975,20 @@ nonisolated final class TodayFlows: XCTestCase {
     @MainActor func testJournalAndItemsAcrossLanguagesThemesAndLargestType() {
         for language in ["zh-Hant", "ja", "en"] {
             for (dark, large) in [(false, false), (true, false), (true, true)] {
-                let app = launch(language: language, dark: dark, large: large)
+                let app = launch(language: language, dark: dark, large: large, history: false)
                 let suffix = language + (dark ? " dark" : " light") + (large ? " AX XXXL" : "")
+                XCTAssertTrue(app.item(named: "SCORE").waitForExistence(timeout: 10))
+                capture(app, "Items home " + suffix)
+                app.showRecords()
                 XCTAssertTrue(record(app, "TRAVEL").waitForExistence(timeout: 10))
-                capture(app, "Today " + suffix)
-                app.buttons["today.record"].tap()
+                capture(app, "Records all dates " + suffix)
+                if large {
+                    app.swipeUp()
+                    capture(app, "Records wrapped dates " + suffix)
+                }
+                app.segmentedControls["records.scope"].buttons.element(boundBy: 1).tap()
+                capture(app, "Records Today filter " + suffix)
+                app.buttons["records.add"].tap()
                 XCTAssertTrue(app.buttons["record.cancel"].waitForExistence(timeout: 5))
                 capture(app, "Record picker " + suffix)
                 app.buttons["record.cancel"].tap()

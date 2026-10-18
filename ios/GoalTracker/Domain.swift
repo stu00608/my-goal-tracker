@@ -498,15 +498,17 @@ nonisolated struct Backup: Codable, Equatable {
     }
 }
 
-nonisolated struct TodayRecord: Identifiable {
+nonisolated enum RecordScope: Hashable { case all, today }
+
+nonisolated struct JournalRecord: Identifiable {
     let tracker: Tracker
     let entry: Entry
     var id: String { tracker.id.uuidString + "." + entry.id.uuidString }
 
-    static func records(in trackers: [Tracker], now: Date) -> [TodayRecord] {
+    static func records(in trackers: [Tracker], scope: RecordScope = .all, now: Date) -> [JournalRecord] {
         trackers.flatMap { tracker in
-            tracker.resolvedEntries.filter { $0.localDay == tracker.day(now) && $0.occurredAt <= now }
-                .map { TodayRecord(tracker: tracker, entry: $0) }
+            tracker.resolvedEntries.filter { $0.occurredAt <= now && (scope == .all || $0.localDay == tracker.day(now)) }
+                .map { JournalRecord(tracker: tracker, entry: $0) }
         }.sorted {
             ($0.entry.occurredAt, $0.entry.createdAt, $0.id) > ($1.entry.occurredAt, $1.entry.createdAt, $1.id)
         }

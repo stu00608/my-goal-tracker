@@ -21,6 +21,7 @@ nonisolated enum FolderScope: Hashable {
 
 struct GoalsLibrary: View {
     let now: Date
+    @Binding var journalScope: RecordScope?
     @Environment(AppStore.self) private var store
     @State private var path: [FolderScope] = []
     @State private var editMode = EditMode.inactive
@@ -73,6 +74,10 @@ struct GoalsLibrary: View {
             .environment(\.editMode, $editMode)
             .navigationTitle(L.text("Goals"))
             .toolbar {
+                ToolbarItem(placement: .topBarLeading) {
+                    Button { journalScope = .all } label: { Label(L.text("Record history"), systemImage: "clock") }
+                        .accessibilityIdentifier("items.records")
+                }
                 if store.folders.isEmpty && !active.isEmpty { ToolbarItem(placement: .topBarTrailing) { ItemsLayoutPicker() } }
                 if (!active.isEmpty && homeLayout == "list") || !store.folders.isEmpty {
                     ToolbarItem(placement: .topBarTrailing) {
@@ -90,6 +95,7 @@ struct GoalsLibrary: View {
                         .accessibilityLabel(L.text("Add")).accessibilityIdentifier("goals.add")
                 }
             }
+            .navigationDestination(item: $journalScope) { scope in RecordJournal(now: now, scope: scope) }
             .navigationDestination(for: FolderScope.self) { scope in
                 FolderContents(scope: scope, now: now, onCreate: { create(in: scope) },
                     onRename: { editingFolder = $0 }, onDelete: { deletingFolder = $0 },

@@ -23,12 +23,17 @@ import SwiftData
         daily.put(Entry(occurredAt: now.addingTimeInterval(-300), localDay: "2024-03-11"))
         // A backfilled record belongs to its recorded day, not its creation timestamp.
         daily.put(Entry(occurredAt: now.addingTimeInterval(-86400), localDay: "2024-03-10", createdAt: now))
-        let records = TodayRecord.records(in: [number, daily], now: now)
+        let records = JournalRecord.records(in: [number, daily], scope: .today, now: now)
+        let all = JournalRecord.records(in: [number, daily], now: now)
+        #expect(all.count == 4)
+        #expect(all.contains { $0.entry.localDay == "2024-03-09" })
+        #expect(all.allSatisfy { $0.entry.occurredAt <= now })
+        #expect(all.first(where: { $0.entry.id == event.id })?.entry.value == "18.25")
         #expect(records.map(\.tracker.id) == [daily.id, number.id])
         #expect(records.last?.entry.value == "18.25")
         #expect(records.last?.entry.change == "0.125")
         #expect(number.entries.first(where: { $0.id == event.id }) == event)
-        #expect(TodayRecord.records(in: [number], now: date("2024-03-11T04:00:00Z")).isEmpty)
+        #expect(JournalRecord.records(in: [number], scope: .today, now: date("2024-03-11T04:00:00Z")).isEmpty)
     }
 
     @Test func todayHasStableIdentityAndOrderForSimultaneousRecords() {
@@ -36,11 +41,11 @@ import SwiftData
         var a = tracker(.number), b = tracker(.number)
         let entry = Entry(occurredAt: now, localDay: a.day(now), value: "1", createdAt: now)
         a.put(entry); b.put(entry)
-        let forward = TodayRecord.records(in: [a, b], now: now)
-        let reversed = TodayRecord.records(in: [b, a], now: now)
+        let forward = JournalRecord.records(in: [a, b], scope: .today, now: now)
+        let reversed = JournalRecord.records(in: [b, a], scope: .today, now: now)
         #expect(Set(forward.map(\.id)).count == 2)
         #expect(forward.map(\.id) == reversed.map(\.id))
-        #expect(TodayRecord.records(in: [], now: now).isEmpty)
+        #expect(JournalRecord.records(in: [], scope: .today, now: now).isEmpty)
     }
 
     @Test func duplicateAndPeriodBoundaries() throws {
