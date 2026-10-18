@@ -7,21 +7,17 @@ struct RootView: View {
     @State private var selected = 0
     @State private var navigationID = UUID()
     @State private var recording: RecordingRequest?
-    @State private var creating = false
+    @State private var journalScope: RecordScope?
 
     var body: some View {
         TimelineView(.everyMinute) { _ in screen(at: Date()) }
     }
     private func screen(at date: Date) -> some View {
-        @Bindable var store = store
-        return TabView(selection: $selected) {
-            NavigationStack {
-                TodayJournal(now: date, onRecord: { recording = RecordingRequest() }, onCreate: { creating = true })
-                    .statusToast(message: $store.error, identifier: "today.error", autoDismiss: false)
-            }.id(navigationID).tabItem { Label(L.text("Today"), systemImage: "sun.max") }.tag(0)
-            GoalsLibrary(now: date).id(navigationID).tabItem { Label(L.text("Goals"), systemImage: "square.grid.2x2") }.tag(1)
-            CompletedTab(trackers: store.trackers, now: date).tabItem { Label(L.text("Completed tab"), systemImage: "sparkles") }.tag(2)
-            SettingsView(now: date).tabItem { Label(L.text("Settings"), systemImage: "gearshape") }.tag(3)
+        TabView(selection: $selected) {
+            GoalsLibrary(now: date, journalScope: $journalScope).id(navigationID)
+                .tabItem { Label(L.text("Goals"), systemImage: "square.grid.2x2") }.tag(0)
+            CompletedTab(trackers: store.trackers, now: date).tabItem { Label(L.text("Completed tab"), systemImage: "sparkles") }.tag(1)
+            SettingsView(now: date).tabItem { Label(L.text("Settings"), systemImage: "gearshape") }.tag(2)
         }
         .task(id: store.trackers) {
             do { try await Reminders.sync(store.trackers) }
@@ -30,13 +26,13 @@ struct RootView: View {
         }
         .onOpenURL { url in
             guard url.scheme == "goaltracker", url.host == "today" || url.host == "record" else { return }
-            creating = false; recording = nil; selected = 0; navigationID = UUID()
+            recording = nil; selected = 0; navigationID = UUID()
+            journalScope = url.host == "today" ? .today : nil
             if url.host == "record", url.pathComponents.count == 2,
                let id = UUID(uuidString: url.pathComponents[1]), store.trackers.contains(where: { $0.id == id && !$0.archived }) {
                 recording = RecordingRequest(trackerID: id)
             }
         }
-        .sheet(isPresented: $creating, onDismiss: { if store.trackers.contains(where: { !$0.archived }) { selected = 1 } }) { TrackerEditor() }
         .sheet(item: $recording) { RecordingSheet(selectedID: $0.trackerID) }
     }
 }
@@ -78,26 +74,28 @@ private struct RecordingSheet: View {
     }
 }
 
-private struct TodayJournal: View {
+struct RecordJournal: View {
     @Environment(AppStore.self) private var store
     let now: Date
-    let onRecord: () -> Void
-    let onCreate: () -> Void
-    private var records: [TodayRecord] { TodayRecord.records(in: store.trackers, now: now) }
+    @State var scope: RecordScope
+    @State private var recording = false
+    private var records: [JournalRecord] { JournalRecord.records(in: store.trackers, scope: scope, now: now) }
     private var canRecord: Bool { store.trackers.contains { !$0.archived } }
 
     var body: some View {
-        Group {
+        VStack(spacing: 0) {
+            Picker(L.text("Date"), selection: $scope) {
+                Text(L.text("All dates")).tag(RecordScope.all)
+                Text(L.text("Today")).tag(RecordScope.today)
+            }.pickerStyle(.segmented).padding(.horizontal, 16).padding(.vertical, 8)
+                .accessibilityIdentifier("records.scope")
             if records.isEmpty {
                 ContentUnavailableView {
-                    Label { Text(L.text("No records today")) } icon: { Image(systemName: "sun.max").accessibilityHidden(true) }
-                } description: {
-                    Text(L.text(canRecord ? "Your records for today will appear here." : "Create an item to start recording."))
-                } actions: {
-                    if !canRecord {
-                        Button(L.text("Create a tracker"), action: onCreate)
-                            .buttonStyle(.borderedProminent).controlSize(.large).accessibilityIdentifier("tracker.create")
+                    Label { Text(L.text(scope == .today ? "No records today" : "No records yet")) } icon: {
+                        Image(systemName: "clock").accessibilityHidden(true)
                     }
+                } description: {
+                    if !canRecord { Text(L.text("Create an item to start recording.")) }
                 }
             } else {
                 ScrollView {
@@ -107,28 +105,29 @@ private struct TodayJournal: View {
                                 JournalRecordDetail(trackerID: record.tracker.id, entryID: record.entry.id, now: now)
                             } label: {
                                 JournalRecordCard(record: record)
-                            }.buttonStyle(.plain).accessibilityIdentifier("today.record." + record.id)
+                            }.buttonStyle(.plain).accessibilityIdentifier("journal.record." + record.id)
                         }
                     }.padding(16)
-                }.accessibilityIdentifier("today.journal")
+                }.id(scope).accessibilityIdentifier("records.journal")
             }
         }
         .background(Color(uiColor: .systemGroupedBackground))
-        .navigationTitle(L.text("Today"))
-        .modifier(TodayDateSubtitle(date: now))
+        .navigationTitle(L.text("Record history")).navigationBarTitleDisplayMode(.inline)
         .toolbar {
             if canRecord {
                 ToolbarItem(placement: .topBarTrailing) {
-                    Button(action: onRecord) { HStack(spacing: 6) { Image(systemName: "plus"); Text(L.text("Record now")) } }
-                        .accessibilityIdentifier("today.record")
+                    Button { recording = true } label: {
+                        HStack(spacing: 8) { Image(systemName: "plus"); Text(L.text("Record now")) }
+                    }.accessibilityIdentifier("records.add")
                 }
             }
         }
+        .sheet(isPresented: $recording) { RecordingSheet(selectedID: nil) }
     }
 }
 
 private struct JournalRecordCard: View {
-    let record: TodayRecord
+    let record: JournalRecord
     var body: some View {
         VStack(alignment: .leading, spacing: 12) {
             ViewThatFits(in: .horizontal) {
@@ -164,8 +163,9 @@ private struct JournalRecordCard: View {
         Text(record.tracker.name).font(.headline).foregroundStyle(Color.primary).fixedSize(horizontal: false, vertical: true)
     }
     private var time: some View {
-        Text(record.entry.occurredAt.formatted(Date.FormatStyle(date: .omitted, time: .shortened, locale: L.locale, timeZone: record.tracker.calendar.timeZone)))
+        Text(record.entry.occurredAt.formatted(Date.FormatStyle(date: .abbreviated, time: .shortened, locale: L.locale, timeZone: record.tracker.calendar.timeZone)))
             .font(.subheadline.monospacedDigit()).foregroundStyle(Color.secondary)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 
@@ -385,30 +385,6 @@ struct TrackerContextMenu: View {
             .accessibilityIdentifier("tracker.context.edit")
         Button { onArchive(tracker) } label: { Label(L.text("Archive"), systemImage: "archivebox") }
             .accessibilityIdentifier("tracker.context.archive")
-    }
-}
-
-private struct TodayDateSubtitle: ViewModifier {
-    let date: Date?
-    @Environment(\.dynamicTypeSize) private var textSize
-    @ViewBuilder func body(content: Content) -> some View {
-        if #available(iOS 26, *), let date {
-            if textSize.isAccessibilitySize {
-                content.navigationBarTitleDisplayMode(.inline).toolbar {
-                    ToolbarItem(placement: .principal) {
-                        VStack(spacing: 2) {
-                            Text(L.text("Today")).font(.headline)
-                            Text(date.formatted(Date.FormatStyle(locale: L.locale).month().day().weekday()))
-                                .font(.caption).foregroundStyle(.secondary)
-                        }.dynamicTypeSize(...DynamicTypeSize.xLarge)
-                            .accessibilityElement(children: .combine)
-                            .accessibilityIdentifier("today.title.date")
-                    }
-                }
-            } else {
-                content.navigationSubtitle(date.formatted(Date.FormatStyle(locale: L.locale).month().day().weekday()))
-            }
-        } else { content }
     }
 }
 

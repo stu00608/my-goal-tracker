@@ -29,7 +29,7 @@ nonisolated final class ExpansionTests: XCTestCase {
         continueAfterFailure = false
         let app = launch()
         XCTAssertTrue(app.staticTexts["18.750"].waitForExistence(timeout: 10))
-        app.tabBars.buttons.element(boundBy: 1).tap()
+        app.tabBars.buttons.element(boundBy: 0).tap()
         button(app, prefix: "tracker.", text: "SCORE").tap()
         let delta = button(app, prefix: "entry.", text: "Derived change")
         for _ in 0..<10 { if delta.isHittable { break }; app.swipeUp() }
@@ -51,9 +51,9 @@ nonisolated final class ExpansionTests: XCTestCase {
     @MainActor func testSettingsIsRightmostTabAndHasGlobalReminderControl() {
         continueAfterFailure = false
         let app = launch()
-        XCTAssertEqual(app.tabBars.buttons.count, 4)
+        XCTAssertEqual(app.tabBars.buttons.count, 3)
         XCTAssertFalse(app.buttons["settings.open"].exists, "Settings has one primary route through its tab")
-        app.tabBars.buttons.element(boundBy: 3).tap()
+        app.tabBars.buttons.element(boundBy: 2).tap()
         XCTAssertTrue(app.navigationBars["Settings"].waitForExistence(timeout: 10))
         XCTAssertFalse(app.buttons["settings.done"].exists)
         let reminders = app.switches["settings.remindersEnabled"]
@@ -107,7 +107,7 @@ nonisolated final class ExpansionTests: XCTestCase {
     @MainActor func testTrackerMetadataPhotoBoundsAndProgress() {
         continueAfterFailure = false
         let app = launch()
-        app.tabBars.buttons.element(boundBy: 1).tap()
+        app.tabBars.buttons.element(boundBy: 0).tap()
         button(app, prefix: "tracker.", text: "SCORE").tap()
         for _ in 0..<10 { if app.staticTexts["tracker.description"].isHittable { break }; app.swipeUp() }
         XCTAssertTrue(app.staticTexts["tracker.description"].waitForExistence(timeout: 10))
@@ -146,7 +146,7 @@ nonisolated final class ExpansionTests: XCTestCase {
     @MainActor func testLocationConditionEditorAndAllCombinationPersist() {
         continueAfterFailure = false
         let app = launch()
-        app.tabBars.buttons.element(boundBy: 1).tap()
+        app.tabBars.buttons.element(boundBy: 0).tap()
         let office = button(app, prefix: "tracker.", text: "OFFICE")
         for _ in 0..<8 { if office.isHittable { break }; app.swipeUp() }
         office.tap(); app.buttons["tracker.menu"].tap(); if app.buttons["Edit tracker"].waitForExistence(timeout: 1) { app.buttons["Edit tracker"].tap() }
@@ -185,9 +185,9 @@ nonisolated final class ExpansionTests: XCTestCase {
                 let suffix = language + " " + appearance + (large ? " AX XXXL" : "")
                 XCTAssertTrue(button(app, prefix: "card.", text: "SCORE").waitForExistence(timeout: 10))
                 screenshot(app, "Goalooker overview " + suffix)
-                app.tabBars.buttons.element(boundBy: 3).tap()
+                app.tabBars.buttons.element(boundBy: 2).tap()
                 screenshot(app, "Settings native tab " + suffix)
-                app.tabBars.buttons.element(boundBy: 1).tap()
+                app.tabBars.buttons.element(boundBy: 0).tap()
                 button(app, prefix: "tracker.", text: "SCORE").tap()
                 screenshot(app, "Tracker metadata and photos " + suffix)
                 let view = app.segmentedControls["snapshot.view"]
@@ -225,7 +225,7 @@ nonisolated final class ExpansionTests: XCTestCase {
     @MainActor func testMapFirstAlternativeHasSamePlaceControls() {
         continueAfterFailure = false
         let app = launch(extra: ["--condition-map-first"])
-        app.tabBars.buttons.element(boundBy: 1).tap()
+        app.tabBars.buttons.element(boundBy: 0).tap()
         let office = button(app, prefix: "tracker.", text: "OFFICE")
         for _ in 0..<8 { if office.isHittable { break }; app.swipeUp() }
         office.tap(); app.buttons["tracker.menu"].tap(); if app.buttons["Edit tracker"].waitForExistence(timeout: 1) { app.buttons["Edit tracker"].tap() }
@@ -241,7 +241,7 @@ nonisolated final class ExpansionTests: XCTestCase {
     @MainActor func testDeletingAnchorRequiresConfirmationAndCancellationPreservesData() {
         continueAfterFailure = false
         let app = launch(extra: ["--goalooker-orphan-fixture"])
-        app.tabBars.buttons.element(boundBy: 1).tap()
+        app.tabBars.buttons.element(boundBy: 0).tap()
         button(app, prefix: "tracker.", text: "SCORE").tap()
         let anchor = button(app, prefix: "entry.", text: "Anchor value")
         for _ in 0..<12 { if anchor.isHittable { break }; app.swipeUp() }
@@ -283,7 +283,7 @@ nonisolated final class ExpansionTests: XCTestCase {
         XCTAssertTrue(card.waitForExistence(timeout: 10))
         XCTAssertFalse((card.value as? String)?.contains("outside the chart bounds") == true)
         screenshot(app, "Exact bounds exclude collapsed huge value from overview")
-        app.tabBars.buttons.element(boundBy: 1).tap()
+        app.tabBars.buttons.element(boundBy: 0).tap()
         button(app, prefix: "tracker.", text: "SCORE").tap()
         let period = app.segmentedControls["snapshot.period"]
         for _ in 0..<10 { if period.isHittable { break }; app.swipeUp() }

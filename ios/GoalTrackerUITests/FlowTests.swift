@@ -62,7 +62,7 @@ nonisolated final class FlowTests: XCTestCase {
         type(app, app.textFields["entry.note"], "snapshot note")
         app.buttons["entry.save"].tap()
         XCTAssertTrue(app.staticTexts["18.500"].waitForExistence(timeout: 10))
-        app.tabBars.buttons.element(boundBy: 1).tap()
+        app.tabBars.buttons.element(boundBy: 0).tap()
         button(app, "tracker.", "VOLFORCE").tap()
         XCTAssertTrue(app.descendants(matching: .any).matching(identifier: "snapshot.chart").firstMatch.waitForExistence(timeout: 10))
         XCTAssertTrue(app.descendants(matching: .any).matching(NSPredicate(format: "identifier BEGINSWITH %@", "snapshot.point.")).firstMatch.waitForExistence(timeout: 10))
@@ -84,12 +84,12 @@ nonisolated final class FlowTests: XCTestCase {
         button(app, "complete.", "COOK").tap()
         XCTAssertTrue(app.staticTexts["0 / 2 · This week"].waitForExistence(timeout: 10))
         button(app, "complete.", "COOK").tap()
-        screenshot(app, "Today with number and completion")
+        screenshot(app, "Items with number and completion")
         app.terminate()
         let reopened = self.app(reset: false)
         XCTAssertTrue(reopened.staticTexts["19.250"].waitForExistence(timeout: 10))
         XCTAssertTrue(reopened.staticTexts["1 / 2 · This week"].exists)
-        reopened.tabBars.buttons.element(boundBy: 1).tap()
+        reopened.tabBars.buttons.element(boundBy: 0).tap()
         button(reopened, "tracker.", "VOLFORCE").tap()
         XCTAssertTrue(reopened.descendants(matching: .any).matching(identifier: "snapshot.chart").firstMatch.waitForExistence(timeout: 10))
         screenshot(reopened, "Snapshot detail")
@@ -107,7 +107,7 @@ nonisolated final class FlowTests: XCTestCase {
         app.launchArguments = ["--uitesting", "--reset-test-store", "-language", "en", "-appearance", "dark", "-homeLayout", "list", "-UIPreferredContentSizeCategoryName", "UICTContentSizeCategoryAccessibilityXXXL"]
         app.launch(); app.showItems()
         create(app, name: "A daily goal with a long name", daily: true)
-        app.tabBars.buttons.element(boundBy: 1).tap()
+        app.tabBars.buttons.element(boundBy: 0).tap()
         button(app, "tracker.", "A daily goal").tap()
         XCTAssertTrue(app.buttons["entry.add"].waitForExistence(timeout: 10))
         app.swipeUp()
@@ -128,8 +128,8 @@ nonisolated final class FlowTests: XCTestCase {
             app.createTracker(); type(app, app.textFields["tracker.name"], name)
             app.buttons["tracker.save"].tap()
             XCTAssertTrue(button(app, "tracker.", name).waitForExistence(timeout: 10))
-            screenshot(app, "Today " + language)
-            app.tabBars.buttons.element(boundBy: 3).tap()
+            screenshot(app, "Items " + language)
+            app.tabBars.buttons.element(boundBy: 2).tap()
             for _ in 0..<8 { if app.buttons["backup.export"].exists { break }; app.swipeUp() }
             XCTAssertTrue(app.buttons["backup.export"].waitForExistence(timeout: 10))
             screenshot(app, "Settings " + language)
@@ -140,12 +140,18 @@ nonisolated final class FlowTests: XCTestCase {
 
 extension XCUIApplication {
     @MainActor func showItems() {
-        tabBars.buttons.element(boundBy: 1).tap()
+        tabBars.buttons.element(boundBy: 0).tap()
         for _ in 0..<6 {
             let back = navigationBars.buttons.matching(identifier: "BackButton").firstMatch
             if !back.exists { break }
             back.tap()
         }
+    }
+    @MainActor func showRecords(today: Bool = false) {
+        showItems()
+        buttons["items.records"].tap()
+        XCTAssertTrue(segmentedControls["records.scope"].waitForExistence(timeout: 5))
+        if today { segmentedControls["records.scope"].buttons.element(boundBy: 1).tap() }
     }
     @MainActor func item(named name: String) -> XCUIElement {
         buttons.matching(NSPredicate(format: "(identifier BEGINSWITH %@ OR identifier BEGINSWITH %@) AND label CONTAINS %@", "card.", "tracker.", name)).firstMatch
