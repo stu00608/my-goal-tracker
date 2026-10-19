@@ -12,6 +12,7 @@ nonisolated struct HealthFact {
     let through: Date
     var value: Decimal? // Steps, or sleep seconds. Never rounded for comparison.
     var issue: String?
+    var earliestAvailable: Date = .distantPast
 }
 nonisolated struct ConditionSleepSample {
     let start: Date
@@ -38,25 +39,37 @@ nonisolated enum HealthConditionEvaluation {
         return result.isNaN ? nil : result
     }
     static func sleepSeconds(_ samples: [ConditionSleepSample], start: Date, end: Date) -> Decimal? {
-        guard start < end else { return nil }
+        guard start <= end else { return nil }
         let asleep = Set(HKCategoryValueSleepAnalysis.allAsleepValues.map(\.rawValue))
-        let intervals = samples.compactMap { sample -> DateInterval? in
-            guard asleep.contains(sample.category), sample.start.timeIntervalSince1970.isFinite,
-                  sample.end.timeIntervalSince1970.isFinite, sample.start < sample.end else { return nil }
-            let a = max(start, sample.start), b = min(end, sample.end)
-            return a < b ? DateInterval(start: a, end: b) : nil
+        let intervals = samples.filter { sample in
+            (asleep.contains(sample.category) || sample.category == HKCategoryValueSleepAnalysis.inBed.rawValue
+                || sample.category == HKCategoryValueSleepAnalysis.awake.rawValue)
+                && sample.start.timeIntervalSince1970.isFinite && sample.end.timeIntervalSince1970.isFinite
+                && sample.start < sample.end
         }.sorted { ($0.start, $0.end) < ($1.start, $1.end) }
-        guard var current = intervals.first else { return nil } // Empty/hidden is unknown, never zero.
-        var total = Decimal.zero
-        for interval in intervals.dropFirst() {
-            if interval.start <= current.end {
-                current = DateInterval(start: current.start, end: max(current.end, interval.end))
-            } else {
-                total += Decimal(current.duration)
-                current = interval
+        guard let first = intervals.first else { return nil }
+        var sessionEnd = first.end
+        var wake: Date?
+        var seconds = Decimal.zero
+        var total: Decimal?
+        func include() {
+            if let wake, wake >= start && wake <= end { total = (total ?? 0) + seconds }
+        }
+        for interval in intervals {
+            if interval.start > sessionEnd {
+                include()
+                wake = nil; seconds = 0
+            }
+            sessionEnd = max(sessionEnd, interval.end)
+            // inBed/awake can connect sleep stages, but never add to asleep duration.
+            if asleep.contains(interval.category) {
+                let uncoveredStart = max(interval.start, wake ?? interval.start)
+                if interval.end > uncoveredStart { seconds += Decimal(interval.end.timeIntervalSince(uncoveredStart)) }
+                wake = max(wake ?? interval.end, interval.end)
             }
         }
-        return total + Decimal(current.duration)
+        include()
+        return total
     }
 }
 
@@ -161,6 +174,13 @@ nonisolated struct HealthConditionAccess {
                     fact.issue = "Connect Apple Health in Settings."; facts[key] = fact; continue
                 }
                 try Task.checkCancellation()
+                let type: HKObjectType = key.metric == .steps ? HKQuantityType(.stepCount) : HKCategoryType(.sleepAnalysis)
+                fact.earliestAvailable = max(store.earliestPermittedSampleDate(),
+                    try await Self.earliestAuthorizedDate(in: store, type: type))
+                guard fact.earliestAvailable <= start else {
+                    fact.issue = "Health data is unavailable for the full period."; facts[key] = fact; continue
+                }
+                try Task.checkCancellation()
                 let predicate = HKQuery.predicateForSamples(withStart: start, end: now, options: [])
                 switch key.metric {
                 case .steps:
@@ -169,14 +189,28 @@ nonisolated struct HealthConditionAccess {
                     let statistics = try await descriptor.result(for: store)
                     fact.value = HealthConditionEvaluation.quantity(statistics?.sumQuantity()?.doubleValue(for: .count()))
                 case .sleep:
-                    let descriptor = HKSampleQueryDescriptor(
-                        predicates: [.categorySample(type: HKCategoryType(.sleepAnalysis), predicate: predicate)],
-                        sortDescriptors: [SortDescriptor(\HKCategorySample.startDate)])
-                    let samples = try await descriptor.result(for: store)
-                    let spans = samples.map { ConditionSleepSample(start: $0.startDate, end: $0.endDate, category: $0.value) }
-                    fact.value = HealthConditionEvaluation.sleepSeconds(spans, start: start, end: now)
+                    var queryStart = start.addingTimeInterval(-1) // Include sleep ending exactly at midnight.
+                    while true {
+                        try Task.checkCancellation()
+                        guard fact.earliestAvailable <= queryStart else {
+                            fact.issue = "Health data is unavailable for the full period."; break
+                        }
+                        let sleepPredicate = HKQuery.predicateForSamples(withStart: queryStart, end: now, options: [])
+                        let descriptor = HKSampleQueryDescriptor(
+                            predicates: [.categorySample(type: HKCategoryType(.sleepAnalysis), predicate: sleepPredicate)],
+                            sortDescriptors: [SortDescriptor(\HKCategorySample.startDate)])
+                        let samples = try await descriptor.result(for: store)
+                        // Include earlier adjoining stages before assigning the whole sleep to its wake day.
+                        if let earliest = samples.map(\.startDate).min(), earliest <= queryStart {
+                            queryStart = earliest.addingTimeInterval(-1)
+                            continue
+                        }
+                        let spans = samples.map { ConditionSleepSample(start: $0.startDate, end: $0.endDate, category: $0.value) }
+                        fact.value = HealthConditionEvaluation.sleepSeconds(spans, start: start, end: now)
+                        break
+                    }
                 }
-                if fact.value == nil { fact.issue = "No readable samples yet in this period. Apple Health does not distinguish an empty period from disabled read access." }
+                if fact.value == nil && fact.issue == nil { fact.issue = "No readable samples yet in this period. Apple Health does not distinguish an empty period from disabled read access." }
             } catch is CancellationError { throw CancellationError() }
             catch {
                 fact.issue = (error as? HKError)?.code == .errorDatabaseInaccessible
@@ -187,6 +221,24 @@ nonisolated struct HealthConditionAccess {
             facts[key] = fact
         }
         return facts
+    }
+    static func earliestAuthorizedDate(in store: NSObject, type: HKObjectType) async throws -> Date {
+        // shortcut: Xcode 26 lacks this public iOS 27 API; use its typed call when the SDK is upgraded.
+        let selector = NSSelectorFromString("getEarliestAuthorizedSampleDateForTypes:completion:")
+        guard store.responds(to: selector) else {
+            if #available(iOS 27, *) { throw ConditionError("Health data is unavailable for the full period.") }
+            return .distantPast
+        }
+        return try await withCheckedThrowingContinuation { continuation in
+            let completion: @convention(block) @Sendable (NSDictionary?, NSError?) -> Void = { dates, error in
+                if let error { continuation.resume(throwing: error) }
+                else if let dates = dates as? [HKObjectType: Date] {
+                    // No entry means full OR denied access, never proof of permission.
+                    continuation.resume(returning: dates[type] ?? .distantPast)
+                } else { continuation.resume(throwing: ConditionError("Health data is unavailable for the full period.")) }
+            }
+            _ = store.perform(selector, with: Set([type]) as NSSet, with: completion)
+        }
     }
     private func types(_ keys: Set<HealthFactKey>) -> Set<HKObjectType> {
         Set(keys.map { key -> HKObjectType in

@@ -3,6 +3,18 @@ import HealthKit
 import Testing
 @testable import GoalTracker
 
+@MainActor private final class HistoryAuthorizationFixture: NSObject {
+    let dates: NSDictionary?
+    let error: NSError?
+    var requested = Set<HKObjectType>()
+    init(dates: NSDictionary?, error: NSError? = nil) { self.dates = dates; self.error = error }
+    @objc(getEarliestAuthorizedSampleDateForTypes:completion:)
+    func readHistory(_ types: NSSet, completion: @escaping @convention(block) (NSDictionary?, NSError?) -> Void) {
+        requested = types as? Set<HKObjectType> ?? []
+        completion(dates, error)
+    }
+}
+
 @MainActor struct GroupedConditionTests {
     private func date(_ text: String) -> Date { ISO8601DateFormatter().date(from: text)! }
     private func tracker(_ groups: [ConditionGroup], outer: ConditionCombination = .all, zone: String = "UTC") -> Tracker {
@@ -61,8 +73,10 @@ import Testing
         let p = place(), h = health()
         let requiredHealth = tracker([ConditionGroup(conditions: [p, h])])
         #expect(!ConditionEvaluation.canVerifyWithLocation(tracker: requiredHealth, facts: ConditionFacts(), now: Date()))
+        #expect(ConditionEvaluation.canVerifyWithLocation(tracker: requiredHealth, facts: ConditionFacts(), now: Date(), forSaving: true))
         let optionalHealth = tracker([ConditionGroup(combination: .any, conditions: [p, h])])
         #expect(ConditionEvaluation.canVerifyWithLocation(tracker: optionalHealth, facts: ConditionFacts(), now: Date()))
+        #expect(!ConditionEvaluation.canVerifyWithLocation(tracker: optionalHealth, facts: ConditionFacts(), now: Date(), forSaving: true))
     }
 
     @Test func inclusiveMinutesAllDayAndOvernightUseCurrentWeekday() {
@@ -102,18 +116,139 @@ import Testing
         #expect(t.calendar.firstWeekday == 2)
     }
 
-    @Test func sleepUnionsOverlapsAdjacencyAndSourcesBeforeClippingThroughNow() {
-        let start = date("2026-10-05T00:00:00Z"), end = date("2026-10-05T03:00:00Z")
+    @Test func sleepUnionsOverlapsAdjacencyAndSourcesBeforeWakeDayAssignment() {
+        let start = date("2026-10-05T00:00:00Z"), end = date("2026-10-05T05:00:00Z")
         func sample(_ a: Double, _ b: Double, _ category: HKCategoryValueSleepAnalysis) -> ConditionSleepSample {
             ConditionSleepSample(start: start.addingTimeInterval(a * 3600), end: start.addingTimeInterval(b * 3600), category: category.rawValue)
         }
         let spans = [sample(-2, 1, .asleepUnspecified), sample(0.5, 1.5, .asleepCore), sample(1.5, 2, .asleepDeep),
                      sample(1.75, 4, .asleepREM), sample(-2, 5, .inBed), sample(2, 3, .awake)]
-        #expect(HealthConditionEvaluation.sleepSeconds(spans, start: start, end: end) == Decimal(10_800))
-        #expect(HealthConditionEvaluation.sleepSeconds(Array(spans.reversed()), start: start, end: end) == Decimal(10_800))
-        #expect(HealthConditionEvaluation.sleepSeconds([sample(-2, 0, .asleepCore)], start: start, end: end) == nil)
+        #expect(HealthConditionEvaluation.sleepSeconds(spans, start: start, end: end) == Decimal(21_600))
+        #expect(HealthConditionEvaluation.sleepSeconds(Array(spans.reversed()), start: start, end: end) == Decimal(21_600))
+        #expect(HealthConditionEvaluation.sleepSeconds(spans, start: start, end: start.addingTimeInterval(3 * 3600)) == nil)
+        #expect(HealthConditionEvaluation.sleepSeconds([sample(-2, 0, .asleepCore)], start: start, end: end) == 7200)
+        #expect(HealthConditionEvaluation.sleepSeconds([sample(-2, 0, .asleepCore)], start: start, end: start) == 7200)
+        #expect(HealthConditionEvaluation.sleepSeconds([sample(-2, -1, .asleepCore)], start: start, end: end) == nil)
         #expect(HealthConditionEvaluation.sleepSeconds([sample(0, 3, .inBed), sample(0, 3, .awake)], start: start, end: end) == nil)
         #expect(HealthConditionEvaluation.sleepSeconds([], start: start, end: end) == nil)
+    }
+
+    @Test func overnightAndNapBelongToWakeDay() {
+        let start = date("2026-10-05T00:00:00Z"), end = date("2026-10-05T18:00:00Z")
+        let night = ConditionSleepSample(start: date("2026-10-04T23:00:00Z"), end: date("2026-10-05T07:00:00Z"), category: HKCategoryValueSleepAnalysis.asleepCore.rawValue)
+        let nap = ConditionSleepSample(start: date("2026-10-05T13:00:00Z"), end: date("2026-10-05T14:00:00Z"), category: HKCategoryValueSleepAnalysis.asleepDeep.rawValue)
+        #expect(HealthConditionEvaluation.sleepSeconds([night], start: start, end: end) == 28_800)
+        #expect(HealthConditionEvaluation.sleepSeconds([night, nap], start: start, end: end) == 32_400)
+        #expect(HealthConditionEvaluation.sleepSeconds([night], start: start.addingTimeInterval(-86_400), end: start.addingTimeInterval(-1)) == nil)
+    }
+
+    @Test func sleepStagesAcrossMidnightKeepAwakeAndInBedOutOfDuration() {
+        let start = date("2026-10-05T00:00:00Z"), end = date("2026-10-05T12:00:00Z")
+        let a = ConditionSleepSample(start: date("2026-10-04T23:00:00Z"), end: date("2026-10-04T23:30:00Z"), category: HKCategoryValueSleepAnalysis.asleepCore.rawValue)
+        let b = ConditionSleepSample(start: date("2026-10-04T23:45:00Z"), end: date("2026-10-05T07:00:00Z"), category: HKCategoryValueSleepAnalysis.asleepREM.rawValue)
+        for bridge in [HKCategoryValueSleepAnalysis.inBed, .awake] {
+            let gap = ConditionSleepSample(start: a.end, end: b.start, category: bridge.rawValue)
+            #expect(HealthConditionEvaluation.sleepSeconds([a, gap, b], start: start, end: end) == 27_900)
+        }
+    }
+
+    @Test func sleepWakeDateRespectsWeekMonthTimezoneAndDST() {
+        for (zone, wakeText, expectedHours) in [
+            ("UTC", "2026-06-01T07:00:00Z", 8), // Monday and month boundary.
+            ("Asia/Tokyo", "2026-05-31T22:00:00Z", 8),
+            ("America/New_York", "2026-03-08T11:00:00Z", 7)
+        ] {
+            let t = tracker([], zone: zone), wake = date(wakeText)
+            let sleep = ConditionSleepSample(start: wake.addingTimeInterval(Double(-expectedHours * 3600)), end: wake, category: HKCategoryValueSleepAnalysis.asleepUnspecified.rawValue)
+            for window in HealthWindow.allCases {
+                let start = HealthConditionEvaluation.start(window: window, calendar: t.calendar, now: wake)!
+                #expect(HealthConditionEvaluation.sleepSeconds([sleep], start: start, end: wake) == Decimal(expectedHours * 3600))
+            }
+        }
+        let wake = date("2026-10-05T00:30:00Z")
+        let sleep = ConditionSleepSample(start: wake.addingTimeInterval(-28_800), end: wake, category: HKCategoryValueSleepAnalysis.asleepCore.rawValue)
+        let now = date("2026-10-05T12:00:00Z")
+        for (zone, expected) in [("UTC", Optional(Decimal(28_800))), ("America/Los_Angeles", nil)] {
+            let start = HealthConditionEvaluation.start(window: .day, calendar: tracker([], zone: zone).calendar, now: now)!
+            #expect(HealthConditionEvaluation.sleepSeconds([sleep], start: start, end: now) == expected)
+        }
+    }
+
+    @Test func unavailableHealthAllowsSavingWithoutChangingDisplayedState() throws {
+        let now = date("2026-10-05T12:00:00Z")
+        for metric in [HealthMetric.steps, .sleep] {
+            for window in HealthWindow.allCases {
+                let h = health(metric, comparison: .less, threshold: "10", window: window)
+                let t = tracker([ConditionGroup(conditions: [h])]), key = h.healthKey!
+                let start = HealthConditionEvaluation.start(window: window, calendar: t.calendar, now: now)!
+                let unavailable = [HealthFact(start: start, through: now),
+                    HealthFact(start: start, through: now, issue: "Could not read Apple Health data."),
+                    HealthFact(start: start, through: now.addingTimeInterval(-301), value: 1),
+                    HealthFact(start: start, through: now, value: 1, earliestAvailable: start.addingTimeInterval(1))]
+                for fact in unavailable {
+                    let facts = ConditionFacts(health: [key: fact])
+                    let displayed = ConditionEvaluation.status(tracker: t, facts: facts, now: now)
+                    #expect(displayed.state == .unknown)
+                    #expect(displayed.groups[0].leaves[0].measurement == nil)
+                    try ConditionEvaluation.requireMet(ConditionEvaluation.saveState(tracker: t, facts: facts, now: now))
+                }
+                try ConditionEvaluation.requireMet(ConditionEvaluation.saveState(tracker: t, facts: ConditionFacts(), now: now))
+            }
+        }
+    }
+
+    @Test func limitedHistoryUsesTheRequestedTypeAndEmptyDoesNotAssertPermission() async throws {
+        let steps = HKQuantityType(.stepCount), sleep = HKCategoryType(.sleepAnalysis)
+        let boundary = date("2026-10-03T00:00:00Z")
+        let store = HistoryAuthorizationFixture(dates: [steps: boundary] as NSDictionary)
+        #expect(try await HealthConditions.earliestAuthorizedDate(in: store, type: steps) == boundary)
+        #expect(store.requested == Set([steps]))
+        #expect(try await HealthConditions.earliestAuthorizedDate(in: store, type: sleep) == .distantPast)
+        let empty = HistoryAuthorizationFixture(dates: [:])
+        #expect(try await HealthConditions.earliestAuthorizedDate(in: empty, type: steps) == .distantPast)
+    }
+
+    @Test func historyAuthorizationFailureNeverBecomesFullCoverage() async {
+        let steps = HKQuantityType(.stepCount)
+        for store in [HistoryAuthorizationFixture(dates: nil),
+                      HistoryAuthorizationFixture(dates: [:], error: NSError(domain: HKErrorDomain, code: HKError.Code.errorDatabaseInaccessible.rawValue)),
+                      HistoryAuthorizationFixture(dates: [steps: "invalid"])] {
+            do {
+                _ = try await HealthConditions.earliestAuthorizedDate(in: store, type: steps)
+                Issue.record("Missing or failed history coverage must be unavailable")
+            } catch { }
+        }
+    }
+
+    @Test func absentHistoryAPIFailsClosedOnlyOnSystemsWithLimitedAuthorization() async throws {
+        if #available(iOS 27, *) {
+            do {
+                _ = try await HealthConditions.earliestAuthorizedDate(in: NSObject(), type: HKQuantityType(.stepCount))
+                Issue.record("A missing iOS 27 history API must not imply full history")
+            } catch { }
+        } else {
+            #expect(try await HealthConditions.earliestAuthorizedDate(in: NSObject(), type: HKQuantityType(.stepCount)) == .distantPast)
+        }
+    }
+
+    @Test func unavailableHealthPreservesNestedLogicAndExplicitUnmetGate() throws {
+        let now = date("2026-10-05T12:00:00Z"), h = health(), p = place()
+        for inner in ConditionCombination.allCases {
+            for outer in ConditionCombination.allCases {
+                let t = tracker([ConditionGroup(combination: inner, conditions: [h, p]), ConditionGroup(conditions: [health(.sleep)])], outer: outer)
+                for state: ConditionState in [.met, .unmet, .unknown] {
+                    let facts = ConditionFacts(places: [p.id: state])
+                    let expected: ConditionState = inner == .any || outer == .any ? .met : state
+                    #expect(ConditionEvaluation.saveState(tracker: t, facts: facts, now: now) == expected)
+                }
+            }
+        }
+        let t = tracker([ConditionGroup(conditions: [h, health(.sleep)])])
+        let facts = ConditionFacts(health: [h.healthKey!: HealthFact(start: t.calendar.startOfDay(for: now), through: now, value: 100)])
+        #expect(ConditionEvaluation.status(tracker: t, facts: facts, now: now).state == .unmet)
+        #expect(throws: ConditionError.self) {
+            try ConditionEvaluation.requireMet(ConditionEvaluation.saveState(tracker: t, facts: facts, now: now))
+        }
     }
 
     @Test func healthThresholdsAreStrictDecimalAndEmptyNeverBecomesZero() {

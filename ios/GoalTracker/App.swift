@@ -175,6 +175,9 @@ nonisolated enum L {
                     health.gateSave = true
                     var manual = Tracker(name: "MANUAL", kind: .number)
                     manual.lifecycle = .finite
+                    if args.contains("--manual-health-condition") {
+                        manual.conditionGroups = health.conditionGroups; manual.gateSave = true
+                    }
                     fixture = [score, check, grouped, health, manual]
                 }
                 if args.contains("--checkbox-card-layout"), fixture.count >= 5 {

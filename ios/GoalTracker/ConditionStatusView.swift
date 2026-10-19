@@ -133,6 +133,10 @@ struct ConditionStatusView: View {
     let preview: ConditionPreview
     var onFailure: (String) -> Void = { _ in }
     @State private var expanded = false
+    private var healthUnavailable: Bool {
+        let ids = Set(tracker.resolvedConditionGroups.flatMap(\.conditions).filter(\.isHealth).map(\.id))
+        return snapshot.groups.flatMap(\.leaves).contains { ids.contains($0.id) && $0.state == .unknown && !$0.loading }
+    }
 
     var body: some View {
         Group {
@@ -164,7 +168,7 @@ struct ConditionStatusView: View {
             } label: {
                 HStack(alignment: .firstTextBaseline, spacing: 8) {
                     stateSymbol(snapshot.state, loading: snapshot.loading)
-                    Text(L.text(snapshot.loading ? "Checking conditions…" : snapshot.state == .met ? "Conditions met" : snapshot.state == .unmet ? "Conditions not met" : "Cannot determine yet"))
+                    Text(L.text(snapshot.loading ? "Checking conditions…" : snapshot.state == .met ? "Conditions met" : snapshot.state == .unmet ? "Conditions not met" : healthUnavailable ? "Health data unavailable" : "Cannot determine yet"))
                         .foregroundStyle(.primary).fixedSize(horizontal: false, vertical: true)
                 }.accessibilityElement(children: .combine)
                     .accessibilityIdentifier("conditions.overall")
@@ -188,12 +192,14 @@ struct ConditionStatusView: View {
                 if let value = status.measurement, let key = condition.healthKey {
                     Text(ConditionLabels.measurement(value, metric: key.metric)).monospacedDigit().foregroundStyle(.secondary)
                         .fixedSize(horizontal: false, vertical: true)
+                } else if condition.isHealth && status.state == .unknown && !status.loading {
+                    Text(L.text("Health data unavailable")).foregroundStyle(.secondary)
                 }
             }.frame(maxWidth: .infinity, alignment: .leading)
             stateSymbol(status.state, loading: status.loading)
         }.accessibilityElement(children: .ignore)
             .accessibilityLabel(ConditionLabels.leaf(condition) + measurementLabel(condition: condition, status: status))
-            .accessibilityValue(L.text(status.loading ? "Checking conditions…" : status.state == .met ? "Condition met" : status.state == .unmet ? "Condition not met" : "Condition unknown"))
+            .accessibilityValue(L.text(status.loading ? "Checking conditions…" : status.state == .met ? "Condition met" : status.state == .unmet ? "Condition not met" : condition.isHealth ? "Health data unavailable" : "Condition unknown"))
             .accessibilityIdentifier("conditions.leaf." + condition.id.uuidString)
     }
     private func measurementLabel(condition: AchievementCondition, status: ConditionLeafStatus) -> String {

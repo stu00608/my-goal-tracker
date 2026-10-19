@@ -406,6 +406,7 @@ struct TrackerContextMenu: View {
     @ScaledMetric(relativeTo: .largeTitle) private var heroSize = 48
     @State private var reopenCompletion = false
     @State private var completing = false
+    @State private var completionError: String?
     @State private var completionTask: Task<Void, Never>?
     @AppStorage("firstWeekday", store: L.defaults) private var firstWeekday = 1
     private var tracker: Tracker? { store.trackers.first { $0.id == id } }
@@ -445,9 +446,11 @@ struct TrackerContextMenu: View {
                         }
                     }
                 }
-                .statusToast(message: Binding(get: { store.error }, set: { store.error = $0 }), identifier: "detail.error", autoDismiss: false)
+                .statusToast(message: Binding(get: { completionError ?? store.error }, set: {
+                    if completionError != nil { completionError = $0 } else { store.error = $0 }
+                }), identifier: "detail.error", autoDismiss: false)
                 .sensoryFeedback(.success, trigger: t.manualCompletion != nil) { !$0 && $1 }
-                .sensoryFeedback(.error, trigger: store.error) { _, error in error != nil }
+                .sensoryFeedback(.error, trigger: completionError ?? store.error) { _, error in error != nil }
                 .navigationTitle(t.name).navigationBarTitleDisplayMode(.inline)
                 .environment(\.timeZone, t.calendar.timeZone)
                 .environment(\.calendar, t.calendar)
@@ -542,6 +545,7 @@ struct TrackerContextMenu: View {
 
     private func completeManually(_ original: Tracker) {
         guard !completing else { return }
+        completionError = nil
         completing = true
         completionTask = Task {
             defer { completing = false }
@@ -553,7 +557,7 @@ struct TrackerContextMenu: View {
                 candidate.manualCompletion = CompletionEngine.manualSnapshot(tracker: original, now: Date())
                 try store.save(candidate)
             } catch is CancellationError { }
-            catch { store.error = L.error(error) }
+            catch { completionError = L.error(error) }
         }
     }
     @ViewBuilder private func content(_ t: Tracker) -> some View {

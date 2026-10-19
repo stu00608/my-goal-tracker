@@ -93,6 +93,17 @@ nonisolated enum ConditionEvaluation {
         }
         return ConditionStatus(state: aggregate(groups.map(\.state), combination: tracker.resolvedOuterCombination), groups: groups)
     }
+    static func saveState(tracker: Tracker, facts: ConditionFacts, now: Date) -> ConditionState {
+        let groups = tracker.resolvedConditionGroups.map { group in
+            let states = group.conditions.map { condition in
+                let state = leaf(tracker: tracker, condition: condition, facts: facts, now: now).state
+                // Unavailable health data permits saving without claiming that the condition was met.
+                return condition.isHealth && state == .unknown ? .met : state
+            }
+            return aggregate(states, combination: group.combination)
+        }
+        return aggregate(groups, combination: tracker.resolvedOuterCombination)
+    }
     static func leaf(tracker: Tracker, condition: AchievementCondition, facts: ConditionFacts, now: Date) -> ConditionLeafStatus {
         #if DEBUG && targetEnvironment(simulator)
         if let state = facts.fixtureStates[condition.id] {
@@ -119,7 +130,8 @@ nonisolated enum ConditionEvaluation {
                     detail: facts.loadingHealth.contains(key) ? nil : "Connect Apple Health in Settings.")
             }
             guard let start = HealthConditionEvaluation.start(window: key.window, calendar: tracker.calendar, now: now),
-                  start == fact.start, (0...300).contains(now.timeIntervalSince(fact.through)) else {
+                  start == fact.start, fact.earliestAvailable <= start,
+                  (0...300).contains(now.timeIntervalSince(fact.through)) else {
                 return ConditionLeafStatus(id: condition.id, state: .unknown, loading: facts.loadingHealth.contains(key),
                     detail: facts.loadingHealth.contains(key) ? nil : "Updating health data for the current period…")
             }
@@ -138,11 +150,15 @@ nonisolated enum ConditionEvaluation {
             return group.conditions.filter { unresolved.contains($0.id) }
         }
     }
-    static func canVerifyWithLocation(tracker: Tracker, facts: ConditionFacts, now: Date) -> Bool {
+    static func canVerifyWithLocation(tracker: Tracker, facts: ConditionFacts, now: Date, forSaving: Bool = false) -> Bool {
         let places = neededLeaves(tracker: tracker, facts: facts, now: now).filter { $0.place != nil }
         guard !places.isEmpty else { return false }
         var optimistic = facts
         for place in places { optimistic.places[place.id] = .met }
+        if forSaving {
+            return saveState(tracker: tracker, facts: facts, now: now) == .unknown
+                && saveState(tracker: tracker, facts: optimistic, now: now) == .met
+        }
         return status(tracker: tracker, facts: optimistic, now: now).state == .met
     }
 }
@@ -164,25 +180,25 @@ nonisolated extension AchievementCondition {
         guard tracker.requiresConditionGate else { return }
         let previewNow = Date()
         if let fixture = previewFixture(tracker: tracker, now: previewNow) {
-            try ConditionEvaluation.requireMet(ConditionEvaluation.status(tracker: tracker, facts: fixture, now: previewNow).state)
+            try ConditionEvaluation.requireMet(ConditionEvaluation.saveState(tracker: tracker, facts: fixture, now: previewNow))
             return
         }
         var facts = ConditionFacts()
         var now = Date()
         if ConditionEvaluation.status(tracker: tracker, facts: facts, now: now).state != .unknown {
-            try ConditionEvaluation.requireMet(ConditionEvaluation.status(tracker: tracker, facts: facts, now: now).state)
+            try ConditionEvaluation.requireMet(ConditionEvaluation.saveState(tracker: tracker, facts: facts, now: now))
             return
         }
         let keys = Set(ConditionEvaluation.neededLeaves(tracker: tracker, facts: facts, now: now).compactMap(\.healthKey))
         facts.health = try await HealthConditions.shared.read(keys: keys, tracker: tracker, now: now)
         try Task.checkCancellation()
         now = Date()
-        if ConditionEvaluation.canVerifyWithLocation(tracker: tracker, facts: facts, now: now) {
+        if ConditionEvaluation.canVerifyWithLocation(tracker: tracker, facts: facts, now: now, forSaving: true) {
             let request = ConditionFixRequest(tracker: tracker, facts: facts, precise: true)
             facts.fix = try await request.acquire()
         }
         try Task.checkCancellation()
-        try ConditionEvaluation.requireMet(ConditionEvaluation.status(tracker: tracker, facts: facts, now: Date()).state)
+        try ConditionEvaluation.requireMet(ConditionEvaluation.saveState(tracker: tracker, facts: facts, now: Date()))
     }
     static func status(tracker: Tracker, now: Date = Date(), facts: ConditionFacts = ConditionFacts()) -> ConditionStatus {
         ConditionEvaluation.status(tracker: tracker, facts: previewFixture(tracker: tracker, now: now) ?? facts, now: now)
