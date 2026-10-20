@@ -54,6 +54,11 @@ def choose_iphone(devices, requested=None):
     return phones[0]
 
 
+def iphone_transport(phone):
+    transport = phone.get("connectionProperties", {}).get("transportType")
+    return {"localNetwork": "Wi-Fi", "wired": "USB"}.get(transport, "unknown")
+
+
 def test_summary(summary):
     passed = summary.get("passedTests")
     failed = summary.get("failedTests")
@@ -159,7 +164,9 @@ def install(device=None, scheme="GoalTrackerWithWidget"):
         inventory = Path(directory) / "devices.json"
         run("xcrun", "devicectl", "list", "devices", "--timeout", "15", "--quiet", "--json-output", inventory)
         phone = choose_iphone(json.loads(inventory.read_text())["result"]["devices"], device)
-    print("Using iPhone:", phone["deviceProperties"]["name"], flush=True)
+    print(f"Using iPhone: {phone['deviceProperties']['name']} "
+          f"({phone['hardwareProperties'].get('marketingName', 'unknown')}); "
+          f"transport: {iphone_transport(phone)}", flush=True)
     xcode("build", scheme=scheme, physical=True)
     app = DERIVED / ("Build/Products/Debug-iphoneos/" + scheme + ".app")
     run("codesign", "--verify", "--deep", "--strict", app)
