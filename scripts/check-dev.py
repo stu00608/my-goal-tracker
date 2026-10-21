@@ -6,10 +6,37 @@ from pathlib import Path
 import subprocess
 import tempfile
 from types import SimpleNamespace
+import unittest
 from unittest.mock import patch
 
 import dev
 from dev import choose_device, choose_iphone, test_summary, test_selection
+
+
+class IPhoneTransportTests(unittest.TestCase):
+    def setUp(self):
+        self.phone = {
+            "identifier": "fake-phone-id",
+            "connectionProperties": {"pairingState": "paired", "tunnelState": "disconnected"},
+        }
+
+    def test_local_network(self):
+        self.phone["connectionProperties"]["transportType"] = "localNetwork"
+        self.assertEqual(dev.iphone_transport(self.phone), "Wi-Fi")
+
+    def test_wired(self):
+        self.phone["connectionProperties"]["transportType"] = "wired"
+        self.assertEqual(dev.iphone_transport(self.phone), "USB")
+
+    def test_missing_field(self):
+        self.assertEqual(dev.iphone_transport(self.phone), "unknown")
+        del self.phone["connectionProperties"]
+        self.assertEqual(dev.iphone_transport(self.phone), "unknown")
+
+    def test_unknown_value(self):
+        self.phone["connectionProperties"]["transportType"] = "futureTransport"
+        self.assertEqual(dev.iphone_transport(self.phone), "unknown")
+
 
 phone = {"name": "iPhone QA", "udid": "owned-device", "isAvailable": True}
 inventory = {
@@ -50,8 +77,9 @@ for action, scheme in [("build", "GoalTracker"), ("run", "GoalTracker"), ("check
     else:
         raise AssertionError("Invalid unit-only selection silently accepted: " + action + " " + scheme)
 
-iphone = {"identifier": "phone-id", "hardwareProperties": {"deviceType": "iPhone", "udid": "phone-udid"},
-          "connectionProperties": {"pairingState": "paired", "tunnelState": "disconnected"},
+iphone = {"identifier": "phone-id",
+          "hardwareProperties": {"deviceType": "iPhone", "udid": "phone-udid", "marketingName": "iPhone Test Model"},
+          "connectionProperties": {"pairingState": "paired", "tunnelState": "disconnected", "transportType": "localNetwork"},
           "deviceProperties": {"name": "Test iPhone"}}
 other = {**iphone, "identifier": "other-id", "hardwareProperties": {"deviceType": "iPhone", "udid": "other-udid"}}
 ipad = {**iphone, "hardwareProperties": {"deviceType": "iPad", "udid": "ipad-udid"}}
@@ -73,7 +101,7 @@ with patch.object(dev.sys, "argv", ["dev.py", "install"]), patch.object(dev, "in
     dev.main()
     install.assert_called_once_with(None, "GoalTrackerWithWidget")
 
-with tempfile.TemporaryDirectory(dir=dev.ROOT) as directory, patch("builtins.print"):
+with tempfile.TemporaryDirectory(dir=dev.ROOT) as directory, patch("builtins.print") as output:
     root = Path(directory)
     calls = []
 
@@ -87,6 +115,7 @@ with tempfile.TemporaryDirectory(dir=dev.ROOT) as directory, patch("builtins.pri
         with patch.object(dev, "xcode") as build:
             dev.install()
             build.assert_called_once_with("build", scheme="GoalTrackerWithWidget", physical=True)
+            output.assert_any_call("Using iPhone: Test iPhone (iPhone Test Model); transport: Wi-Fi", flush=True)
         app = str(root / "Build/Products/Debug-iphoneos/GoalTrackerWithWidget.app")
         assert calls[-2] == ("codesign", "--verify", "--deep", "--strict", app)
         assert calls[-1] == ("xcrun", "devicectl", "device", "install", "app", "--device", "phone-id", app, "--timeout", "120")
@@ -114,3 +143,6 @@ with tempfile.TemporaryDirectory(dir=dev.ROOT) as directory, patch("builtins.pri
         assert "-allowProvisioningUpdates" not in command
 
 print("Developer tool regression checks passed (no native execution claimed).")
+
+if __name__ == "__main__":
+    unittest.main()

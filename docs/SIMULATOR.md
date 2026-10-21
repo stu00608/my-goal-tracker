@@ -137,7 +137,12 @@ Signing & Capabilities 選 Personal Team，連接並信任自己的 iPhone，依
 python3 scripts/dev.py install
 ```
 
-先用傳輸線連接並解鎖 iPhone。命令預設建置 `GoalTrackerWithWidget`，沿用本機簽署設定，
+首次先用傳輸線連接、解鎖 iPhone，並完成與 Mac 的配對與信任。
+之後無線安裝時，手機與 Mac 連上同一個 Wi-Fi，保持手機解鎖，
+指令一樣是 `python3 scripts/dev.py install`。
+選好 iPhone 後會印出裝置名稱、型號，以及 `Wi-Fi`、`USB` 或 `unknown`；
+連線方式依 `devicectl` 回報的 `connectionProperties.transportType` 判斷，缺少或未知值顯示 `unknown`。
+命令預設建置 `GoalTrackerWithWidget`，沿用本機簽署設定，
 允許 Xcode 更新免費描述檔，再以 `devicectl` 覆蓋安裝；不刪除 App、不重設資料，也不自動更新 Git。
 **不要先在手機上刪除 App**，刪除會移除本機紀錄。建議平時另存包含照片的完整 JSON 備份。
 安裝完成後在手機開啟 Goalooker；命令成功只證明安裝完成，尚需確認實際啟動與使用。
