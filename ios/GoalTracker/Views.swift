@@ -494,11 +494,15 @@ struct TrackerContextMenu: View {
     }
     private func hero(_ t: Tracker) -> some View {
         let entries = t.resolvedEntries.filter { $0.occurredAt <= now }
+        let latestText = entries.last?.value.map { formatted($0, tracker: t) }
         return VStack(alignment: .leading, spacing: 12) {
             if t.kind == .number {
-                Text(entries.last?.value.map { formatted($0, tracker: t) } ?? "—")
+                Text(latestText ?? "—")
                     .font(.system(size: heroSize, weight: .semibold, design: .rounded)).monospacedDigit()
-                    .fixedSize(horizontal: false, vertical: true).accessibilityIdentifier("detail.value")
+                    .foregroundStyle(latestText == nil ? Color.secondary : Color.primary)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityLabel(latestText ?? L.text("No records yet"))
+                    .accessibilityIdentifier("detail.value")
                 if !t.unit.isEmpty { Text(t.unit).font(.subheadline).foregroundStyle(.secondary) }
                 if let value = entries.last?.value.flatMap(Numbers.decimal), let previous = entries.dropLast().last?.value.flatMap(Numbers.decimal) {
                     Text(L.text("Since previous") + " · " + (value >= previous ? "+" : "") + Numbers.display(value - previous, precision: t.precision, locale: L.locale))
