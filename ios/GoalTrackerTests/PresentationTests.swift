@@ -38,6 +38,20 @@ import MapKit
     }
 
     @Test(arguments: ["en", "ja", "zh-Hant"])
+    func measurementTextIncludesUnitAndLeavesEmptyUnitUnchanged(language: String) {
+        let locale = Locale(identifier: language)
+        let weight = Numbers.decimal("72.5")!
+        let number = Numbers.display(weight, precision: 1, locale: locale)
+        let shown = DetailStyle.quantity("72.5", unit: "kg", precision: 1, locale: locale)
+        #expect(shown == number + " kg")
+        #expect(shown.contains("kg"))
+        #expect(DetailStyle.quantity(weight, unit: "", precision: 1, locale: locale) == number)
+        let delta = Numbers.decimal("-1.25")!
+        let change = Numbers.display(delta, precision: 2, locale: locale)
+        #expect(DetailStyle.quantity(delta, unit: "kg", precision: 2, locale: locale) == change + " kg")
+    }
+
+    @Test(arguments: ["en", "ja", "zh-Hant"])
     func ringCenterKeepsTrueFractionAndHiddenTextKeepsFullSummary(language: String) throws {
         let locale = Locale(identifier: language)
         var tracker = Tracker(name: String(repeating: "Very long 名稱 名前 ", count: 6), kind: .daily, timeZoneID: "Asia/Tokyo", cardBackground: .progress)
