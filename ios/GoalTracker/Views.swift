@@ -505,7 +505,7 @@ struct TrackerContextMenu: View {
                     .accessibilityIdentifier("detail.value")
                 if !t.unit.isEmpty { Text(t.unit).font(.subheadline).foregroundStyle(.secondary) }
                 if let value = entries.last?.value.flatMap(Numbers.decimal), let previous = entries.dropLast().last?.value.flatMap(Numbers.decimal) {
-                    Text(L.text("Since previous") + " · " + (value >= previous ? "+" : "") + Numbers.display(value - previous, precision: t.precision, locale: L.locale))
+                    Text(L.text("Since previous") + " · " + DetailStyle.signedQuantity(value - previous, unit: t.unit, precision: t.precision, locale: L.locale))
                         .font(.subheadline.monospacedDigit()).foregroundStyle(.secondary)
                 }
                 if let progress = GoalProgress.current(for: t, now: now) {
@@ -874,6 +874,9 @@ enum DetailStyle {
     }
     static func quantity(_ value: Decimal, unit: String, precision: Int, locale: Locale) -> String {
         joining(Numbers.display(value, precision: precision, locale: locale), unit: unit)
+    }
+    static func signedQuantity(_ value: Decimal, unit: String, precision: Int, locale: Locale) -> String {
+        (value < 0 ? "" : "+") + quantity(value, unit: unit, precision: precision, locale: locale)
     }
     private static func joining(_ shown: String, unit: String) -> String {
         unit.isEmpty ? shown : shown + " " + unit
