@@ -650,7 +650,7 @@ struct TrackerContextMenu: View {
             }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), alignment: .leading), count: typeSize.isAccessibilitySize ? 1 : 2), alignment: .leading, spacing: 16) {
                 if let best = t.direction == .up ? values.max() : values.min() { metric("Best", formatted(best, tracker: t)) }
-                if let change = snapshot?.periodChange { metric("Period change", formatted(change, tracker: t)) }
+                if let change = snapshot?.periodChange { metric("Period change", DetailStyle.signedQuantity(change, unit: t.unit, precision: t.precision, locale: L.locale)) }
                 if let rule = t.rule(at: now), let target = Numbers.decimal(rule.target) {
                     metric("Target", formatted(rule.target, tracker: t))
                     if let latest { metric("Distance to target", formatted(abs(target - latest), tracker: t)) }
