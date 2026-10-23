@@ -52,6 +52,18 @@ import MapKit
     }
 
     @Test(arguments: ["en", "ja", "zh-Hant"])
+    func chartPointAccessibilityValueIncludesTrackerUnit(language: String) {
+        let locale = Locale(identifier: language)
+        let tracker = Tracker(name: "Weight", kind: .number, unit: "kg", precision: 1)
+        let number = Numbers.display(Numbers.decimal("72.5")!, precision: tracker.precision, locale: locale)
+        let spoken = DetailStyle.quantity("72.5", unit: tracker.kind == .number ? tracker.unit : "", precision: tracker.kind == .daily ? 0 : tracker.precision, locale: locale)
+        #expect(spoken == number + " kg")
+        let unitless = Tracker(name: "Count", kind: .number, precision: 1)
+        let bare = DetailStyle.quantity("72.5", unit: unitless.kind == .number ? unitless.unit : "", precision: unitless.kind == .daily ? 0 : unitless.precision, locale: locale)
+        #expect(bare == number)
+    }
+
+    @Test(arguments: ["en", "ja", "zh-Hant"])
     func sincePreviousDeltaKeepsSignAndShowsUnit(language: String) {
         let locale = Locale(identifier: language)
         let gain = Numbers.decimal("0.5")!

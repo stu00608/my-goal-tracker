@@ -686,6 +686,8 @@ struct TrackerContextMenu: View {
             if let value = entry.value.flatMap(Numbers.plottedValue) {
                 if let raw = entry.value, !CardPlotScale.excludes(raw, lower: tracker.axisLower, upper: tracker.axisUpper) {
                     PointMark(x: .value(L.text("Date"), entry.occurredAt), y: .value(L.text("Value"), value)).symbolSize(45).foregroundStyle(TrackerColors.accent)
+                        .accessibilityLabel(Text(DetailStyle.date(entry.occurredAt, calendar: tracker.calendar, now: now)))
+                        .accessibilityValue(Text(formatted(raw, tracker: tracker, withUnit: true)))
                 }
             }
         }
@@ -739,10 +741,15 @@ struct TrackerContextMenu: View {
         .accessibilityIdentifier("snapshot.chart")
         .accessibilityChildren {
             ForEach(entries) { entry in
-                Button { selectedEntry = entry } label: {
-                    Text(DetailStyle.date(entry.occurredAt, calendar: tracker.calendar, now: now))
-                    if let value = entry.value.flatMap(Numbers.decimal) { Text(Numbers.display(value, precision: tracker.precision, locale: L.locale)) }
-                }.accessibilityIdentifier("snapshot.point." + entry.id.uuidString)
+                let date = DetailStyle.date(entry.occurredAt, calendar: tracker.calendar, now: now)
+                let spoken = entry.value.flatMap { raw -> String? in
+                    guard Numbers.decimal(raw) != nil else { return nil }
+                    return formatted(raw, tracker: tracker, withUnit: true)
+                }
+                Button { selectedEntry = entry } label: { Text(date) }
+                    .accessibilityLabel(date)
+                    .accessibilityValue(spoken ?? "")
+                    .accessibilityIdentifier("snapshot.point." + entry.id.uuidString)
             }
         }
         }
