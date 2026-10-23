@@ -7947,19 +7947,19 @@
         "en": {
           "stringUnit": {
             "state": "translated",
-            "value": "Mark complete"
+            "value": "Show as completed"
           }
         },
         "zh-Hant": {
           "stringUnit": {
             "state": "translated",
-            "value": "標記完成"
+            "value": "顯示為已完成"
           }
         },
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "完了にする"
+            "value": "達成済みとして表示"
           }
         }
       }
