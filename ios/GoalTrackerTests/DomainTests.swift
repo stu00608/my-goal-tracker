@@ -562,4 +562,26 @@ import SwiftData
         #expect(csv.contains(folder.id.uuidString))
         #expect(csv.contains("\"'=HYPERLINK(\"\"example\"\")\""))
     }
+    @Test func emptyLibraryTitlesNameTheScopeInsteadOfAFolder() {
+        let originalLanguage = L.defaults.object(forKey: "language")
+        defer {
+            if let originalLanguage { L.defaults.set(originalLanguage, forKey: "language") }
+            else { L.defaults.removeObject(forKey: "language") }
+        }
+        let folder = UUID()
+        let titles = [
+            "en": ("No items yet", "No unfiled items", "No items in this folder"),
+            "ja": ("項目はまだありません", "未分類の項目はありません", "このフォルダには項目がありません"),
+            "zh-Hant": ("尚無項目", "沒有未分類的項目", "資料夾裡尚無項目"),
+        ]
+        for (language, expected) in titles {
+            L.defaults.set(language, forKey: "language")
+            #expect(FolderScope.all.emptyStateTitle == expected.0)
+            #expect(FolderScope.unfiled.emptyStateTitle == expected.1)
+            #expect(FolderScope.folder(folder).emptyStateTitle == expected.2)
+        }
+        #expect(FolderScope.all.emptyStateSymbol == "tray.full")
+        #expect(FolderScope.unfiled.emptyStateSymbol == "tray")
+        #expect(FolderScope.folder(folder).emptyStateSymbol == "folder")
+    }
 }
