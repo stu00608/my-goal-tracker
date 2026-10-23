@@ -494,7 +494,7 @@ struct TrackerContextMenu: View {
     }
     private func hero(_ t: Tracker) -> some View {
         let entries = t.resolvedEntries.filter { $0.occurredAt <= now }
-        let latestText = entries.last?.value.map { formatted($0, tracker: t) }
+        let latestText = entries.last?.value.map { formatted($0, tracker: t, withUnit: false) }
         return VStack(alignment: .leading, spacing: 12) {
             if t.kind == .number {
                 Text(latestText ?? "—")
@@ -649,19 +649,22 @@ struct TrackerContextMenu: View {
             if let snapshot { snapshotChart(snapshot, tracker: t) }
             }
             LazyVGrid(columns: Array(repeating: GridItem(.flexible(), alignment: .leading), count: typeSize.isAccessibilitySize ? 1 : 2), alignment: .leading, spacing: 16) {
-                if let best = t.direction == .up ? values.max() : values.min() { metric("Best", Numbers.display(best, precision: t.precision, locale: L.locale)) }
-                if let change = snapshot?.periodChange { metric("Period change", Numbers.display(change, precision: t.precision, locale: L.locale)) }
+                if let best = t.direction == .up ? values.max() : values.min() { metric("Best", formatted(best, tracker: t)) }
+                if let change = snapshot?.periodChange { metric("Period change", formatted(change, tracker: t)) }
                 if let rule = t.rule(at: now), let target = Numbers.decimal(rule.target) {
                     metric("Target", formatted(rule.target, tracker: t))
-                    if let latest { metric("Distance to target", Numbers.display(abs(target - latest), precision: t.precision, locale: L.locale)) }
+                    if let latest { metric("Distance to target", formatted(abs(target - latest), tracker: t)) }
                     if let deadline = rule.deadline { metric("Deadline", DetailStyle.date(deadline, calendar: t.calendar, now: now)) }
                 }
             }.accessibilityIdentifier("detail.metrics")
             }.padding(.vertical, 8)
         }
     }
-    private func formatted(_ value: String, tracker: Tracker) -> String {
-        Numbers.decimal(value).map { Numbers.display($0, precision: tracker.kind == .daily ? 0 : tracker.precision, locale: L.locale) } ?? value
+    private func formatted(_ value: String, tracker: Tracker, withUnit: Bool = true) -> String {
+        DetailStyle.quantity(value, unit: withUnit && tracker.kind == .number ? tracker.unit : "", precision: tracker.kind == .daily ? 0 : tracker.precision, locale: L.locale)
+    }
+    private func formatted(_ value: Decimal, tracker: Tracker) -> String {
+        DetailStyle.quantity(value, unit: tracker.kind == .number ? tracker.unit : "", precision: tracker.precision, locale: L.locale)
     }
     private func snapshotChart(_ snapshot: ChartSnapshot, tracker: Tracker) -> some View {
         let entries = snapshot.numericEntries
@@ -843,7 +846,7 @@ private struct DetailRecordRow: View {
             VStack(alignment: .leading, spacing: 4) {
                 let value = Group {
                     if let value = entry.value.flatMap(Numbers.decimal) {
-                        Text(Numbers.display(value, precision: tracker.precision, locale: L.locale)).monospacedDigit()
+                        Text(DetailStyle.quantity(value, unit: tracker.kind == .number ? tracker.unit : "", precision: tracker.precision, locale: L.locale)).monospacedDigit()
                     } else { Label(L.text("Completed"), systemImage: "checkmark.circle.fill") }
                 }.font(.headline)
                 let date = Text(DetailStyle.date(tracker.kind == .daily ? tracker.date(for: entry.localDay) ?? entry.occurredAt : entry.occurredAt, calendar: tracker.calendar, now: now))
@@ -865,6 +868,16 @@ private struct DetailRecordRow: View {
 enum DetailStyle {
     static let chartHeight: CGFloat = 240
     static let dashed = StrokeStyle(lineWidth: 2, dash: [5, 4])
+    static func quantity(_ value: String, unit: String, precision: Int, locale: Locale) -> String {
+        guard let decimal = Numbers.decimal(value) else { return joining(value, unit: unit) }
+        return quantity(decimal, unit: unit, precision: precision, locale: locale)
+    }
+    static func quantity(_ value: Decimal, unit: String, precision: Int, locale: Locale) -> String {
+        joining(Numbers.display(value, precision: precision, locale: locale), unit: unit)
+    }
+    private static func joining(_ shown: String, unit: String) -> String {
+        unit.isEmpty ? shown : shown + " " + unit
+    }
     static func date(_ date: Date, calendar: Calendar, now: Date = Date()) -> String {
         var format = Date.FormatStyle(date: .omitted, time: .omitted, locale: L.locale, calendar: calendar, timeZone: calendar.timeZone).month(.abbreviated).day()
         if calendar.component(.year, from: date) != calendar.component(.year, from: now) { format = format.year() }
