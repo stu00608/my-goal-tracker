@@ -5657,7 +5657,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "条件"
+            "value": "条件の一致"
           }
         },
         "en": {
@@ -8390,7 +8390,7 @@
         "ja": {
           "stringUnit": {
             "state": "translated",
-            "value": "条件"
+            "value": "グループの一致"
           }
         },
         "zh-Hant": {
