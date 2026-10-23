@@ -52,6 +52,18 @@ import MapKit
     }
 
     @Test(arguments: ["en", "ja", "zh-Hant"])
+    func sincePreviousDeltaKeepsSignAndShowsUnit(language: String) {
+        let locale = Locale(identifier: language)
+        let gain = Numbers.decimal("0.5")!
+        let loss = Numbers.decimal("-0.5")!
+        let lossShown = Numbers.display(loss, precision: 1, locale: locale)
+        #expect(DetailStyle.signedQuantity(gain, unit: "kg", precision: 1, locale: locale) == "+0.5 kg")
+        #expect(DetailStyle.signedQuantity(loss, unit: "kg", precision: 1, locale: locale) == lossShown + " kg")
+        #expect(lossShown == "-0.5" || lossShown == "−0.5")
+        #expect(DetailStyle.signedQuantity(gain, unit: "", precision: 1, locale: locale) == "+0.5")
+    }
+
+    @Test(arguments: ["en", "ja", "zh-Hant"])
     func ringCenterKeepsTrueFractionAndHiddenTextKeepsFullSummary(language: String) throws {
         let locale = Locale(identifier: language)
         var tracker = Tracker(name: String(repeating: "Very long 名稱 名前 ", count: 6), kind: .daily, timeZoneID: "Asia/Tokyo", cardBackground: .progress)
