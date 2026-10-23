@@ -17,6 +17,20 @@ nonisolated enum FolderScope: Hashable {
         case .folder(let id): folders.first { $0.id == id }?.name ?? L.text("Unfiled")
         }
     }
+    var emptyStateTitle: String {
+        switch self {
+        case .all: L.text("No items yet")
+        case .unfiled: L.text("No unfiled items")
+        case .folder: L.text("No items in this folder")
+        }
+    }
+    var emptyStateSymbol: String {
+        switch self {
+        case .all: "tray.full"
+        case .unfiled: "tray"
+        case .folder: "folder"
+        }
+    }
 }
 
 struct GoalsLibrary: View {
@@ -158,7 +172,7 @@ private struct FolderContents: View {
                 ScrollView {
                     VStack(alignment: .leading, spacing: 20) {
                         if scope.folderID != nil { folderHeading.padding(.horizontal, 16) }
-                        ContentUnavailableView(L.text("No items in this folder"), systemImage: "folder")
+                        ContentUnavailableView(scope.emptyStateTitle, systemImage: scope.emptyStateSymbol)
                     }.padding(.top, 16)
                 }
             } else {
