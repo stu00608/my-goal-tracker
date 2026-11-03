@@ -169,6 +169,7 @@ nonisolated struct Tracker: Codable, Identifiable, Equatable {
     var ringStyle: RingProgressStyle?
     var lifecycle: TrackingLifecycle?
     var manualCompletion: AchievementSnapshot?
+    var startDate: Date?
     var folderID: UUID?
     var resolvedTextPosition: CardTextPosition { cardTextPosition ?? .bottomTrailing }
     var resolvedRingStyle: RingProgressStyle { ringStyle ?? .percent }
@@ -353,6 +354,7 @@ nonisolated struct Backup: Codable, Equatable {
         for t in trackers {
             guard !t.name.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty, t.name.count <= 120, t.unit.count <= 30,
                   (0...8).contains(t.precision), TimeZone(identifier: t.timeZoneID) != nil, Self.validDate(t.createdAt),
+                  t.startDate.map(Self.validDate) != false,
                   t.entries.count <= 100000, t.rules.count <= 10000 else { throw DataError.invalidBackup }
             try Self.validateMetadata(t, version: version)
             var days = Set<String>()

@@ -95,10 +95,20 @@ nonisolated enum CompletionEngine {
         }.filter { seen.insert($0.localDay).inserted }
     }
 
+    private static func achievementStart(tracker: Tracker, rule: GoalRule?, periodStart: Date?, achievedAt: Date) -> Date {
+        let fallback = max(tracker.createdAt, rule?.effectiveAt ?? tracker.createdAt, periodStart ?? tracker.createdAt)
+        if periodStart != nil || tracker.kind != .number {
+            return min(achievedAt, fallback)
+        }
+        let candidate = tracker.startDate
+            ?? tracker.resolvedEntries.first(where: { $0.occurredAt <= achievedAt })?.occurredAt
+            ?? fallback
+        return min(achievedAt, candidate)
+    }
+
     private static func snapshot(tracker: Tracker, id: String, rule: GoalRule?, evidence: UUID?,
                                  periodStart: Date?, achievedAt: Date, value: String?) -> AchievementSnapshot {
-        let start = min(achievedAt, max(tracker.createdAt, rule?.effectiveAt ?? tracker.createdAt,
-                                        periodStart ?? tracker.createdAt))
+        let start = achievementStart(tracker: tracker, rule: rule, periodStart: periodStart, achievedAt: achievedAt)
         let entries = tracker.resolvedEntries.filter {
             $0.occurredAt <= achievedAt && (tracker.kind != .daily || $0.localDay <= tracker.day(achievedAt))
         }
