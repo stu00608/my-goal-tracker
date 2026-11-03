@@ -32,7 +32,7 @@ struct AchievementTests {
         let common = try #require(t.achievement(for: t.rules[0], now: now))
         #expect(snapshot.evidenceEntryID == common.evidenceEntryID)
         #expect(snapshot.achievedAt == common.achievedAt && snapshot.achievedAt == t.rules[0].effectiveAt)
-        #expect(snapshot.value == "12" && snapshot.startedAt == t.rules[0].effectiveAt)
+        #expect(snapshot.value == "12" && snapshot.startedAt == hit.occurredAt)
         #expect(CompletionEngine.snapshots(for: t, until: now) == [snapshot])
         #expect(t.manualCompletion == nil)
     }
@@ -172,14 +172,41 @@ struct AchievementTests {
         #expect(CompletionEngine.manualSnapshot(tracker: t, now: now).id != old.id)
     }
 
+    @Test func numericAchievementStartUsesFirstRecordManualStartDateAndClampsLateManualStart() throws {
+        var t = tracker()
+        t.rules = [rule(at: "2024-01-10T00:00:00Z")]
+        let first = number(t, at: "2024-01-02T00:00:00Z", value: "5")
+        let hit = number(t, at: "2024-01-11T00:00:00Z", value: "12")
+        t.entries = [first, hit]
+        let automatic = try #require(CompletionEngine.snapshots(for: t, until: now).first)
+        #expect(automatic.startedAt == first.occurredAt)
+
+        t.startDate = date("2024-01-05T00:00:00Z")
+        let manualStart = try #require(CompletionEngine.snapshots(for: t, until: now).first)
+        #expect(manualStart.startedAt == t.startDate)
+
+        t.startDate = date("2024-01-20T00:00:00Z")
+        let clamped = try #require(CompletionEngine.snapshots(for: t, until: now).first)
+        #expect(clamped.startedAt == clamped.achievedAt)
+        #expect(clamped.achievedAt.timeIntervalSince(clamped.startedAt) == 0)
+    }
+
+    @Test func trackerDecodesWithoutOptionalStartDateField() throws {
+        var object = try #require(JSONSerialization.jsonObject(with: JSONEncoder().encode(tracker())) as? [String: Any])
+        object.removeValue(forKey: "startDate")
+        let decoded = try JSONDecoder().decode(Tracker.self, from: JSONSerialization.data(withJSONObject: object))
+        #expect(decoded.startDate == nil)
+    }
+
     @Test func startIsBoundedAndNeverProducesNegativeDurationForBackfilledEvidence() throws {
         var t = tracker()
         t.createdAt = date("2024-01-15T00:00:00Z")
         t.rules = [rule()]
         t.entries = [number(t, at: "2024-01-02T00:00:00Z", value: "10")]
         let snapshot = try #require(CompletionEngine.snapshots(for: t, until: now).first)
-        #expect(snapshot.startedAt == snapshot.achievedAt)
-        #expect(CompletionEngine.manualSnapshot(tracker: t, now: now).startedAt == t.createdAt)
+        #expect(snapshot.startedAt == t.entries[0].occurredAt)
+        #expect(snapshot.startedAt <= snapshot.achievedAt)
+        #expect(CompletionEngine.manualSnapshot(tracker: t, now: now).startedAt == t.entries[0].occurredAt)
     }
 
     @Test func restoreAndRepeatedDerivationPreserveRawDataAndStableAutomaticKeys() throws {

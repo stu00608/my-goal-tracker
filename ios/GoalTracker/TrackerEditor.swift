@@ -47,6 +47,8 @@ struct TrackerEditor: View {
     @State private var showLastRecorded = true
     @State private var ringStyle = RingProgressStyle.percent
     @State private var lifecycle = TrackingLifecycle.finite
+    @State private var customAchievementStart = false
+    @State private var achievementStartDate = Date()
     @State private var notificationAuthorized = true
     @State private var runtime = ConditionReminders.shared
     @State private var error: String?
@@ -205,6 +207,17 @@ struct TrackerEditor: View {
                 Picker(L.text("Improvement direction"), selection: $direction) {
                     Text(L.text("Higher is better")).tag(Direction.up); Text(L.text("Lower is better")).tag(Direction.down)
                 }.tint(.primary)
+                Toggle(L.text("Custom start date"), isOn: $customAchievementStart)
+                    .accessibilityIdentifier("tracker.achievementStart.enabled")
+                if customAchievementStart {
+                    DatePicker(L.text("Start date"), selection: $achievementStartDate, displayedComponents: [.date, .hourAndMinute])
+                        .accessibilityIdentifier("tracker.achievementStart.date")
+                    Button(L.text("Use first record")) { customAchievementStart = false }
+                        .accessibilityIdentifier("tracker.achievementStart.reset")
+                } else {
+                    LabeledContent(L.text("Start date")) { Text(L.text("First record")).foregroundStyle(.secondary) }
+                        .accessibilityIdentifier("tracker.achievementStart.default")
+                }
             }
         }
     }
@@ -493,6 +506,12 @@ struct TrackerEditor: View {
         if let rule = t.rules.max(by: { $0.effectiveAt < $1.effectiveAt }) {
             goalEnabled = true; target = rule.target; due = rule.deadline ?? due; period = rule.period; frequency = Int(rule.target) ?? 2
         }
+        if let start = t.startDate {
+            customAchievementStart = true; achievementStartDate = start
+        } else {
+            customAchievementStart = false
+            achievementStartDate = t.resolvedEntries.first?.occurredAt ?? t.createdAt
+        }
         cardBackground = t.resolvedCardBackground; resetInvalidBackground()
     }
     private func importPhotos(_ items: [PhotosPickerItem]) {
@@ -533,6 +552,7 @@ struct TrackerEditor: View {
         t.conditionGroups = configuredGroups.isEmpty ? nil : configuredGroups; t.outerCombination = configuredGroups.isEmpty ? nil : combination
         t.cardTextPosition = textPosition; t.showLastRecorded = showLastRecorded; t.ringStyle = ringStyle; t.lifecycle = lifecycle
         t.gateSave = gateSave; t.remindWhenMet = remindWhenMet; t.reminder = reminder
+        t.startDate = kind == .number && customAchievementStart ? achievementStartDate : nil
         try applyGoal(to: &t, now: Date())
         t.cardBackground = cardBackground == .progress && !GoalProgress.available(for: t, now: Date()) ? .plot : cardBackground
         return t
