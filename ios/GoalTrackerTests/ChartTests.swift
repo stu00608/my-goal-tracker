@@ -27,7 +27,7 @@ import Testing
         let raw = t.entries, best = t.best
         let snapshot = try #require(ChartRange.custom.snapshot(for: t, now: date("2024-02-01T00:00:00Z"),
                                                               customStart: date("2024-01-02T00:00:00Z"), customEnd: date("2024-01-03T00:00:00Z")))
-        #expect(snapshot.entries.isEmpty && snapshot.periodChange == nil)
+        #expect(snapshot.entries.isEmpty && snapshot.periodChange == 0)
         let segment = try #require(snapshot.carries.first)
         #expect(snapshot.carries.count == 1 && segment.id == "leading")
         #expect(segment.start.date == snapshot.interval.start && segment.end.date == snapshot.interval.end)
@@ -75,6 +75,25 @@ import Testing
         #expect(second == "Goalooker-backup-20240102-030405-124")
         #expect(third == "Goalooker-export-20240102-030405-125")
         #expect(first != second)
+    }
+
+    @Test func periodChangeIsZeroWhenEqualInRangeRecords() throws {
+        var t = tracker(zone: "UTC")
+        let start = date("2024-03-10T00:00:00Z")
+        let end = date("2024-03-11T00:00:00Z")
+        t.entries = [entry("2024-03-10T10:00:00Z", value: "10", tracker: t),
+                     entry("2024-03-10T20:00:00Z", value: "10", tracker: t)]
+        let snapshot = try #require(ChartRange.custom.snapshot(for: t, now: start, customStart: start, customEnd: end))
+        #expect(snapshot.numericEntries.count == 2 && snapshot.periodChange == 0)
+    }
+
+    @Test func periodChangeNilForLonelyInRangeRecordWithoutCarry() throws {
+        var t = tracker(zone: "UTC")
+        let only = entry("2024-03-10T12:00:00Z", value: "10", tracker: t)
+        t.entries = [only]
+        let start = date("2024-03-10T00:00:00Z")
+        let snapshot = try #require(ChartRange.custom.snapshot(for: t, now: start, customStart: start, customEnd: start.addingTimeInterval(86400)))
+        #expect(snapshot.numericEntries == [only] && snapshot.carries.isEmpty && snapshot.periodChange == nil)
     }
 
     @Test func periodChangeSpansCarriedBaselineThroughSingleInRangeRecord() throws {

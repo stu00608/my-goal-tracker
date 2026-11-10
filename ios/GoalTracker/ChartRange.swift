@@ -62,6 +62,8 @@ nonisolated struct ChartSnapshot {
         }
     }
     var periodChange: Decimal? {
+        let hasLeadingCarry = carries.contains { $0.id == "leading" }
+        if !hasLeadingCarry && numericEntries.count <= 1 { return nil }
         let startValue: Decimal?
         if let leading = carries.first(where: { $0.id == "leading" }),
            let value = Numbers.decimal(leading.start.value) {
@@ -76,7 +78,7 @@ nonisolated struct ChartSnapshot {
         } else {
             endValue = numericEntries.last?.value.flatMap(Numbers.decimal)
         }
-        guard let start = startValue, let end = endValue, start != end else { return nil }
+        guard let start = startValue, let end = endValue else { return nil }
         return end - start
     }
 }
