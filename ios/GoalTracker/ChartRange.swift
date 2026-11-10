@@ -62,9 +62,22 @@ nonisolated struct ChartSnapshot {
         }
     }
     var periodChange: Decimal? {
-        let values = numericEntries.compactMap { $0.value.flatMap(Numbers.decimal) }
-        guard values.count > 1, let first = values.first, let last = values.last else { return nil }
-        return last - first
+        let startValue: Decimal?
+        if let leading = carries.first(where: { $0.id == "leading" }),
+           let value = Numbers.decimal(leading.start.value) {
+            startValue = value
+        } else {
+            startValue = numericEntries.first?.value.flatMap(Numbers.decimal)
+        }
+        let endValue: Decimal?
+        if let trailing = carries.last(where: { $0.id == "trailing" }),
+           let value = Numbers.decimal(trailing.end.value) {
+            endValue = value
+        } else {
+            endValue = numericEntries.last?.value.flatMap(Numbers.decimal)
+        }
+        guard let start = startValue, let end = endValue, start != end else { return nil }
+        return end - start
     }
 }
 

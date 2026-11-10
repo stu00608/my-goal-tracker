@@ -49,7 +49,7 @@ import Testing
         #expect(snapshot.carries.map(\.id) == ["leading", "trailing"])
         #expect(snapshot.carries[0].start.value == "10" && snapshot.carries[0].end.date == date("2024-03-10T10:00:00Z"))
         #expect(snapshot.carries[1].end.date == now && snapshot.carries[1].end.value == "12")
-        #expect(snapshot.numericEntries.count == 2 && snapshot.periodChange == 87)
+        #expect(snapshot.numericEntries.count == 2 && snapshot.periodChange == 89)
         let future = try #require(ChartRange.custom.snapshot(for: t, now: now, customStart: now.addingTimeInterval(86400), customEnd: now.addingTimeInterval(86400)))
         #expect(future.carries.isEmpty)
     }
@@ -75,6 +75,17 @@ import Testing
         #expect(second == "Goalooker-backup-20240102-030405-124")
         #expect(third == "Goalooker-export-20240102-030405-125")
         #expect(first != second)
+    }
+
+    @Test func periodChangeSpansCarriedBaselineThroughSingleInRangeRecord() throws {
+        var t = tracker(zone: "UTC")
+        let baseline = entry("2024-03-01T00:00:00Z", value: "10", tracker: t)
+        let inside = entry("2024-03-10T10:00:00Z", value: "15", tracker: t)
+        t.entries = [baseline, inside]
+        let start = date("2024-03-10T12:00:00Z")
+        let snapshot = try #require(ChartRange.custom.snapshot(for: t, now: start, customStart: start, customEnd: start.addingTimeInterval(86400)))
+        #expect(snapshot.numericEntries == [inside])
+        #expect(snapshot.periodChange == 5)
     }
 
     @Test func chartsAndCarriesResolveDeltasWithoutChangingRawEvents() throws {
